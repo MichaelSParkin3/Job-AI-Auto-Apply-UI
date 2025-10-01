@@ -92,6 +92,12 @@ prompts), so that I save time while keeping control and traceability.
    it resumes from the most recent saved step with consistent state.
 9. Given observability is enabled, when a step completes, then a step-level record
    with timestamps and optional screenshots is available for auditing.
+10. Given discovery or when opening the application form, when job posting details
+    are extracted, then normalized JobDetails fields are persisted on the
+    ApplicationItem and raw artifacts are saved for auditing.
+11. Given prompts are generated for long-form answers or cover letters, when the
+    assistant prepares the prompt, then it MUST include JobDetails (title, company,
+    location, employment_type, and posting_excerpt) alongside resume context.
 
 ### Edge Cases
 - CAPTCHAs/bot gates block form interactions. Progress is serialized; status set
