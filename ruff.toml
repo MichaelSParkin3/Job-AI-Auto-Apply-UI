@@ -1,0 +1,23 @@
+[lint]
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "I",  # isort
+  "D"   # pydocstyle
+]
+ignore = [
+  "D104"  # Missing docstring in public package (__init__)
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+target-version = "py311"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[format.docstring]
+quote-style = "double"

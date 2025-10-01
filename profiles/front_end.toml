@@ -1,0 +1,22 @@
+id = "front_end"
+name = "Front End Engineer Profile"
+resume_path = "resumes/front_end_resume.pdf"
+user_data_dir = "~/.config/job-ai-auto-apply/chromium"
+preferred_browser = "chromium"
+
+[defaults]
+location = "Remote"
+employment_type = "full_time"
+work_model = "remote"
+
+[keywords]
+values = [
+  "frontend",
+  "react",
+  "typescript",
+  "ui"
+]
+
+[prompts]
+cover_letter = "Please craft a concise cover letter highlighting React and accessibility expertise."
+long_form = "Use STAR format with focus on frontend performance improvements."
