@@ -1,0 +1,50 @@
+id = "michael_scott_parkin_iii"
+name = "Michael Scott Parkin III"
+resume_path = "resumes/Michael_Parkin_Senior_Front_End_Developer_Resume_2025.pdf"
+preferred_browser = "chromium"
+
+[defaults]
+email = "MichaelSParkin3@gmail.com"
+phone = "+1-555-010-4422"
+location = "Remote, USA"
+portfolio_url = "https://www.michaelsparkin.com/"
+github_url = "https://github.com/MichaelSParkin3"
+linkedin_url = "https://www.linkedin.com/in/michael-s-parkin"
+work_authorization = "Authorized to work in the United States"
+salary_expectation = "Open to discussion"
+
+[keywords]
+roles = [
+  "Senior Front End Developer",
+  "Senior Frontend Engineer",
+  "Principal Frontend Engineer",
+  "Staff Frontend Engineer",
+]
+seniority = ["Senior", "Staff", "Principal"]
+tech_stack = [
+  "React",
+  "Next.js",
+  "TypeScript",
+  "Svelte",
+  "Tailwind",
+  "Flutter",
+  "Dart",
+  "GraphQL",
+  "REST API",
+  "Figma",
+  "Vitest",
+  "Playwright",
+]
+domains = [
+  "SaaS",
+  "B2B",
+  "Marketplace",
+  "Crypto",
+  "E-commerce",
+  "Real Estate Tech",
+]
+
+[prompts]
+cover_letter = "Highlight React/Next.js leadership, cross-platform Flutter builds, and the 45% error reduction on Ocusell.AI. Emphasize remote collaboration, component systems, and mentoring designers/PMs."
+resume_summary = "Senior frontend leader who ships polished, resilient UIs, mentors cross-functional teams, and translates product goals into scalable component systems."
+key_accomplishments = "- Cut MLS listing submission errors by 45% with Ocusell.AI validation tooling.\n- Drove adoption of standardized licensee data workflows across enterprise real-estate platforms.\n- Built cross-platform Color ConneXion 2.0 app and reusable quiz systems serving 720k+ monthly users."

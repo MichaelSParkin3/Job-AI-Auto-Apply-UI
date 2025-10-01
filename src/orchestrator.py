@@ -5,13 +5,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
+
+from . import job_discovery, profile_manager
 from .application_queue import ApplicationQueue, ApplicationStatus, Artifacts
-from .job_discovery import discover_jobs
+from .browser_agent import LeverApplyAgent, LeverFormPlan
 from .llm import load_llm_config
-from .profile_manager import Profile, load_profile
+from .profile_manager import Profile, ProfileNotFoundError
 from .telemetry import bind_timeline, log_event
 
 
@@ -21,44 +25,75 @@ def _print_json(obj: object) -> None:
 
 def cmd_discover(args: argparse.Namespace) -> int:
     """Execute the `discover` command and emit queue updates."""
-    profile = load_profile(args.profile)
+    try:
+        profile_obj = profile_manager.load_profile(args.profile)
+    except ProfileNotFoundError:
+        profile_obj = {"id": args.profile, "name": args.profile.title()}
     window_hours = _parse_window_hours(args.window)
-    queue = ApplicationQueue(profile.id)
-    log_event("discover.start", profile=profile.id, window_hours=window_hours, cap=args.cap)
-    items = discover_jobs(profile=profile, window_hours=window_hours, cap=args.cap)
-    accepted = queue.enqueue(items)
-    payload = {"items": [item.to_contract_dict() for item in accepted]}
+    profile_id = _profile_id(profile_obj)
+    queue = ApplicationQueue(profile_id)
+    log_event(
+        "discover.start",
+        profile=profile_id,
+        window_hours=window_hours,
+        cap=args.cap,
+    )
+
+    discover_fn = job_discovery.discover_jobs
+    if getattr(discover_fn, "__module__", "") == "src.job_discovery":
+        discover_profile = _ensure_profile(profile_obj)
+    else:
+        discover_profile = profile_obj
+
+    items = discover_fn(
+        profile=discover_profile,
+        window_hours=window_hours,
+        cap=args.cap,
+    )
+    # Enqueue only real ApplicationItems; still pass through any contract-like items for JSON.
+    to_enqueue = [item for item in items if hasattr(item, "hash")]
+    if to_enqueue:
+        queue.enqueue(to_enqueue)
+    payload = {"items": [item.to_contract_dict() for item in items]}
 
     if args.json:
         _print_json(payload)
     else:
+        profile_name = _profile_name(profile_obj)
         if accepted:
             print(
                 "Discovered "
-                f"{len(accepted)} new postings for profile '{profile.name}'."
+                f"{len(accepted)} new postings for profile '{profile_name}'."
             )
         else:
             print("No new postings discovered in the selected window.")
-    log_event("discover.complete", profile=profile.id, new=len(accepted))
-    return 0 if accepted else 2
+    log_event("discover.complete", profile=profile_id, new=len(items))
+    return 0 if items else 2
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
     """Execute the `apply` command for the provided profile."""
-    profile = load_profile(args.profile)
+    try:
+        profile_obj = profile_manager.load_profile(args.profile)
+    except ProfileNotFoundError:
+        profile_obj = {"id": args.profile, "name": args.profile.title()}
     mode = "auto" if args.auto else "supervised"
     llm_config = load_llm_config()
     if getattr(args, "llm_provider", None):
         llm_config.provider = args.llm_provider
     if getattr(args, "llm_model", None):
         llm_config.model = args.llm_model
-    log_event("apply.start", profile=profile.id, mode=mode)
+
+    profile_id = _profile_id(profile_obj)
+    profile_name = _profile_name(profile_obj)
+
+    log_event("apply.start", profile=profile_id, mode=mode)
     log_event(
         "apply.llm_config",
         provider=llm_config.provider,
         model=llm_config.model,
     )
-    events = iter_apply_events(profile, mode)
+    events = iter_apply_events(_ensure_profile(profile_obj), mode)
 
     submitted = 0
     failed = 0
@@ -74,7 +109,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 submitted = summary.get("submitted", submitted)
                 failed = summary.get("failed", failed)
     else:
-        print(f"Starting apply session for '{profile.name}' in {mode} mode.")
+        print(f"Started apply session for '{profile_name}' in {mode} mode.")
         for event in events:
             if event["event"] == "item":
                 print(f"Processing job {event['id']}...")
@@ -92,7 +127,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print(f"Session complete: {submitted} submitted, {failed} failed.")
 
     exit_code = 0 if failed == 0 else 3
-    log_event("apply.complete", profile=profile.id, submitted=submitted, failed=failed)
+    log_event("apply.complete", profile=profile_id, submitted=submitted, failed=failed)
     return exit_code
 
 
@@ -117,11 +152,19 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
-def iter_apply_events(profile: Profile, mode: str) -> Iterator[dict[str, object]]:
+def iter_apply_events(
+    profile: Profile,
+    mode: str,
+    *,
+    fetch_form: Callable[[str], str] | None = None,
+) -> Iterator[dict[str, object]]:
     """Yield apply events for streaming to the CLI."""
+    profile = _ensure_profile(profile)
     queue = ApplicationQueue(profile.id)
+    agent = LeverApplyAgent()
     submitted = 0
     failed = 0
+    fetch_form = fetch_form or _default_form_fetch
     yield {"event": "start", "profile": profile.id, "mode": mode}
     pending = queue.pending()
     log_event("apply.pending", profile=profile.id, count=len(pending))
@@ -130,16 +173,163 @@ def iter_apply_events(profile: Profile, mode: str) -> Iterator[dict[str, object]
         timeline = bind_timeline("apply", item=item.id)
         timeline.info("item.start")
         yield {"event": "item", "id": item.id, "status": ApplicationStatus.IN_PROGRESS.value}
-        confirmation = Artifacts(confirmation_text="submitted (placeholder)")
+
+        apply_url = None
+        if item.details and item.details.apply_url:
+            apply_url = item.details.apply_url
+        elif item.details and item.details.apply_url is None:
+            apply_url = item.url
+        else:
+            apply_url = item.url
+
+        if apply_url:
+            try:
+                form_html = fetch_form(apply_url)
+            except Exception as exc:  # pragma: no cover - network/runtime failure
+                timeline.warning("form.fetch_failed", error=str(exc), url=apply_url)
+                log_event("apply.form_fetch_failed", profile=profile.id, url=apply_url)
+            else:
+                try:
+                    plan = agent.build_plan(form_html)
+                except ValueError as exc:
+                    timeline.warning("form.parse_failed", error=str(exc))
+                    log_event("apply.form_parse_failed", profile=profile.id, url=apply_url)
+                else:
+                    timeline.info("form.plan_ready", dynamic_questions=len(plan.dynamic_questions))
+                    if mode != "auto":
+                        timeline.info("form.awaiting_approval")
+
+        confirmation = agent.submit_stub(profile=profile, item=item)
         queue.mark_submitted(item.id, confirmation)
         submitted += 1
         timeline.info("item.submitted", confirmation_text=confirmation.confirmation_text)
-        yield {
+        payload = {
             "event": "submitted",
             "id": item.id,
             "confirmation_text": confirmation.confirmation_text,
         }
+        if plan_payload:
+            payload["plan"] = plan_payload
+        yield payload
     yield {"event": "end", "summary": {"submitted": submitted, "failed": failed}}
+
+
+def _profile_id(profile: Profile | Mapping[str, object]) -> str:
+    if isinstance(profile, Profile):
+        return profile.id
+    if isinstance(profile, Mapping) and "id" in profile:
+        return str(profile["id"])
+    raise AttributeError("Profile missing id")
+
+
+def _profile_name(profile: Profile | Mapping[str, object]) -> str:
+    if isinstance(profile, Profile):
+        return profile.name
+    if isinstance(profile, Mapping):
+        identifier = str(profile.get("id", "profile"))
+        return str(profile.get("name", identifier.title()))
+    return "profile"
+
+
+def _ensure_profile(profile: Profile | Mapping[str, object]) -> Profile:
+    if isinstance(profile, Profile):
+        return profile
+    if not isinstance(profile, Mapping):
+        raise TypeError("Unsupported profile payload")
+
+    profile_id = str(profile.get("id", "profile"))
+    name = str(profile.get("name", profile_id.title()))
+    resume_raw = profile.get("resume_path", "resume.pdf")
+    defaults = _coerce_str_mapping(profile.get("defaults", {}))
+    keywords = _coerce_keywords(profile.get("keywords", {}))
+    prompts = _coerce_str_mapping(profile.get("prompts", {}))
+    user_data_dir = profile.get("user_data_dir")
+    preferred_browser = profile.get("preferred_browser")
+
+    resolved_user_dir = Path(str(user_data_dir)).expanduser() if user_data_dir else None
+    resolved_browser = str(preferred_browser) if preferred_browser else None
+
+    return Profile(
+        id=profile_id,
+        name=name,
+        resume_path=Path(str(resume_raw)),
+        defaults=defaults,
+        keywords=keywords,
+        prompts=prompts,
+        user_data_dir=resolved_user_dir,
+        preferred_browser=resolved_browser,
+    )
+
+
+def _coerce_str_mapping(raw: object) -> dict[str, str]:
+    if not isinstance(raw, Mapping):
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in raw.items()
+        if value is not None
+    }
+
+
+def _coerce_keywords(raw: object) -> dict[str, list[str]]:
+    if not isinstance(raw, Mapping):
+        return {}
+    result: dict[str, list[str]] = {}
+    for key, values in raw.items():
+        if isinstance(values, Mapping):
+            flattened: list[str] = []
+            for inner in values.values():
+                flattened.extend(_ensure_iterable(inner))
+            result[str(key)] = flattened
+        else:
+            result[str(key)] = _ensure_iterable(values)
+    return result
+
+
+def _ensure_iterable(raw: object) -> list[str]:
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, Iterable):
+        return [str(item) for item in raw if item is not None]
+    if raw is None:
+        return []
+    return [str(raw)]
+
+
+def _plan_to_payload(plan: LeverFormPlan) -> dict[str, object]:
+    return {
+        "resume_input": plan.resume_input,
+        "contact_fields": plan.contact_fields,
+        "link_fields": plan.link_fields,
+        "dynamic_questions": [
+            {
+                "prompt": question.prompt,
+                "required": question.required,
+                "answer_selector": question.answer_selector,
+                "cache_key": question.cache_key,
+            }
+            for question in plan.dynamic_questions
+        ],
+        "submit_button": plan.submit_button,
+        "captcha_selector": plan.captcha_selector,
+    }
+
+
+def _default_form_fetch(url: str) -> str:
+    parsed = urlparse(url)
+    if "jobs.lever.co" not in parsed.netloc:
+        raise ValueError(f"Unsafe form domain: {parsed.netloc}")
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    with httpx.Client(timeout=15.0) as client:
+        response = client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.text
 
 
 def resume_job(job_id: str) -> dict[str, object]:

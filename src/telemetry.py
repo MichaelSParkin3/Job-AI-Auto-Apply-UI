@@ -2,19 +2,28 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import structlog
+
+logging.basicConfig(
+    format="%(message)s",
+    level=logging.INFO,
+    stream=sys.stderr,
+)
 
 structlog.configure(
     processors=[
         structlog.processors.add_log_level,
-        structlog.processors.TimeStamper(fmt="ISO"),
+        structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.JSONRenderer(),
     ],
-    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
 )
 
-_logger = structlog.get_logger("auto_apply")
+_logger = structlog.stdlib.get_logger("auto_apply")
 
 
 def log_event(event: str, **fields: object) -> None:
