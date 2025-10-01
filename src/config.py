@@ -1,14 +1,12 @@
 """Minimal config loader for global settings.
 
-Reads environment variables and provides defaults consistent with the spec.
-This module does not handle profiles (see profile_manager in future tasks).
+Read environment variables and expose configuration defaults.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 def _get_float(name: str, default: float) -> float:
@@ -27,6 +25,7 @@ def _get_int(name: str, default: int) -> int:
 
 @dataclass
 class Settings:
+    """Application configuration loaded from environment variables."""
     dwell_seconds: float = field(default_factory=lambda: _get_float("DWELL_SECONDS", 0.8))
     jitter_seconds: float = field(default_factory=lambda: _get_float("JITTER_SECONDS", 0.4))
     max_tabs: int = field(default_factory=lambda: _get_int("MAX_TABS", 3))
@@ -37,25 +36,31 @@ class Settings:
     discovery_cap: int = field(default_factory=lambda: _get_int("DISCOVERY_CAP", 10))
 
     # Networking
-    proxy_url: Optional[str] = field(
+    proxy_url: str | None = field(
         default_factory=lambda: os.getenv("PROXY_URL")
         or os.getenv("HTTPS_PROXY")
         or os.getenv("HTTP_PROXY")
     )
-    user_agent: Optional[str] = field(default_factory=lambda: os.getenv("USER_AGENT"))
-    allowed_domains: List[str] = field(
+    user_agent: str | None = field(default_factory=lambda: os.getenv("USER_AGENT"))
+    allowed_domains: list[str] = field(
         default_factory=lambda: os.getenv("ALLOWED_DOMAINS", "google.*,jobs.lever.co").split(",")
     )
 
     # LLM
-    llm_provider: Optional[str] = field(default_factory=lambda: os.getenv("LLM_PROVIDER"))
-    llm_model: Optional[str] = field(default_factory=lambda: os.getenv("LLM_MODEL"))
+    llm_provider: str | None = field(default_factory=lambda: os.getenv("LLM_PROVIDER"))
+    llm_model: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL"))
     llm_temperature: float = field(
         default_factory=lambda: _get_float("LLM_TEMPERATURE", 0.0)
     )
     llm_timeout_seconds: int = field(
         default_factory=lambda: _get_int("LLM_TIMEOUT_SECONDS", 30)
     )
+    llm_referer: str | None = field(default_factory=lambda: os.getenv("LLM_REFERER"))
+    llm_user_agent: str | None = field(default_factory=lambda: os.getenv("LLM_USER_AGENT"))
+    openrouter_api_key: str | None = field(
+        default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
+    )
+    google_api_key: str | None = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY"))
 
 
 def load_settings() -> Settings:
