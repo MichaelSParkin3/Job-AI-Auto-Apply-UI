@@ -1,0 +1,24 @@
+﻿# Job-AI-Auto-Apply-UI Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-10-01
+
+## Active Technologies
+- Python 3.11 + browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog (001-as-a-job)
+
+## Project Structure
+```
+src/
+tests/
+```
+
+## Commands
+cd src; pytest; ruff check .
+
+## Code Style
+Python 3.11: Follow standard conventions
+
+## Recent Changes
+- 001-as-a-job: Added Python 3.11 + browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->
