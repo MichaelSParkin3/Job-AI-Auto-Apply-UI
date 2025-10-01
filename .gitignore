@@ -1,0 +1,59 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+
+# Test & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Linters / type checkers
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.dmypy.json
+.pyre/
+
+# Editors / IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+*.env
+.env.*.local
+
+# Runtime data & artifacts (local only)
+artifacts/
+data/
+logs/
+tmp/
+
+# Playwright artifacts (if enabled)
+playwright/.cache/
+test-results/
+playwright-report/
+
+# Profiles with local/secret overrides
+profiles/*.local.*
+profiles/*.secret.*
+
