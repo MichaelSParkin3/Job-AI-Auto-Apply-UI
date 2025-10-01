@@ -103,12 +103,32 @@
   - Files: `specs/001-as-a-job/contracts/schemas/*.json`
 - [ ] T023 Final pass: docstrings per constitution + run linters
 
+## Phase 3.6: LLM Wiring
+- [ ] T024 LLM config and env keys
+  - Files: `.env.example`, `src/config.py`, `src/llm/__init__.py`
+  - Add env vars: `LLM_PROVIDER` (openrouter|google), `LLM_MODEL`, `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`,
+    `LLM_TEMPERATURE` (default 0.0 for tests), `LLM_TIMEOUT_SECONDS` (default 30)
+- [ ] T025 OpenRouter client wrapper
+  - File: `src/llm/openrouter_client.py`
+  - Implement chat completion call with retries/backoff and error mapping; optional headers
+    (Referer/User-Agent) as required by provider guidelines
+- [ ] T026 Provider selection + CLI override
+  - Files: `src/orchestrator.py`, `src/config.py`, `src/llm/prompt_builder.py`
+  - Add `--llm-provider` and `--llm-model` flags; plumb through to prompt builder
+- [ ] T027 [P] Tests for LLM wrappers and prompt_builder
+  - Files: `tests/unit/test_llm_openrouter.py`, `tests/unit/test_prompt_builder.py`
+  - Mock network; assert deterministic outputs and retry/backoff behavior
+- [ ] T028 [P] Docs and samples
+  - Files: `specs/001-as-a-job/quickstart.md`, `AGENTS.md`, `.env.example`
+  - Document key setup, provider choice, and test defaults (temperature=0.0)
+
 ## Dependencies
 - Setup (T001–T003) before tests and implementation
 - Contract & integration tests (T004–T009) before core implementation (T010–T016)
 - `application_queue.py` (T011) before orchestrator wiring (T016)
 - `job_discovery.py` details extraction (T013) after URL build (T012)
 - Browser agent (T014) before confirmation capture (T019)
+- LLM wiring: T024 before T025; T025 before T026; T026 before T027; T028 after T026
 
 ## Parallel Example
 ```
@@ -120,4 +140,7 @@
 # Launch independent integration selector checks:
 /specs/001-as-a-job> Task: "T007 Discovery URL build"
 /specs/001-as-a-job> Task: "T009 Lever form selectors"
+
+# LLM tests can run in parallel once wrappers are in place:
+/specs/001-as-a-job> Task: "T027 Tests for LLM wrappers and prompt_builder"
 ```
