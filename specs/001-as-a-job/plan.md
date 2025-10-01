@@ -119,6 +119,9 @@ contract/integration/unit tests; no additional services introduced.
 5. Update agent file incrementally:
    - Run `.specify/scripts/powershell/update-agent-context.ps1 -AgentType codex`
 
+Selectors reference
+- Use selectors and URL patterns from `reference_files/patterns-google-lever.md` for Google discovery, Lever details, and form flows.
+
 **Output**: data-model.md, /contracts/*, failing tests, quickstart.md, agent file
 
 ## Phase 2: Task Planning Approach

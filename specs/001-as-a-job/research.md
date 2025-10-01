@@ -25,3 +25,6 @@ Spec: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\001-as-a-j
 ## Open Items (tracked for planning)
 - Proxy configuration matrix and validation.
 - JSON schema for field mappings & confirmation capture (versioned in repo).
+
+## Sources
+- reference_files/patterns-google-lever.md — consolidated selectors and URL patterns for Google discovery and Lever pages
