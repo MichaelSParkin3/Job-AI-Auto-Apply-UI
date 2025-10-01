@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"/><title>Lever Form Fixture</title></head>
+<body>
+  <form id="application-form">
+    <a class="postings-btn template-btn-utility visible-resume-upload">
+      <input class="application-file-input invisible-resume-upload" id="resume-upload-input" name="resume" type="file" />
+    </a>
+    <input data-qa="name-input" name="name" type="text" />
+    <input data-qa="email-input" name="email" type="email" />
+    <input data-qa="phone-input" name="phone" type="text" />
+    <input id="location-input" class="location-input" name="location" type="text" />
+    <input id="selected-location" name="selectedLocation" type="hidden" />
+    <input name="urls[LinkedIn]" type="text" />
+    <input name="urls[GitHub (If applicable)]" type="text" />
+    <input name="urls[Portfolio (If applicable)]" type="text" />
+    <input type="hidden" name="cards[abc][baseTemplate]" value='{"fields":[{"type":"textarea","text":"Why?","required":true}]}' />
+    <textarea class="card-field-input" name="cards[abc][field0]"></textarea>
+    <div id="h-captcha" class="h-captcha"></div>
+    <button id="btn-submit" data-qa="btn-submit" type="button">Submit application</button>
+  </form>
+</body>
+</html>
+
