@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:job-ai-auto-apply:schemas:apply-event",
+  "title": "ApplyEvent",
+  "oneOf": [
+    {
+      "title": "start",
+      "type": "object",
+      "required": ["event", "profile"],
+      "properties": {
+        "event": { "const": "start" },
+        "profile": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "item",
+      "type": "object",
+      "required": ["event", "id", "status"],
+      "properties": {
+        "event": { "const": "item" },
+        "id": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "new",
+            "in_progress",
+            "captcha_blocked",
+            "submitted",
+            "failed"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "submitted",
+      "type": "object",
+      "required": ["event", "id"],
+      "properties": {
+        "event": { "const": "submitted" },
+        "id": { "type": "string", "minLength": 1 },
+        "confirmation_id": { "type": "string" },
+        "confirmation_text": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "failed",
+      "type": "object",
+      "required": ["event", "id", "reason"],
+      "properties": {
+        "event": { "const": "failed" },
+        "id": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string" },
+            "message": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "end",
+      "type": "object",
+      "required": ["event", "summary"],
+      "properties": {
+        "event": { "const": "end" },
+        "summary": {
+          "type": "object",
+          "required": ["submitted", "failed"],
+          "properties": {
+            "submitted": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
+

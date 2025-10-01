@@ -13,6 +13,8 @@
 ```
 - Exit codes: 0 success; 2 no results; 1 other errors
 
+Schema: `contracts/schemas/discover.schema.json`
+
 ## apply
 - Command: `apply --profile <name> [--auto|--supervised] [--json]`
 - Output stream (JSON lines when `--json`):
@@ -25,6 +27,8 @@
 ```
 - Exit codes: 0 success; 3 partial failures; 1 fatal error
 
+Schema (per line): `contracts/schemas/apply-event.schema.json`
+
 ## resume-job
 - Command: `resume-job <id> [--json]`
 - Output (JSON when `--json`):
@@ -32,3 +36,5 @@
 {"id":"...","status":"in_progress","resumed_from_step":3}
 ```
 - Exit codes: 0 success; 4 not found; 1 other errors
+
+Schema: `contracts/schemas/resume-job.schema.json`

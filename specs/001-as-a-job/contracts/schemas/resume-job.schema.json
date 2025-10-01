@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:job-ai-auto-apply:schemas:resume-job",
+  "title": "ResumeJobResult",
+  "type": "object",
+  "required": ["id", "status", "resumed_from_step"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "status": { "const": "in_progress" },
+    "resumed_from_step": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}
+
