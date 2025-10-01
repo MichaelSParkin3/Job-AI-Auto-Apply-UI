@@ -52,6 +52,15 @@ When creating this spec from a user prompt:
 
 ---
 
+## Clarifications
+
+### Session 2025-10-01
+- Q: What should be the default operating mode when the assistant runs with no flags? → A: Auto‑fill then pause at final submit.
+- Q: What’s the default storage security posture for artifacts under data/? → A: Encryption OFF by default; user can enable.
+- Q: What is the default discovery cap per run (max new postings to queue)? → A: 10 max; fewer if available.
+- Q: What’s the default scope for reusing LLM-generated answers (Answer Cache)? → A: Per profile for generic fields; long-form/job-specific not reused by default.
+- Q: What is the default retention period for artifacts under data/ (logs, DOM snapshots, screenshots)? → A: Keep until manual cleanup.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### Primary User Story
@@ -126,7 +135,6 @@ prompts), so that I save time while keeping control and traceability.
   hash of URL/company/title and update status appropriately.
 - **FR-014**: System MUST produce human-readable logs and optional `--json` outputs
   for automation pipelines.
-- **FR-015**: *REMOVED*
 - **FR-016**: System MUST allow users to review and edit answers before submission
   when operating in supervised mode.
 - **FR-017**: System MUST provide clear failure reasons and retry guidance per item.
@@ -136,6 +144,19 @@ prompts), so that I save time while keeping control and traceability.
   messages for operational troubleshooting.
 - **FR-020**: System MUST capture and attach the final application URL and timestamp
   to submitted items.
+- **FR-030**: Default mode MUST auto-fill forms and pause at the final submit step
+  for one-click user approval (use `--auto` to submit without pausing; use
+  `--discovery-only` to skip applying).
+- **FR-031**: System MUST support optional encryption at rest for `data/`; default
+  is OFF. Enabling encryption requires a user passphrase; newly written files are
+  encrypted; existing plaintext files remain until migrated.
+- **FR-032**: System MUST cap discovery at a configurable maximum of 10 items per
+  run by default; queue size may be smaller when fewer matching postings exist.
+- **FR-033**: AnswerCache MUST reuse answers per profile for generic fields (e.g.,
+  contact info, eligibility, links). Long-form or job/company-specific answers are
+  NOT reused by default and require fresh generation or explicit opt-in.
+- **FR-034**: Artifact retention defaults to indefinite (no automatic deletion).
+  Users MAY configure `retention_days` to enable automatic pruning.
 
 *Clarifications required:*
 - **FR-021**: System MUST source Google results via an in-browser public search
@@ -144,7 +165,6 @@ prompts), so that I save time while keeping control and traceability.
 - **FR-022**: System MUST enforce default pacing limits unless overridden: minimum
   dwell per page 0.8s with ±0.4s jitter; maximum parallel tabs 3; retries with
   exponential backoff up to 2 attempts per failing step.
-- **FR-023**: *REMOVED*
 - **FR-024**: System MUST allow optional HTTP/HTTPS/SOCKS5 proxy configuration at
   the profile or session level, including host/port and basic auth.
 - **FR-025**: System MUST run on a modern Chromium-based desktop browser in visible
@@ -166,17 +186,25 @@ prompts), so that I save time while keeping control and traceability.
 - **ApplicationItem**: A discovered posting to process. Fields: id, url, company,
   title, status, discovered_at, last_updated_at, reason, artifacts, hash.
 - **AnswerCache**: Q/A pairs used to fill forms (question key → prepared answer),
-  seeded from resume/job description; reused across retries.
+  seeded from resume/job description; reused across retries. Entries carry `type`
+  = {generic | long_form}, `scope` default `profile` for generic, and may include
+  optional `company_id`/`posting_id` when scoping is narrower.
 - **Artifacts**: File references for DOM snapshots, screenshots, optional video/HAR,
   confirmation data, and structured logs associated with an ApplicationItem.
 - **Config**: Rate/stealth settings (dwell, jitter, tabs, retry/backoff), allowed
-  domains, discovery window, optional proxy, and output modes (human/JSON).
+  domains, discovery window, optional proxy, output modes (human/JSON), and
+  `encryption_enabled` (default false) with passphrase setup, and `discovery_cap`
+  (default 10), plus `retention_days` (0 means keep until manual cleanup).
 
 ### Non-Functional Requirements
 - The assistant SHOULD complete typical Lever applications within 2–5 minutes per
   posting under default pacing and network conditions.
 - Logs MUST be human-readable by default and optionally emitted as structured JSON.
 - Personally identifiable information in logs MUST be redacted by default.
+- By default, artifacts under `data/` are stored unencrypted; users MAY enable
+  encryption to protect sensitive content.
+- Default artifact retention is indefinite; users MAY set a retention window to
+  enable automatic pruning.
 
 ---
 
