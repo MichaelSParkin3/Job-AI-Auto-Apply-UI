@@ -28,3 +28,7 @@ Spec: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\001-as-a-j
 
 ## Sources
 - reference_files/patterns-google-lever.md — consolidated selectors and URL patterns for Google discovery and Lever pages
+- reference_files/mvp-architecture.md — high-level flow and component responsibilities
+- reference_files/browser-user-0.7.X-changes.md — hooks, event bus, CDP-first behavior
+- reference_files/browser-use-testing-tips.md — testing layers, artifacts, CI advice
+- reference_files/Automating_Lever_Job_Applications_with_Browser_Use.md — practical setup/stealth guidance
