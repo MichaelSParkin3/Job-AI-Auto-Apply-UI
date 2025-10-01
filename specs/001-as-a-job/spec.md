@@ -126,8 +126,7 @@ prompts), so that I save time while keeping control and traceability.
   hash of URL/company/title and update status appropriately.
 - **FR-014**: System MUST produce human-readable logs and optional `--json` outputs
   for automation pipelines.
-- **FR-015**: System MUST support encryptable storage under `data/` for sensitive
-  artifacts (profiles, answers, snapshots) when encryption is enabled.
+- **FR-015**: *REMOVED*
 - **FR-016**: System MUST allow users to review and edit answers before submission
   when operating in supervised mode.
 - **FR-017**: System MUST provide clear failure reasons and retry guidance per item.
@@ -145,8 +144,7 @@ prompts), so that I save time while keeping control and traceability.
 - **FR-022**: System MUST enforce default pacing limits unless overridden: minimum
   dwell per page 0.8s with ±0.4s jitter; maximum parallel tabs 3; retries with
   exponential backoff up to 2 attempts per failing step.
-- **FR-023**: System MUST support optional encryption at rest for `data/` using a
-  user-supplied passphrase (AES-256 or equivalent industry-standard cipher).
+- **FR-023**: *REMOVED*
 - **FR-024**: System MUST allow optional HTTP/HTTPS/SOCKS5 proxy configuration at
   the profile or session level, including host/port and basic auth.
 - **FR-025**: System MUST run on a modern Chromium-based desktop browser in visible
