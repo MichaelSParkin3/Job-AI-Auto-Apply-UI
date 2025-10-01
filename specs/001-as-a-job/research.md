@@ -8,7 +8,6 @@ Spec: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\001-as-a-j
 - Default pacing: dwell 0.8s ±0.4s jitter; max parallel tabs 3; retries with backoff ×2.
 - Allowed domains gate: google.* (search only), jobs.lever.co/*, company subpaths.
 - Artifacts: screenshots + DOM snapshots always on failure; optional video/HAR when diagnostics is enabled.
-- Encryption OFF by default; user can enable and supply passphrase; retain plaintext files until migrated.
 - Discovery cap default 10; time window default 24h; supervised default (pause at final submit).
 
 ## Rationale
@@ -24,6 +23,5 @@ Spec: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\001-as-a-j
 - Always-on video/HAR → high storage/IO overhead; reserved for diagnostics.
 
 ## Open Items (tracked for planning)
-- Implementation library for encryption-at-rest (e.g., cryptography/Fernet vs libsodium).
 - Proxy configuration matrix and validation.
 - JSON schema for field mappings & confirmation capture (versioned in repo).

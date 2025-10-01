@@ -34,12 +34,12 @@ Automate discovery of fresh Lever postings via Google (site:jobs.lever.co, last 
 normalize queue items, auto-fill Lever forms using profile-driven data and
 LLM-backed answers, and submit with default supervised mode (auto-fill then pause
 at final submit). Provide resumable state, artifacts (screenshots/DOM), step timeline,
-and rate/stealth controls. Default discovery cap 10; encryption off by default.
+and rate/stealth controls. Default discovery cap 10.
 
 ## Technical Context
 **Language/Version**: Python 3.11  
 **Primary Dependencies**: browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog  
-**Storage**: Local `data/` tree; JSON/SQLite for queue and cache; optional encryption  
+**Storage**: Local `data/` tree; JSON/SQLite for queue and cache  
 **Testing**: pytest + pytest-asyncio; browser-use hooks; optional video/HAR in diagnostics  
 **Target Platform**: Local desktop (Windows/macOS/Linux) using Chromium headful by default  
 **Project Type**: single  
@@ -95,7 +95,7 @@ contract/integration/unit tests; no additional services introduced.
 
 ## Phase 0: Outline & Research
 1. Extract unknowns from Technical Context:
-   - Proxy configuration options; encryption implementation choice; supported browsers
+   - Proxy configuration options; supported browsers
    - Deterministic JSON mapping for Lever widgets; answer cache scoping (documented)
    - Diagnostics artifacts (video/HAR) toggle and storage
 

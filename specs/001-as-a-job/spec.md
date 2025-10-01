@@ -56,7 +56,6 @@ When creating this spec from a user prompt:
 
 ### Session 2025-10-01
 - Q: What should be the default operating mode when the assistant runs with no flags? → A: Auto‑fill then pause at final submit.
-- Q: What’s the default storage security posture for artifacts under data/? → A: Encryption OFF by default; user can enable.
 - Q: What is the default discovery cap per run (max new postings to queue)? → A: 10 max; fewer if available.
 - Q: What’s the default scope for reusing LLM-generated answers (Answer Cache)? → A: Per profile for generic fields; long-form/job-specific not reused by default.
 - Q: What is the default retention period for artifacts under data/ (logs, DOM snapshots, screenshots)? → A: Keep until manual cleanup.
@@ -147,9 +146,6 @@ prompts), so that I save time while keeping control and traceability.
 - **FR-030**: Default mode MUST auto-fill forms and pause at the final submit step
   for one-click user approval (use `--auto` to submit without pausing; use
   `--discovery-only` to skip applying).
-- **FR-031**: System MUST support optional encryption at rest for `data/`; default
-  is OFF. Enabling encryption requires a user passphrase; newly written files are
-  encrypted; existing plaintext files remain until migrated.
 - **FR-032**: System MUST cap discovery at a configurable maximum of 10 items per
   run by default; queue size may be smaller when fewer matching postings exist.
 - **FR-033**: AnswerCache MUST reuse answers per profile for generic fields (e.g.,
@@ -193,16 +189,14 @@ prompts), so that I save time while keeping control and traceability.
   confirmation data, and structured logs associated with an ApplicationItem.
 - **Config**: Rate/stealth settings (dwell, jitter, tabs, retry/backoff), allowed
   domains, discovery window, optional proxy, output modes (human/JSON), and
-  `encryption_enabled` (default false) with passphrase setup, and `discovery_cap`
-  (default 10), plus `retention_days` (0 means keep until manual cleanup).
+  `discovery_cap` (default 10), plus `retention_days` (0 means keep until manual
+  cleanup).
 
 ### Non-Functional Requirements
 - The assistant SHOULD complete typical Lever applications within 2–5 minutes per
   posting under default pacing and network conditions.
 - Logs MUST be human-readable by default and optionally emitted as structured JSON.
 - Personally identifiable information in logs MUST be redacted by default.
-- By default, artifacts under `data/` are stored unencrypted; users MAY enable
-  encryption to protect sensitive content.
 - Default artifact retention is indefinite; users MAY set a retention window to
   enable automatic pruning.
 

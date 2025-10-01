@@ -56,7 +56,6 @@ Date: 2025-10-01
 - user_agent: string | null
 - allowed_domains: list[string]
 - output_mode: enum { human, json }
-- encryption_enabled: bool (default false)
 - retention_days: int (0 = keep until manual cleanup)
 
 ## Relationships
