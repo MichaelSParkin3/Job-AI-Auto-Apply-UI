@@ -770,15 +770,53 @@ async def _apply_llm_assist(page, *, profile: Profile, job: JobDetails | None, i
     except Exception:
         return
     # Apply suggestions by name
+    JS_APPLY_BY_NAME = r"""
+    (n, v) => {
+      const lower = (x) => String(x).trim().toLowerCase();
+      const list = document.getElementsByName(n);
+      const el = (list && list.length) ? list[0] : null;
+      if (!el) return false;
+      if (el.tagName === 'SELECT') {
+        for (const opt of el.options) {
+          const text = (opt.textContent || '').trim();
+          if (lower(text) === lower(v) || lower(opt.value) === lower(v)) {
+            el.value = opt.value;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+        return false;
+      } else if (el.type === 'checkbox' || el.type === 'radio') {
+        let matched = false;
+        const group = document.getElementsByName(n);
+        for (const g of group) {
+          if (lower(g.value || '') === lower(v) || lower(g.getAttribute('aria-label') || '') === lower(v)) {
+            g.checked = true;
+            g.dispatchEvent(new Event('change', { bubbles: true }));
+            matched = true;
+            break;
+          }
+        }
+        return matched;
+      } else {
+        const proto = (el.tagName === 'TEXTAREA') ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(el, String(v));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (typeof el.blur === 'function') el.blur();
+        return true;
+      }
+    }
+    """
     for name, value in (data.items() if isinstance(data, dict) else []):
         try:
             if isinstance(value, str):
                 # Try select first; if not a select, treat as text input
-                applied = await page.evaluate(
-                    "(n, v) => { const el = document.querySelector(`[name="${n}"]`);\n                     if (!el) return false;\n                     if (el.tagName==='SELECT') {\n                       for (const opt of el.options) { if ((opt.textContent||'').trim().toLowerCase() === String(v).trim().toLowerCase() || String(opt.value).toLowerCase() === String(v).trim().toLowerCase()) { el.value = opt.value; el.dispatchEvent(new Event('change', {bubbles:true})); return true; } }\n                       return false;\n                     } else if (el.type==='checkbox' || el.type==='radio') {\n                       const group = document.querySelectorAll(`[name="${n}"]`);\n                       for (const g of group) { if ((g.value||'').trim().toLowerCase() === String(v).trim().toLowerCase()) { g.checked = true; g.dispatchEvent(new Event('change', {bubbles:true})); return true; } }\n                       return false;\n                     } else {\n                       const proto = (el.tagName==='TEXTAREA') ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;\n                       const setter = Object.getOwnPropertyDescriptor(proto, 'value').set; setter.call(el, String(v));\n                       el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); el.blur && el.blur();\n                       return true; } }",
-                    name,
-                    value,
-                )
+                applied = await page.evaluate(JS_APPLY_BY_NAME, name, value)
+
+
+
             else:
                 applied = False
         except Exception:
