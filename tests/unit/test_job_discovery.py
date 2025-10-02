@@ -61,12 +61,18 @@ def test_discover_jobs_parses_results(monkeypatch) -> None:
     </html>
     """
 
+    search_url = build_search_url(profile, 24)
+    html_map = {
+        search_url: search_html,
+        "https://jobs.lever.co/example/123": posting_html,
+    }
+    stub_session = _StubBrowserSession(html_map)
+
     items = discover_jobs(
         profile=profile,
         window_hours=24,
         cap=5,
-        fetch_search=lambda url: search_html,
-        fetch_posting=lambda url: posting_html,
+        browser_factory=lambda _: stub_session,
     )
 
     assert len(items) == 1
@@ -80,27 +86,41 @@ def test_discover_jobs_parses_results(monkeypatch) -> None:
 
 
 class _StubPage:
-    def __init__(self, html: str) -> None:
-        self.html = html
+    def __init__(self, session: "_StubBrowserSession") -> None:
+        self._session = session
+        self.current_url: str | None = None
         self.visited_urls: list[str] = []
+        self.closed = False
 
     async def goto(self, url: str) -> None:
+        self.current_url = url
         self.visited_urls.append(url)
+        self._session._record_visit(url)
 
     async def get_elements_by_css_selector(self, selector: str) -> list[object]:
-        return [object()]
+        html = self._session.html_for(self.current_url)
+        if "div.g" in selector or "div.MjjYud" in selector:
+            if "class=\"g\"" in html or "class='g'" in html:
+                return [object()]
+            return []
+        return [object()] if html else []
 
     async def evaluate(self, script: str) -> str:
-        return self.html
+        return self._session.html_for(self.current_url)
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 class _StubBrowserSession:
     channel = "chrome"
 
-    def __init__(self, html: str) -> None:
-        self.page = _StubPage(html)
+    def __init__(self, html_by_url: dict[str, str]) -> None:
+        self._html_by_url = html_by_url
         self.started = False
         self.stopped = False
+        self.visits: list[str] = []
+        self._current_page: _StubPage | None = None
 
     async def start(self) -> None:
         self.started = True
@@ -108,11 +128,22 @@ class _StubBrowserSession:
     async def stop(self) -> None:
         self.stopped = True
 
-    async def get_current_page(self) -> _StubPage:  # pragma: no cover - exercised indirectly
-        return self.page
+    async def get_current_page(self) -> _StubPage | None:  # pragma: no cover - exercised indirectly
+        return self._current_page
 
-    async def new_page(self) -> _StubPage:  # pragma: no cover - exercised indirectly
-        return self.page
+    async def new_page(self) -> _StubPage:
+        page = _StubPage(self)
+        if self._current_page is None:
+            self._current_page = page
+        return page
+
+    def html_for(self, url: str | None) -> str:
+        if not url:
+            return ""
+        return self._html_by_url.get(url, "")
+
+    def _record_visit(self, url: str) -> None:
+        self.visits.append(url)
 
 
 def test_discover_jobs_uses_browser_session(monkeypatch) -> None:
@@ -131,17 +162,21 @@ def test_discover_jobs_uses_browser_session(monkeypatch) -> None:
     </html>
     """
 
-    stub_session = _StubBrowserSession(search_html)
+    search_url = build_search_url(profile, 24)
+    html_map = {
+        search_url: search_html,
+        "https://jobs.lever.co/example/123": posting_html,
+    }
+    stub_session = _StubBrowserSession(html_map)
 
     items = discover_jobs(
         profile=profile,
         window_hours=24,
         cap=5,
-        fetch_posting=lambda url: posting_html,
         browser_factory=lambda _: stub_session,
     )
 
     assert stub_session.started is True
     assert stub_session.stopped is True
-    assert stub_session.page.visited_urls == [build_search_url(profile, 24)]
+    assert stub_session.visits == [search_url, "https://jobs.lever.co/example/123"]
     assert len(items) == 1

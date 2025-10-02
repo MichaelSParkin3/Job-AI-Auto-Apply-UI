@@ -16,7 +16,6 @@ from html.parser import HTMLParser
 from typing import ClassVar
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-import httpx
 from browser_use.browser.session import BrowserSession
 
 from .application_queue import ApplicationItem, JobDetails
@@ -25,7 +24,7 @@ from .telemetry import log_event
 
 LOGGER = logging.getLogger(__name__)
 
-_BROWSER_TIMEOUT_SECONDS = 8.0
+_BROWSER_TIMEOUT_SECONDS = 20.0
 _BROWSER_DISABLED_MODES = {"off", "disabled", "http"}
 
 
@@ -279,102 +278,104 @@ def discover_jobs(
     profile: Profile,
     window_hours: int,
     cap: int,
-    fetch_search: Callable[[str], str] | None = None,
-    fetch_posting: Callable[[str], str] | None = None,
     browser_factory: Callable[[Profile], BrowserSession] | None = None,
 ) -> list[ApplicationItem]:
     """Discover Lever job postings for the given profile."""
+
     search_url = build_search_url(profile, window_hours)
     source_query = build_search_query(profile)
-    fetch_posting = fetch_posting or _default_fetch
 
-    if fetch_search is not None:
-        try:
-            html_document = fetch_search(search_url)
-        except Exception as exc:  # pragma: no cover - dependency override failure
-            LOGGER.exception("Failed to fetch Google results: %s", exc)
-            log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
-            return []
-    else:
-        if _browser_mode() in _BROWSER_DISABLED_MODES:
-            LOGGER.info("Browser discovery disabled via environment; using HTTP fallback")
-            log_event("discover.browser_disabled", profile=profile.id)
-            try:
-                html_document = _default_fetch(search_url)
-            except Exception as exc:  # pragma: no cover - network failure
-                LOGGER.exception("Failed to fetch Google results: %s", exc)
-                log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
-                return []
-        else:
-            try:
-                html_document = _load_search_results_with_browser(
-                    profile=profile,
-                    search_url=search_url,
-                    browser_factory=browser_factory,
-                )
-            except Exception as exc:  # pragma: no cover - runtime/browser failure
-                LOGGER.exception("Browser-based discovery failed: %s", exc)
-                log_event(
-                    "discover.browser_failed",
-                    profile=profile.id,
-                    reason=type(exc).__name__,
-                )
-                try:
-                    html_document = _default_fetch(search_url)
-                except Exception as fallback_exc:  # pragma: no cover - network failure
-                    LOGGER.exception("Fallback HTTP fetch failed: %s", fallback_exc)
-                    log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
-                    return []
+    if _browser_mode() in _BROWSER_DISABLED_MODES:
+        LOGGER.info("Browser discovery disabled via environment toggle")
+        log_event("discover.browser_disabled", profile=profile.id)
+        return []
 
-    parser = _GoogleResultsParser()
-    parser.feed(html_document)
-    results = parser.results[: max(cap, 0)]
-
-    items: list[ApplicationItem] = []
-    for result in results:
-        parsed_url = urlparse(result.url)
-        if parsed_url.scheme not in {"http", "https"}:
-            LOGGER.warning("Skipping non-http result URL: %s", result.url)
-            log_event(
-                "discover.result_skipped",
-                profile=profile.id,
-                url=result.url,
-                reason="invalid_scheme",
-            )
-            continue
-        try:
-            posting_html = fetch_posting(result.url)
-        except Exception as exc:  # pragma: no cover - network failure
-            LOGGER.warning("Failed to fetch posting %s: %s", result.url, exc)
-            log_event(
-                "discover.posting_fetch_failed",
-                profile=profile.id,
-                url=result.url,
-            )
-            details = JobDetails(source_query=source_query, source_rank=result.rank)
-            title = result.title
-        else:
-            posting_parser = _LeverPostingParser(result.url)
-            posting_parser.feed(posting_html)
-            details = posting_parser.build_details()
-            details.source_query = source_query
-            details.source_rank = result.rank
-            title = posting_parser.title() or result.title
-            if result.snippet and not details.posting_excerpt:
-                details.posting_excerpt = result.snippet
-            if details.apply_url is None:
-                details.apply_url = result.url
-
-        company = result.company_slug()
-        item = ApplicationItem.new_from_discovery(
-            url=result.url,
-            company=company,
-            title=title,
-            details=details,
-            source_query=source_query,
-            source_rank=result.rank,
+    async def _run() -> list[ApplicationItem]:
+        html_document, session = await _load_search_results_with_browser(
+            profile=profile,
+            search_url=search_url,
+            browser_factory=browser_factory,
         )
-        items.append(item)
+        try:
+            parser = _GoogleResultsParser()
+            parser.feed(html_document)
+            results = parser.results[: max(cap, 0)]
+
+            items: list[ApplicationItem] = []
+            for result in results:
+                parsed_url = urlparse(result.url)
+                if parsed_url.scheme not in {"http", "https"}:
+                    LOGGER.warning("Skipping non-http result URL: %s", result.url)
+                    log_event(
+                        "discover.result_skipped",
+                        profile=profile.id,
+                        url=result.url,
+                        reason="invalid_scheme",
+                    )
+                    continue
+
+                posting_page = await session.new_page()
+                try:
+                    await posting_page.goto(result.url)
+                    posting_html = await _capture_page_html(posting_page)
+                except Exception as exc:  # pragma: no cover - runtime/browser failure
+                    LOGGER.warning("Failed to fetch posting %s: %s", result.url, exc)
+                    log_event(
+                        "discover.posting_fetch_failed",
+                        profile=profile.id,
+                        url=result.url,
+                    )
+                    details = JobDetails(
+                        source_query=source_query,
+                        source_rank=result.rank,
+                    )
+                    title = result.title
+                else:
+                    posting_parser = _LeverPostingParser(result.url)
+                    posting_parser.feed(posting_html)
+                    details = posting_parser.build_details()
+                    details.source_query = source_query
+                    details.source_rank = result.rank
+                    title = posting_parser.title() or result.title
+                    if result.snippet and not details.posting_excerpt:
+                        details.posting_excerpt = result.snippet
+                    if details.apply_url is None:
+                        details.apply_url = result.url
+                finally:
+                    with suppress(Exception):
+                        await posting_page.close()
+
+                company = result.company_slug()
+                item = ApplicationItem.new_from_discovery(
+                    url=result.url,
+                    company=company,
+                    title=title,
+                    details=details,
+                    source_query=source_query,
+                    source_rank=result.rank,
+                )
+                items.append(item)
+
+            log_event("discover.browser_complete", profile=profile.id)
+            return items
+        finally:
+            with suppress(Exception):
+                await session.stop()
+
+    try:
+        items = asyncio.run(asyncio.wait_for(_run(), timeout=_BROWSER_TIMEOUT_SECONDS))
+    except asyncio.TimeoutError as exc:  # pragma: no cover - defensive timeout guard
+        LOGGER.exception("Browser discovery timed out: %s", exc)
+        log_event("discover.browser_failed", profile=profile.id, reason="timeout")
+        raise TimeoutError("Browser discovery timed out") from exc
+    except Exception as exc:  # pragma: no cover - defensive logging
+        LOGGER.exception("Browser-based discovery failed: %s", exc)
+        log_event(
+            "discover.browser_failed",
+            profile=profile.id,
+            reason=type(exc).__name__,
+        )
+        raise
 
     log_event(
         "discover.results",
@@ -384,21 +385,6 @@ def discover_jobs(
         search_url=search_url,
     )
     return items
-
-
-def _default_fetch(url: str) -> str:
-    """Fetch a URL using httpx and return the response text."""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        )
-    }
-    with httpx.Client(timeout=10.0) as client:
-        response = client.get(url, headers=headers)
-        response.raise_for_status()
-        return response.text
 
 
 def _window_to_tbs(window_hours: int) -> str:
@@ -416,12 +402,12 @@ def _window_to_tbs(window_hours: int) -> str:
     return ""
 
 
-def _load_search_results_with_browser(
+async def _load_search_results_with_browser(
     *,
     profile: Profile,
     search_url: str,
     browser_factory: Callable[[Profile], BrowserSession] | None,
-) -> str:
+) -> tuple[str, BrowserSession]:
     """Load Google search results in a visible browser session."""
 
     factory = browser_factory or _default_browser_factory
@@ -432,29 +418,22 @@ def _load_search_results_with_browser(
         browser=getattr(session, "channel", None),
     )
 
-    async def _run() -> str:
-        await session.start()
-        try:
-            page = await session.get_current_page()
-            if page is None:
-                page = await session.new_page()
-            await page.goto(search_url)
-            try:
-                await _wait_for_search_results(page)
-            except TimeoutError:
-                LOGGER.warning("Timed out waiting for Google results to render")
-            html_document = await _capture_page_html(page)
-            return html_document
-        finally:
-            with suppress(Exception):
-                await session.stop()
-
     try:
-        html_document = asyncio.run(asyncio.wait_for(_run(), timeout=_BROWSER_TIMEOUT_SECONDS))
-    except asyncio.TimeoutError as exc:  # pragma: no cover - runtime/browser failure
-        raise TimeoutError("Browser session timed out") from exc
-    log_event("discover.browser_complete", profile=profile.id)
-    return html_document
+        await session.start()
+        page = await session.get_current_page()
+        if page is None:
+            page = await session.new_page()
+        await page.goto(search_url)
+        try:
+            await _wait_for_search_results(page)
+        except TimeoutError:
+            LOGGER.warning("Timed out waiting for Google results to render")
+        html_document = await _capture_page_html(page)
+        return html_document, session
+    except Exception:
+        with suppress(Exception):
+            await session.stop()
+        raise
 
 
 def _default_browser_factory(profile: Profile) -> BrowserSession:
