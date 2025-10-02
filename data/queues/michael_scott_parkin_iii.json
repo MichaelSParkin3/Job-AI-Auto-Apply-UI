@@ -116,9 +116,9 @@
       "url": "https://jobs.lever.co/kixie/3a557d7d-1aa4-47c2-a3b2-a45bf9d7ef57",
       "company": "kixie",
       "title": "Staff Software Engineer - Full Stack",
-      "status": "in_progress",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:25.068191+00:00",
-      "last_updated_at": "2025-10-02T14:57:51.654369+00:00",
+      "last_updated_at": "2025-10-02T15:07:18.375340+00:00",
       "hash": "cc3a18a036f966521beaa71d3768b48ca0d6e104b1d6eb80cbe2c0bd8fd729f8",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -144,16 +144,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:25.068163+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c675b1c7593cc4cab4048",
       "url": "https://jobs.lever.co/kraken123/e6afe11c-2fea-4be6-a7dd-dff2411516a3/apply",
       "company": "kraken123",
       "title": "Kraken - Senior Software Engineer (Market Gateway)",
-      "status": "new",
+      "status": "in_progress",
       "discovered_at": "2025-10-02T05:19:26.043478+00:00",
-      "last_updated_at": "2025-10-02T05:19:26.043478+00:00",
+      "last_updated_at": "2025-10-02T15:07:18.377905+00:00",
       "hash": "3a6fc0438e1c94d7aed4ad135dcea914236fd764a3a8a1b53f2dd55fcbae46d7",
       "artifacts": {
         "dom_snapshot_path": null,

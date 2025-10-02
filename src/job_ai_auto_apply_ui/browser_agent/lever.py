@@ -678,7 +678,7 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
     except Exception:
         return False
 
-    # 1) Locator-based API
+    # 1) Locator-based API (works even if input is hidden)
     try:
         if hasattr(page, "locator"):
             await page.locator(selector).set_input_files(path)
@@ -698,7 +698,7 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
     except Exception:
         pass
 
-    # 3) File chooser flow if supported
+    # 3) File chooser flow if supported (click visible button => chooser)
     try:
         # Some wrappers expose expect_file_chooser or wait_for_event('filechooser')
         if hasattr(page, "expect_file_chooser"):
@@ -706,6 +706,17 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
                 await page.evaluate("(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }", selector)
             fc = await fc_info
             await fc.set_files(path)
+            ok = await _wait_for_resume_upload(page, selector)
+            if ok:
+                return True
+    except Exception:
+        pass
+
+    # 4) Optional: try clicking the anchor to reveal/recreate input, then set again
+    try:
+        await page.evaluate("() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }")
+        if hasattr(page, "locator"):
+            await page.locator(selector).set_input_files(path)
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
                 return True
@@ -721,7 +732,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0)
     Signals considered success:
     - input.files.length > 0
     - hidden input resumeStorageId populated
-    - .resume-upload-success is visible
+    - .resume-upload-success is visible OR span.filename contains text
     Failure signals (return False early):
     - .resume-upload-failure visible
     - .resume-upload-oversize visible
@@ -738,17 +749,29 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0)
                   const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
                   const ok3 = (() => {
                     const s = document.querySelector('.resume-upload-success');
-                    return !!(s && s.offsetParent !== null);
+                    if (!s) return false;
+                    const style = window.getComputedStyle(s);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden';
+                  })();
+                  const ok4 = (() => {
+                    const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
+                    const nameSpan = container ? container.querySelector('span.filename') : null;
+                    const text = nameSpan && nameSpan.textContent ? nameSpan.textContent.trim() : '';
+                    return !!text;
                   })();
                   const fail1 = (() => {
                     const f = document.querySelector('.resume-upload-failure');
-                    return !!(f && f.offsetParent !== null);
+                    if (!f) return false;
+                    const style = window.getComputedStyle(f);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden';
                   })();
                   const fail2 = (() => {
                     const o = document.querySelector('.resume-upload-oversize');
-                    return !!(o && o.offsetParent !== null);
+                    if (!o) return false;
+                    const style = window.getComputedStyle(o);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden';
                   })();
-                  return { ok: (ok1 || ok2 || ok3), fail: (fail1 || fail2) };
+                  return { ok: (ok1 || ok2 || ok3 || ok4), fail: (fail1 || fail2), files };
                 }
                 """,
                 selector,
