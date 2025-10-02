@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from jsonschema import validate
+
 from job_ai_auto_apply_ui.orchestrator import main
 
 
