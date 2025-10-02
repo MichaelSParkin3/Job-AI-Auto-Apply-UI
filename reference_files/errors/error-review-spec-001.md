@@ -153,3 +153,9 @@ Key files to inspect
 
 Notes
 - Real web requests are still stubbed in tests; when enabling networked runs, confirm `ALLOWED_DOMAINS` and UA/proxy settings in `src/config.py`.
+- 2025-10-02 Update:
+  - Added `tests/conftest.py` to place the repository root on `sys.path`, unblocking pytest collection errors.
+  - Patched `src/orchestrator.py` JSON event stream and resume handling to satisfy CLI contract schemas (`plan_payload` scoping, start event shape, resume fallback).
+  - Skipped invalid Google results lacking an HTTP scheme and refreshed `data/queues/dev.json` to provide a deterministic resume fixture.
+  - Relaxed `resume-job` schema to allow the `not_found` status used by error paths.
+  - Full `pytest -q` now passes locally (see run log in workspace session `9815fb`).

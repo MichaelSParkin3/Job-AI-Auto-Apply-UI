@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from jsonschema import validate
-from src.orchestrator import main
+from job_ai_auto_apply_ui.orchestrator import main
 
 
 @dataclass
@@ -67,8 +67,12 @@ def test_discover_json_success(
         assert cap == 5
         return fake_items
 
-    monkeypatch.setattr("src.profile_manager.load_profile", fake_load_profile)
-    monkeypatch.setattr("src.job_discovery.discover_jobs", fake_discover)
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
+    )
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
+    )
 
     code, out, err = _run_cli(
         ["discover", "--profile", "front_end", "--window", "24h", "--cap", "5", "--json"]
@@ -92,8 +96,12 @@ def test_discover_json_no_results(
     def fake_discover(profile: dict[str, Any], window_hours: int, cap: int) -> list[_FakeItem]:
         return []
 
-    monkeypatch.setattr("src.profile_manager.load_profile", fake_load_profile)
-    monkeypatch.setattr("src.job_discovery.discover_jobs", fake_discover)
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
+    )
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
+    )
 
     code, out, err = _run_cli(["discover", "--profile", "front_end", "--json"])
 

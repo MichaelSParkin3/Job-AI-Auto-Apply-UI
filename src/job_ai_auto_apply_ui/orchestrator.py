@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -40,7 +41,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
     )
 
     discover_fn = job_discovery.discover_jobs
-    if getattr(discover_fn, "__module__", "") == "src.job_discovery":
+    if getattr(discover_fn, "__module__", "") == "job_ai_auto_apply_ui.job_discovery":
         discover_profile = _ensure_profile(profile_obj)
     else:
         discover_profile = profile_obj
@@ -60,6 +61,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
         _print_json(payload)
     else:
         profile_name = _profile_name(profile_obj)
+        accepted = to_enqueue
         if accepted:
             print(
                 "Discovered "
@@ -136,7 +138,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
     try:
         payload = resume_job(args.id)
     except LookupError:
-        payload = {"id": args.id, "status": "not_found", "resumed_from_step": None}
+        payload = {"id": args.id, "status": "not_found", "resumed_from_step": 0}
         if args.json:
             _print_json(payload)
         else:
@@ -165,11 +167,12 @@ def iter_apply_events(
     submitted = 0
     failed = 0
     fetch_form = fetch_form or _default_form_fetch
-    yield {"event": "start", "profile": profile.id, "mode": mode}
+    yield {"event": "start", "profile": profile.id}
     pending = queue.pending()
     log_event("apply.pending", profile=profile.id, count=len(pending))
     for item in pending:
-        queue.resume(item.id)
+        if item.status != ApplicationStatus.IN_PROGRESS:
+            queue.resume(item.id)
         timeline = bind_timeline("apply", item=item.id)
         timeline.info("item.start")
         yield {"event": "item", "id": item.id, "status": ApplicationStatus.IN_PROGRESS.value}
@@ -182,6 +185,7 @@ def iter_apply_events(
         else:
             apply_url = item.url
 
+        plan_payload: dict[str, object] | None = None
         if apply_url:
             try:
                 form_html = fetch_form(apply_url)
@@ -198,6 +202,7 @@ def iter_apply_events(
                     timeline.info("form.plan_ready", dynamic_questions=len(plan.dynamic_questions))
                     if mode != "auto":
                         timeline.info("form.awaiting_approval")
+                    plan_payload = _plan_to_payload(plan)
 
         confirmation = agent.submit_stub(profile=profile, item=item)
         queue.mark_submitted(item.id, confirmation)
@@ -341,7 +346,12 @@ def resume_job(job_id: str) -> dict[str, object]:
         queue = ApplicationQueue(profile_id)
         item = queue.get(job_id)
         if item:
-            queue.resume(job_id)
+            try:
+                queue.resume(job_id)
+            except ValueError:
+                item.status = ApplicationStatus.IN_PROGRESS
+                item.last_updated_at = datetime.now(UTC)
+                queue.update(item)
             return {
                 "id": job_id,
                 "status": ApplicationStatus.IN_PROGRESS.value,

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 from jsonschema import validate
-from src.orchestrator import main
+from job_ai_auto_apply_ui.orchestrator import main
 
 
 def _run_cli(args: Iterable[str]) -> tuple[int, str, str]:
@@ -48,8 +48,12 @@ def test_apply_json_stream_success(
         assert mode == "supervised"
         yield from events
 
-    monkeypatch.setattr("src.profile_manager.load_profile", fake_load_profile)
-    monkeypatch.setattr("src.orchestrator.iter_apply_events", fake_iter_apply_events)
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
+    )
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.orchestrator.iter_apply_events", fake_iter_apply_events
+    )
 
     code, out, err = _run_cli(["apply", "--profile", "front_end", "--json"])
 
@@ -83,8 +87,12 @@ def test_apply_json_partial_failure(
     def fake_iter_apply_events(profile: dict[str, Any], mode: str) -> Iterator[dict[str, Any]]:
         yield from events
 
-    monkeypatch.setattr("src.profile_manager.load_profile", fake_load_profile)
-    monkeypatch.setattr("src.orchestrator.iter_apply_events", fake_iter_apply_events)
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
+    )
+    monkeypatch.setattr(
+        "job_ai_auto_apply_ui.orchestrator.iter_apply_events", fake_iter_apply_events
+    )
 
     code, out, err = _run_cli(["apply", "--profile", "front_end", "--json", "--auto"])
 

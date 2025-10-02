@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-auto-apply = "src.orchestrator:main"
+auto-apply = "job_ai_auto_apply_ui.orchestrator:main"
 
 [tool.pytest.ini_options]
 addopts = "-q"

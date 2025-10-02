@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from jsonschema import validate
 
-from src.orchestrator import main
+from job_ai_auto_apply_ui.orchestrator import main
 
 
 def run_cli(args):

@@ -276,6 +276,16 @@ def discover_jobs(
 
     items: list[ApplicationItem] = []
     for result in results:
+        parsed_url = urlparse(result.url)
+        if parsed_url.scheme not in {"http", "https"}:
+            LOGGER.warning("Skipping non-http result URL: %s", result.url)
+            log_event(
+                "discover.result_skipped",
+                profile=profile.id,
+                url=result.url,
+                reason="invalid_scheme",
+            )
+            continue
         try:
             posting_html = fetch_posting(result.url)
         except Exception as exc:  # pragma: no cover - network failure

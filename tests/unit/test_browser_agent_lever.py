@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.browser_agent.lever import analyze_form
+from job_ai_auto_apply_ui.browser_agent.lever import analyze_form
 
 
 def test_analyze_form_extracts_selectors() -> None:
