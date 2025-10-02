@@ -1,4 +1,4 @@
-"""Utilities for analyzing Lever forms and configuring browser sessions."""
+﻿"""Utilities for analyzing Lever forms and configuring browser sessions."""
 
 from __future__ import annotations
 
@@ -361,10 +361,10 @@ class LeverApplyAgent:
 
         # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
-        uploaded = await _upload_resume(page, plan.resume_input, resume_path)
+        uploaded = await _upload_resume(session, page, plan.resume_input, resume_path)
         if not uploaded:
             if mode != "auto":
-                print("Resume upload not detected. Please attach manually in the browser, then press Enter…")
+                print("Resume upload not detected. Please attach manually in the browser, then press Enterâ€¦")
                 try:
                     input()
                 except Exception:
@@ -499,7 +499,7 @@ class LeverApplyAgent:
             if cover_text:
                 await _fill_textarea(page, cover_selector, cover_text)
 
-        # Multiple-choice dynamic cards (checkboxes/radios) — simple heuristics
+        # Multiple-choice dynamic cards (checkboxes/radios) â€” simple heuristics
         try:
             await page.evaluate(
                 """
@@ -558,7 +558,7 @@ class LeverApplyAgent:
         # Post-submit sanity: page should either navigate or hide form
         still_has_form = await page.evaluate("() => !!document.querySelector('form#application-form')")
         if still_has_form:
-            # If form remains, re-check validity – likely a client-side validation
+            # If form remains, re-check validity â€“ likely a client-side validation
             if not await _form_check_validity(page):
                 return Reason(code="validation_failed", message="Client-side validation blocked submission")
 
@@ -663,7 +663,7 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         pass
 
 
-async def _upload_resume(page, selector: str, path: str) -> bool:
+async def _upload_resume(session: BrowserSession | None, page, selector: str, path: str) -> bool:
     """Attach a resume file using best available mechanism and wait for success.
 
     Strategy (in order):
@@ -673,6 +673,7 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
     After attempting, wait for UI signals that upload succeeded.
     """
     # Ensure input exists in DOM
+    backend_id = None  # may be populated by LLM locator for CDP fallback
     try:
         await page.get_elements_by_css_selector(selector)
     except Exception:
@@ -681,9 +682,17 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
     # 1) Locator-based API (works even if input is hidden)
     try:
         if hasattr(page, "locator"):
+            try:
+                log_event("resume_upload.attempt", method="locator", selector=selector)
+            except Exception:
+                pass
             await page.locator(selector).set_input_files(path)
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
+                try:
+                    log_event("resume_upload.success", method="locator")
+                except Exception:
+                    pass
                 return True
     except Exception:
         pass
@@ -691,42 +700,236 @@ async def _upload_resume(page, selector: str, path: str) -> bool:
     # 2) Page-level API
     try:
         if hasattr(page, "set_input_files"):
+            try:
+                log_event("resume_upload.attempt", method="page", selector=selector)
+            except Exception:
+                pass
             await page.set_input_files(selector, path)
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
+                try:
+                    log_event("resume_upload.success", method="page")
+                except Exception:
+                    pass
                 return True
     except Exception:
         pass
 
+
+    # 2b) Frame-scoped attempt (Playwright only)
+    try:
+        if hasattr(page, "frame_locator") and hasattr(page, "locator"):
+            # Try a handful of iframes
+            for i in range(0, 5):
+                try:
+                    try:
+                        log_event("resume_upload.attempt", method="frame_locator", index=i)
+                    except Exception:
+                        pass
+                    frame_loc = page.frame_locator("iframe").nth(i)
+                    loc = frame_loc.locator(selector)
+                    await loc.set_input_files(path)
+                    ok = await _wait_for_resume_upload(page, selector)
+                    if ok:
+                        try:
+                            log_event("resume_upload.success", method="frame_locator", index=i)
+                        except Exception:
+                            pass
+                        return True
+                except Exception:
+                    continue
+    except Exception:
+        pass
     # 3) File chooser flow if supported (click visible button => chooser)
     try:
         # Some wrappers expose expect_file_chooser or wait_for_event('filechooser')
         if hasattr(page, "expect_file_chooser"):
+            try:
+                log_event("resume_upload.attempt", method="file_chooser")
+            except Exception:
+                pass
             async with page.expect_file_chooser() as fc_info:
                 await page.evaluate("(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }", selector)
             fc = await fc_info
             await fc.set_files(path)
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
+                try:
+                    log_event("resume_upload.success", method="file_chooser")
+                except Exception:
+                    pass
                 return True
     except Exception:
         pass
 
     # 4) Optional: try clicking the anchor to reveal/recreate input, then set again
     try:
+        try:
+            log_event("resume_upload.attempt", method="click_anchor_then_retry")
+        except Exception:
+            pass
         await page.evaluate("() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }")
         if hasattr(page, "locator"):
             await page.locator(selector).set_input_files(path)
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
+                try:
+                    log_event("resume_upload.success", method="click_anchor_then_retry")
+                except Exception:
+                    pass
                 return True
     except Exception:
         pass
 
+    # 5) LLM-locator fallback (optional)
+    try:
+        import os
+        use_llm = os.getenv("AUTO_APPLY_USE_LLM_LOCATOR", "0").strip() not in ("", "0", "false", "False")
+    except Exception:
+        use_llm = False
+    if use_llm:
+        try:
+            try:
+                log_event("resume_upload.llm_locator.start", flag=True)
+            except Exception:
+                pass
+            if hasattr(page, "must_get_element_by_prompt"):
+                # Try to pass an explicit LLM if available; otherwise rely on defaults
+                element = None
+                try:
+                    try:
+                        from browser_use.llm.openai import ChatOpenAI as _BUChat
+                        # Model choice can be wired from settings later; default to a fast model
+                        llm_obj = _BUChat(model="gpt-4.1-mini")
+                    except Exception:
+                        llm_obj = None
+                    if llm_obj is not None:
+                        element = await page.must_get_element_by_prompt(
+                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
+                            llm=llm_obj,
+                        )
+                    else:
+                        element = await page.must_get_element_by_prompt(
+                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
+                        )
+                except Exception:
+                    element = None
+            else:
+                try:
+                    log_event("resume_upload.llm_locator.unavailable", reason="page_method_missing")
+                except Exception:
+                    pass
+                element = None
+            if element is not None:
+                new_selector = None
+                try:
+                    new_selector = getattr(element, "css_selector", None)
+                except Exception:
+                    new_selector = None
+                try:
+                    backend_id = getattr(element, "backend_node_id", None)
+                except Exception:
+                    backend_id = None
+                try:
+                    log_event("resume_upload.llm_locator.result", css_selector=new_selector, backend_node_id=backend_id)
+                except Exception:
+                    pass
+                if isinstance(new_selector, str) and new_selector:
+                    try:
+                        if hasattr(page, "locator"):
+                            await page.locator(new_selector).set_input_files(path)
+                            ok = await _wait_for_resume_upload(page, new_selector)
+                            if ok:
+                                try:
+                                    log_event("resume_upload.success", method="llm_selector")
+                                except Exception:
+                                    pass
+                                return True
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(page, "set_input_files"):
+                            await page.set_input_files(new_selector, path)
+                            ok = await _wait_for_resume_upload(page, new_selector)
+                            if ok:
+                                try:
+                                    log_event("resume_upload.success", method="llm_selector_page")
+                                except Exception:
+                                    pass
+                                return True
+                    except Exception:
+                        pass
+                try:
+                    if hasattr(page, "expect_file_chooser"):
+                        async with page.expect_file_chooser() as fc_info:
+                            try:
+                                await page.evaluate(
+                                    "(sel) => { const el = document.querySelector(sel); if (el) el.click(); }",
+                                    new_selector or selector,
+                                )
+                            except Exception:
+                                await page.evaluate(
+                                    "() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }",
+                                )
+                        fc = await fc_info
+                        await fc.set_files(path)
+                        ok = await _wait_for_resume_upload(page, new_selector or selector)
+                        if ok:
+                            try:
+                                log_event("resume_upload.success", method="llm_file_chooser")
+                            except Exception:
+                                pass
+                            return True
+                except Exception:
+                    pass
+        except Exception as _e:
+            try:
+                log_event("resume_upload.llm_locator.error", error=str(_e))
+            except Exception:
+                pass
+
+    # 6) CDP fallback (best-effort)
+    try:
+        try:
+            log_event("resume_upload.cdp.start", selector=selector)
+        except Exception:
+            pass
+        if await _cdp_set_file_input_files(page, selector, path, backend_node_id=backend_id):
+            ok = await _wait_for_resume_upload(page, selector)
+            if ok:
+                try:
+                    log_event("resume_upload.success", method="cdp")
+                except Exception:
+                    pass
+                return True
+    except Exception as e:
+        try:
+            log_event("resume_upload.cdp.error", error=str(e))
+        except Exception:
+            pass
+
+    # 7) Event-bus upload fallback (browser-use CDP sessions)
+    try:
+        if session is not None:
+            ok = await _eventbus_upload_resume(session, selector, path)
+            if ok:
+                done = await _wait_for_resume_upload(page, selector)
+                if done:
+                    try:
+                        log_event("resume_upload.success", method="event_bus")
+                    except Exception:
+                        pass
+                    return True
+    except Exception as e:
+        try:
+            log_event("resume_upload.eventbus.error", error=str(e))
+        except Exception:
+            pass
+    
     return False
 
 
-async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0) -> bool:
+async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0) -> bool:
     """Wait until the resume input reflects an attached file or Lever shows success.
 
     Signals considered success:
@@ -737,6 +940,14 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0)
     - .resume-upload-failure visible
     - .resume-upload-oversize visible
     """
+    # Allow environment override
+    try:
+        import os
+        env_to = float(os.getenv("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", "0") or 0)
+        if env_to > 0:
+            timeout = env_to
+    except Exception:
+        pass
     deadline = asyncio.get_event_loop().time() + max(1.0, timeout)
     while asyncio.get_event_loop().time() < deadline:
         try:
@@ -783,9 +994,186 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0)
         except Exception:
             pass
         await asyncio.sleep(0.3)
+    # Final diagnostic snapshot (optional)
+    try:
+        import os
+        debug = os.getenv("AUTO_APPLY_DEBUG_RESUME_WIDGET", "0").strip() not in ("", "0", "false", "False")
+    except Exception:
+        debug = False
+    if debug:
+        try:
+            snapshot = await page.evaluate(
+                """
+                (sel) => {
+                  const el = document.querySelector(sel);
+                  const files = el && el.files ? el.files.length : 0;
+                  const storage = document.querySelector('input[name=\"resumeStorageId\"]');
+                  const storageVal = storage ? (storage.value || '') : '';
+                  const success = document.querySelector('.resume-upload-success');
+                  const fail = document.querySelector('.resume-upload-failure');
+                  const oversize = document.querySelector('.resume-upload-oversize');
+                  const styleStr = (n) => {
+                    if (!n) return '';
+                    try { const s = window.getComputedStyle(n); return ${s.display}|; } catch { return ''; }
+                  };
+                  const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
+                  const filename = (() => {
+                    const nameSpan = container ? container.querySelector('span.filename') : null;
+                    return nameSpan && nameSpan.textContent ? nameSpan.textContent.trim() : '';
+                  })();
+                  const outer = container ? container.outerHTML : (el ? el.outerHTML : '');
+                  return {
+                    files,
+                    storage_id_len: storageVal.length,
+                    success_style: styleStr(success),
+                    failure_style: styleStr(fail),
+                    oversize_style: styleStr(oversize),
+                    filename,
+                    outer_truncated: outer ? outer.slice(0, 4000) : '',
+                  };
+                }
+                """,
+                selector,
+            )
+            try:
+                log_event("resume_upload_snapshot", snapshot)
+            except Exception:
+                pass
+        except Exception:
+            pass
     return False
 
 
+async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: str) -> bool:
+    """Try to upload a file via browser-use event bus fallback.
+
+    This approach relies on BrowserSession capabilities present in CDP-first
+    environments. It attempts a few strategies conservatively and logs
+    availability via telemetry in callers.
+
+    Returns:
+        bool: True if an event-bus upload was dispatched without error.
+    """
+    # Check for event bus and helper methods
+    has_bus = hasattr(session, "event_bus")
+    get_by_index = getattr(session, "get_element_by_index", None)
+    is_file_input = getattr(session, "is_file_input", None)
+    try:
+        if not has_bus or not callable(get_by_index) or not callable(is_file_input):
+            try:
+                log_event("resume_upload.eventbus.unavailable", has_bus=has_bus, has_get_by_index=bool(get_by_index), has_is_file_input=bool(is_file_input))
+            except Exception:
+                pass
+            return False
+        # Heuristic: probe first 10 DOM elements indexed by the session and try uploading
+        from browser_use.browser.events import UploadFileEvent  # type: ignore
+        for idx in range(0, 10):
+            try:
+                el = await get_by_index(idx)
+            except Exception:
+                el = None
+            if not el:
+                continue
+            try:
+                maybe = is_file_input(el)
+                try:
+                    import asyncio as _asyncio
+                    if _asyncio.iscoroutine(maybe):
+                        ok_type = await maybe
+                    else:
+                        ok_type = bool(maybe)
+                except Exception:
+                    ok_type = False
+                if not ok_type:
+                    continue
+            except Exception:
+                continue
+            try:
+                ev = session.event_bus.dispatch(UploadFileEvent(node=el, file_path=path))
+                await ev
+                await ev.event_result(raise_if_any=True, raise_if_none=False)
+                try:
+                    log_event("resume_upload.eventbus.dispatched", index=idx)
+                except Exception:
+                    pass
+                return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node_id: int | None = None) -> bool:
+    """Best-effort CDP fallback using DOM.setFileInputFiles.
+
+    Tries to find a CDP client on the page/session and call the DevTools
+    protocol. Limited to same-target document (no cross-target iframe walk).
+
+    Returns:
+        True if the CDP call was sent and did not error, False otherwise.
+    """
+    client = None
+    for attr in ("cdp_client", "_cdp_client", "cdp", "_cdp", "client", "_client"):
+        try:
+            cand = getattr(page, attr, None)
+            if cand is not None:
+                client = cand
+                break
+        except Exception:
+            continue
+    if client is None:
+        try:
+            ctx = getattr(page, "context", None)
+            if ctx is not None:
+                for attr in ("cdp_client", "_cdp_client", "cdp", "_cdp"):
+                    cand = getattr(ctx, attr, None)
+                    if cand is not None:
+                        client = cand
+                        break
+        except Exception:
+            pass
+    if client is None:
+        return False
+    send = None
+    for name in ("send", "execute", "call", "invoke", "call_method"):
+        try:
+            fn = getattr(client, name, None)
+            if callable(fn):
+                send = fn
+                break
+        except Exception:
+            continue
+    if send is None:
+        return False
+    try:
+        try:
+            await send("DOM.enable", {})
+        except Exception:
+            pass
+        doc = await send("DOM.getDocument", {"depth": -1, "pierce": True})
+        root = None
+        if isinstance(doc, dict):
+            root = (doc.get("root") or {}).get("nodeId")
+        if not root:
+            return False
+        # Prefer backendNodeId if provided (more stable across rerenders)
+        if backend_node_id:
+            try:
+                await send("DOM.setFileInputFiles", {"files": [path], "backendNodeId": int(backend_node_id)})
+                return True
+            except Exception:
+                pass
+        q = await send("DOM.querySelector", {"nodeId": root, "selector": selector})
+        node_id = None
+        if isinstance(q, dict):
+            node_id = q.get("nodeId")
+        if not node_id:
+            return False
+        await send("DOM.setFileInputFiles", {"files": [path], "nodeId": node_id})
+        return True
+    except Exception:
+        return False
 async def _set_pronouns(page, pronouns: str | list[str]) -> None:
     """Check pronoun checkboxes by value. Accepts a string or list of strings.
 
@@ -1072,3 +1460,10 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
+
+
+
+
+
+

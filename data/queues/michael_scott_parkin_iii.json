@@ -154,9 +154,9 @@
       "url": "https://jobs.lever.co/kraken123/e6afe11c-2fea-4be6-a7dd-dff2411516a3/apply",
       "company": "kraken123",
       "title": "Kraken - Senior Software Engineer (Market Gateway)",
-      "status": "in_progress",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:26.043478+00:00",
-      "last_updated_at": "2025-10-02T15:07:18.377905+00:00",
+      "last_updated_at": "2025-10-02T15:12:26.267924+00:00",
       "hash": "3a6fc0438e1c94d7aed4ad135dcea914236fd764a3a8a1b53f2dd55fcbae46d7",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -182,16 +182,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:26.043451+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c6a236bd975cef16f5ebb",
       "url": "https://jobs.lever.co/egen/f56fdd90-77e3-4bc7-b806-d3e89553bffe",
       "company": "egen",
       "title": "Senior Application Engineer- Python",
-      "status": "new",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:26.755179+00:00",
-      "last_updated_at": "2025-10-02T05:19:26.755179+00:00",
+      "last_updated_at": "2025-10-02T16:15:05.462418+00:00",
       "hash": "e86922aa7149512074a3e333d5621ee4ebc68fad6f955b663b0c553a64167580",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -217,16 +220,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:26.755153+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c6d1a21b80c182eb2c0a4",
       "url": "https://jobs.lever.co/goodleap/d70f10b0-66da-4354-a870-e0d2b4dea058",
       "company": "goodleap",
       "title": "Senior Software Engineer (Mortgage)",
-      "status": "new",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:27.514336+00:00",
-      "last_updated_at": "2025-10-02T05:19:27.514336+00:00",
+      "last_updated_at": "2025-10-02T16:23:43.140688+00:00",
       "hash": "8d6b5c109d37e079b59d1c566a21124e88d519a0824245294062bab32b6795b5",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -252,16 +258,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:27.514297+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c709eef2ecf5033aeb1f8",
       "url": "https://jobs.lever.co/loadsmart/79ee123e-9359-4918-827e-e529db83bed9/apply",
       "company": "loadsmart",
       "title": "Loadsmart - Senior Software Engineer, Full Stack",
-      "status": "new",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:28.414450+00:00",
-      "last_updated_at": "2025-10-02T05:19:28.414450+00:00",
+      "last_updated_at": "2025-10-02T16:32:32.812425+00:00",
       "hash": "79d3a9b015f96076644e78822c825abcf56c1af42e20103801a54bf2bcf07f9b",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -287,16 +296,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:28.414424+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c741978560f30e81180fe",
       "url": "https://jobs.lever.co/moonpay/4eca9e86-fc41-4ea8-9ffc-d84dcba89cf7/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career",
       "company": "moonpay",
       "title": "MoonPay - Senior Site Reliability Engineer",
-      "status": "new",
+      "status": "in_progress",
       "discovered_at": "2025-10-02T05:19:29.305083+00:00",
-      "last_updated_at": "2025-10-02T05:19:29.305083+00:00",
+      "last_updated_at": "2025-10-02T16:32:32.815637+00:00",
       "hash": "a067781454e872510a22b6aea9b2ce8e56a3750eff01c875a359d58381efdbe3",
       "artifacts": {
         "dom_snapshot_path": null,

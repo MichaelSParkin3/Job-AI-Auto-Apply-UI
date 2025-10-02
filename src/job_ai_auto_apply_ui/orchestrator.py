@@ -127,6 +127,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
         profile_obj = profile_manager.load_profile(args.profile)
     except ProfileNotFoundError:
         profile_obj = {"id": args.profile, "name": args.profile.title()}
+    # Apply CLI overrides via environment so downstream helpers pick them up
+    import os as _os
+    if hasattr(args, "use_llm_locator") and args.use_llm_locator is not None:
+        _os.environ["AUTO_APPLY_USE_LLM_LOCATOR"] = "1" if args.use_llm_locator else "0"
+    if getattr(args, "debug_resume_widget", False):
+        _os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] = "1"
+    if getattr(args, "resume_wait_timeout_seconds", None) is not None:
+        _os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(args.resume_wait_timeout_seconds)
+
     mode = "auto" if args.auto else "supervised"
     llm_config = load_llm_config()
     if getattr(args, "llm_provider", None):
@@ -509,6 +518,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--json", action="store_true")
     p_apply.add_argument("--llm-provider", help="Override configured LLM provider")
     p_apply.add_argument("--llm-model", help="Override configured LLM model")
+    # Resume upload tuning / diagnostics
+    p_apply.add_argument(
+        "--use-llm-locator",
+        action="store_true",
+        help="Enable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=1)",
+    )
+    p_apply.add_argument(
+        "--no-use-llm-locator",
+        dest="use_llm_locator",
+        action="store_false",
+        help="Disable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=0)",
+    )
+    p_apply.add_argument(
+        "--debug-resume-widget",
+        action="store_true",
+        help="Emit structured widget snapshot when upload not detected (AUTO_APPLY_DEBUG_RESUME_WIDGET=1)",
+    )
+    p_apply.add_argument(
+        "--resume-wait-timeout-seconds",
+        type=int,
+        help="Override wait for upload success signals (AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)",
+    )
     p_apply.set_defaults(func=cmd_apply)
 
     p_resume = sub.add_parser("resume-job", help="Resume a blocked job")

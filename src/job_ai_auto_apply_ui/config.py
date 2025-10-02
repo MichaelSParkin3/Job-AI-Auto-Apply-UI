@@ -85,6 +85,17 @@ class Settings:
         default_factory=lambda: _get_bool("AUTO_APPLY_CAPTURE_HAR", False)
     )
 
+    # Resume upload feature flags
+    use_llm_locator: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_USE_LLM_LOCATOR", False)
+    )
+    debug_resume_widget: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_DEBUG_RESUME_WIDGET", False)
+    )
+    resume_wait_timeout_seconds: int = field(
+        default_factory=lambda: _get_int("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", 25)
+    )
+
     def artifacts_path(self, profile: str | None = None) -> Path:
         """Return the artifacts directory path, optionally namespaced per profile.
 
