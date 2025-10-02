@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import io
 import json
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import redirect_stdout, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
+from browser_use.browser.session import BrowserSession
 
 from . import job_discovery, profile_manager
 from .application_queue import ApplicationQueue, ApplicationStatus
@@ -19,10 +22,11 @@ from .browser_agent import (
     LeverFormPlan,
     ensure_allowed_domain,
 )
-from .config import load_settings
 from .llm import load_llm_config
 from .profile_manager import Profile, ProfileNotFoundError
 from .telemetry import bind_timeline, log_event
+
+_APPLY_BROWSER_TIMEOUT_SECONDS = 20.0
 
 
 def _print_json(obj: object) -> None:
@@ -189,14 +193,16 @@ def iter_apply_events(
     profile: Profile,
     mode: str,
     *,
-    fetch_form: Callable[[str], str] | None = None,
+    browser_factory: Callable[[Profile, LeverBrowserOptions], BrowserSession] | None = None,
 ) -> Iterator[dict[str, object]]:
     """Yield apply events for streaming to the CLI.
 
     Args:
         profile: Active profile driving the application session.
         mode: ``"auto"`` or ``"supervised"`` mode indicator.
-        fetch_form: Optional callable to retrieve HTML for a posting form.
+        browser_factory: Optional factory that returns a configured
+            :class:`BrowserSession` for fetching form HTML. Primarily used in
+            tests to inject stub sessions.
 
     Yields:
         dict[str, object]: Event payloads following the apply contract schema.
@@ -208,7 +214,6 @@ def iter_apply_events(
     agent = LeverApplyAgent(options=browser_options)
     submitted = 0
     failed = 0
-    fetch_form = fetch_form or _default_form_fetch
     yield {"event": "start", "profile": profile.id}
     pending = queue.pending()
     log_event("apply.pending", profile=profile.id, count=len(pending))
@@ -230,8 +235,13 @@ def iter_apply_events(
         plan_payload: dict[str, object] | None = None
         if apply_url:
             try:
-                form_html = fetch_form(apply_url)
-            except Exception as exc:  # pragma: no cover - network/runtime failure
+                form_html = _fetch_form_with_browser(
+                    profile=profile,
+                    url=apply_url,
+                    options=browser_options,
+                    browser_factory=browser_factory,
+                )
+            except Exception as exc:  # pragma: no cover - runtime/browser failure
                 timeline.warning("form.fetch_failed", error=str(exc), url=apply_url)
                 log_event("apply.form_fetch_failed", profile=profile.id, url=apply_url)
             else:
@@ -372,33 +382,80 @@ def _plan_to_payload(plan: LeverFormPlan) -> dict[str, object]:
     }
 
 
-def _default_form_fetch(url: str) -> str:
-    """Fetch Lever form HTML while enforcing allowed domain safety.
+def _fetch_form_with_browser(
+    *,
+    profile: Profile,
+    url: str,
+    options: LeverBrowserOptions,
+    browser_factory: Callable[[Profile, LeverBrowserOptions], BrowserSession] | None,
+) -> str:
+    """Load Lever form HTML using a browser-use session."""
 
-    Args:
-        url: Target application form URL.
+    ensure_allowed_domain(url, options.allowed_domains)
+    factory = browser_factory or _default_apply_browser_factory
+    session = factory(profile, options)
 
-    Returns:
-        str: Raw HTML contents of the requested form.
+    async def _run() -> str:
+        await session.start()
+        try:
+            page = await session.get_current_page()
+            if page is None:
+                page = await session.new_page()
+            await page.goto(url)
+            html_document = await _capture_page_html(page)
+            return html_document
+        finally:
+            with suppress(Exception):
+                await session.stop()
 
-    Raises:
-        ValueError: If the URL is outside the configured allow-list.
-
-    """
-
-    settings = load_settings()
-    ensure_allowed_domain(url, settings.allowed_domains)
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
+    try:
+        return asyncio.run(
+            asyncio.wait_for(_run(), timeout=_APPLY_BROWSER_TIMEOUT_SECONDS)
         )
+    except asyncio.TimeoutError as exc:  # pragma: no cover - defensive timeout guard
+        raise TimeoutError("Timed out loading Lever form") from exc
+
+
+async def _capture_page_html(page) -> str:
+    """Capture the outer HTML of the current page without noisy stdout."""
+
+    with redirect_stdout(io.StringIO()):
+        return await page.evaluate("() => document.documentElement.outerHTML")
+
+
+def _default_apply_browser_factory(
+    profile: Profile, options: LeverBrowserOptions
+) -> BrowserSession:
+    """Return a BrowserSession configured for apply-mode scraping."""
+
+    kwargs = options.to_browser_use_kwargs()
+    kwargs.update(
+        {
+            "headless": False,
+            "channel": _resolve_browser_channel(profile.preferred_browser),
+            "user_data_dir": str(profile.user_data_dir)
+            if profile.user_data_dir
+            else None,
+            "keep_alive": False,
+        }
+    )
+    clean_kwargs = {key: value for key, value in kwargs.items() if value is not None}
+    return BrowserSession(**clean_kwargs)
+
+
+def _resolve_browser_channel(preferred: str | None) -> str | None:
+    if not preferred:
+        return "chrome"
+    normalized = preferred.strip().lower()
+    mapping = {
+        "chrome": "chrome",
+        "google chrome": "chrome",
+        "chromium": "chromium",
+        "msedge": "msedge",
+        "edge": "msedge",
+        "microsoft edge": "msedge",
     }
-    with httpx.Client(timeout=15.0) as client:
-        response = client.get(url, headers=headers)
-        response.raise_for_status()
-        return response.text
+    return mapping.get(normalized, "chrome")
 
 
 def resume_job(job_id: str) -> dict[str, object]:

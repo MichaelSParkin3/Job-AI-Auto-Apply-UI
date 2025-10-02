@@ -24,10 +24,10 @@ The `apply` command currently fetches the application form's HTML using a backgr
 - **File to Modify:** `src/job_ai_auto_apply_ui/orchestrator.py`
 
 #### Tasks:
-- [ ] **1.1: Remove the `httpx`-based `_default_form_fetch` function.**
+- [X] **1.1: Remove the `httpx`-based `_default_form_fetch` function.**
   - This function is the source of the issue in the `apply` flow. It should be completely removed.
 
-- [ ] **1.2: Modify the `iter_apply_events` function to use `browser-use`.**
+- [X] **1.2: Modify the `iter_apply_events` function to use `browser-use`.**
   - In the loop where it processes each `item` from the queue, you must initiate a browser session to fetch the form HTML.
   - **Pattern to Follow:** The `_load_search_results_with_browser` function in `src/job_ai_auto_apply_ui/job_discovery.py` provides the correct pattern for starting a `BrowserSession`.
   - **Implementation Steps:**
@@ -46,10 +46,10 @@ The `discover` command correctly uses `browser-use` for the main Google search, 
 - **File to Modify:** `src/job_ai_auto_apply_ui/job_discovery.py`
 
 #### Tasks:
-- [ ] **2.1: Remove the `httpx`-based `_default_fetch` function.**
+- [X] **2.1: Remove the `httpx`-based `_default_fetch` function.**
   - This function is used as a fallback and for fetching posting details. It should be removed to enforce a browser-only workflow.
 
-- [ ] **2.2: Modify `discover_jobs` to use the existing browser session for fetching posting details.**
+- [X] **2.2: Modify `discover_jobs` to use the existing browser session for fetching posting details.**
   - The function already has an active `BrowserSession` from `_load_search_results_with_browser`. This session should be reused.
   - **Implementation Steps:**
     1.  The `discover_jobs` function needs access to the `session` object created in `_load_search_results_with_browser`. You will need to refactor the code to pass the active `session` into `discover_jobs` or manage the session at a higher level.
@@ -60,23 +60,23 @@ The `discover` command correctly uses `browser-use` for the main Google search, 
     6.  Close the tab after you are done to conserve resources: `await posting_page.close()`.
   - **Reference:** This aligns with the "multi-tab navigation" concept mentioned for `job_discovery` in `reference_files/mvp-architecture.md`.
 
-- [ ] **2.3: Remove the `httpx` fallback logic in `discover_jobs`.**
+- [X] **2.3: Remove the `httpx` fallback logic in `discover_jobs`.**
   - The `try...except` block that calls `_load_search_results_with_browser` and then falls back to `_default_fetch` should be removed. If the browser-based discovery fails, the command should fail clearly, as this is a critical failure, not something to be worked around with a less reliable method.
 
 ### Part 3: Update and Write Tests
 
-- [ ] **3.1: Update existing tests.**
+- [X] **3.1: Update existing tests.**
   - Any unit or integration tests that were mocking `httpx` calls (like `_default_form_fetch`) will now fail. These tests must be updated to mock the `BrowserSession` and its methods (`start`, `goto`, `evaluate`, `stop`, etc.) instead.
 
-- [ ] **3.2: Write a new integration test.**
+- [X] **3.2: Write a new integration test.**
   - Create a new integration test that runs the `apply` command for a single item from a fixture. This test should assert that a `BrowserSession` is created and that it navigates to the correct URL. You can use mocking to prevent the browser from actually running while still asserting that the correct calls were made.
 
 ### Part 4: Final Polish & Verification
 
-- [ ] **4.1: Run the linter.**
+- [X] **4.1: Run the linter.**
   - After making all code changes, run `ruff check .` and fix any new issues.
 
-- [ ] **4.2: Run the full test suite.**
+- [X] **4.2: Run the full test suite.**
   - Ensure all existing and new tests pass by running `pytest`.
 
 ---
