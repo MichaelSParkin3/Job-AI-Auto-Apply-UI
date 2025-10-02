@@ -5,16 +5,16 @@
       "url": "https://jobs.lever.co/example/abc123",
       "company": "example",
       "title": "Sample Role",
-      "status": "captcha_blocked",
+      "status": "submitted",
       "discovered_at": "2025-09-30T12:00:00+00:00",
-      "last_updated_at": "2025-09-30T12:10:00+00:00",
+      "last_updated_at": "2025-10-02T01:43:50.970858+00:00",
       "hash": "9e41f907b248d4ac1d50ba486ece46cb52609ab7d4d9277823972e173810ab6e",
       "artifacts": {
         "dom_snapshot_path": null,
         "screenshot_path": null,
         "video_path": null,
         "har_path": null,
-        "confirmation_text": null,
+        "confirmation_text": "submitted (stub)",
         "confirmation_id": null
       },
       "details": {
@@ -26,17 +26,17 @@
         "compensation": null,
         "posting_excerpt": "Work on great products.",
         "posting_text": "Detailed description omitted for brevity.",
-        "tech_tags": ["python", "react"],
+        "tech_tags": [
+          "python",
+          "react"
+        ],
         "source_query": "site:jobs.lever.co example engineer",
         "source_rank": 1,
         "apply_url": "https://jobs.lever.co/example/abc123/apply",
         "closed": false,
         "extracted_at": "2025-09-30T12:00:00+00:00"
       },
-      "reason": {
-        "code": "captcha_blocked",
-        "message": "Solve captcha before resuming."
-      }
+      "reason": null
     }
   ]
 }

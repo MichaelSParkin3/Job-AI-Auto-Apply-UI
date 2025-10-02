@@ -64,35 +64,35 @@
 
 ## Phase 3.3: Core Implementation
 - [X] T010 Implement profile_manager loader
-  - File: `src/profile_manager.py`
+  - File: `src/job_ai_auto_apply_ui/profile_manager.py`
   - Load profile file; validate fields; expose dataclass/model
 - [X] T011 [P] Implement application_queue storage
-  - File: `src/application_queue.py`
+  - File: `src/job_ai_auto_apply_ui/application_queue.py`
   - CRUD ApplicationItem; enforce hash de-dup; status transitions; artifact links
 - [X] T012 Implement job_discovery (URL build + fetch results)
-  - File: `src/job_discovery.py`
+  - File: `src/job_ai_auto_apply_ui/job_discovery.py`
   - Build Google URL with `tbs`; capture source_query/source_rank; enqueue items
 - [X] T013 Implement details extraction
-  - File: `src/job_discovery.py`
+  - File: `src/job_ai_auto_apply_ui/job_discovery.py`
   - Open posting; extract JobDetails; save excerpt/text and apply_url
 - [X] T014 Implement browser_agent.lever
-  - File: `src/browser_agent/lever.py`
+  - File: `src/job_ai_auto_apply_ui/browser_agent/lever.py`
   - Headful session; resume upload; contact/links; dynamic cards; hCaptcha detect/persist; submit
 - [X] T015 Implement prompt_builder
-  - File: `src/llm/prompt_builder.py`
+  - File: `src/job_ai_auto_apply_ui/llm/prompt_builder.py`
   - Compose prompts from Profile + JobDetails; emit JSON answers; integrate AnswerCache
 - [X] T016 Implement orchestrator wiring
-  - File: `src/orchestrator.py`
+  - File: `src/job_ai_auto_apply_ui/orchestrator.py`
   - Wire discover/apply/resume-job to modules; honor `--json`; exit codes
 
 ## Phase 3.4: Integration
 - [X] T017 Logging & step timeline events
-  - Files: cross-cutting (`src/*`)
+  - Files: cross-cutting (`src/job_ai_auto_apply_ui/*`)
   - Structured logs; per-step events; attach artifacts on failure
 - [X] T018 Diagnostics toggles (video/HAR) and allowed_domains safety
-  - Files: `src/browser_agent/lever.py`
+  - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`
 - [X] T019 Confirmation capture and attach to ApplicationItem.artifacts
-  - Files: `src/browser_agent/lever.py`, `src/application_queue.py`
+  - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`, `src/job_ai_auto_apply_ui/application_queue.py`
 
 ## Phase 3.5: Polish
 - [ ] T020 [P] Unit tests for profile_manager and queue
@@ -105,15 +105,15 @@
 
 ## Phase 3.6: LLM Wiring
 - [X] T024 LLM config and env keys
-  - Files: `.env.example`, `src/config.py`, `src/llm/__init__.py`
+  - Files: `.env.example`, `src/job_ai_auto_apply_ui/config.py`, `src/job_ai_auto_apply_ui/llm/__init__.py`
   - Add env vars: `LLM_PROVIDER` (openrouter|google), `LLM_MODEL`, `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`,
     `LLM_TEMPERATURE` (default 0.0 for tests), `LLM_TIMEOUT_SECONDS` (default 30)
 - [X] T025 OpenRouter client wrapper
-  - File: `src/llm/openrouter_client.py`
+  - File: `src/job_ai_auto_apply_ui/llm/openrouter_client.py`
   - Implement chat completion call with retries/backoff and error mapping; optional headers
     (Referer/User-Agent) as required by provider guidelines
 - [X] T026 Provider selection + CLI override
-  - Files: `src/orchestrator.py`, `src/config.py`, `src/llm/prompt_builder.py`
+  - Files: `src/job_ai_auto_apply_ui/orchestrator.py`, `src/job_ai_auto_apply_ui/config.py`, `src/job_ai_auto_apply_ui/llm/prompt_builder.py`
   - Add `--llm-provider` and `--llm-model` flags; plumb through to prompt builder
 - [X] T027 [P] Tests for LLM wrappers and prompt_builder
   - Files: `tests/unit/test_llm_openrouter.py`, `tests/unit/test_prompt_builder.py`

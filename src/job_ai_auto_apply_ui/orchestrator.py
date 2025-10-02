@@ -41,7 +41,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
     )
 
     discover_fn = job_discovery.discover_jobs
-    if getattr(discover_fn, "__module__", "") == "src.job_discovery":
+    if getattr(discover_fn, "__module__", "") == "job_ai_auto_apply_ui.job_discovery":
         discover_profile = _ensure_profile(profile_obj)
     else:
         discover_profile = profile_obj

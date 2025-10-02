@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.job_discovery import build_search_query, build_search_url, discover_jobs
-from src.profile_manager import Profile
+from job_ai_auto_apply_ui.job_discovery import (
+    build_search_query,
+    build_search_url,
+    discover_jobs,
+)
+from job_ai_auto_apply_ui.profile_manager import Profile
 
 
 def _profile() -> Profile:

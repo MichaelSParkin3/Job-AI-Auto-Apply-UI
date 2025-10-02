@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from jsonschema import validate
-from src.orchestrator import main
+from job_ai_auto_apply_ui.orchestrator import main
 
 
 def _run_cli(args: Iterable[str]) -> tuple[int, str, str]:
@@ -37,7 +37,7 @@ def test_resume_success(monkeypatch: pytest.MonkeyPatch, resume_schema: dict[str
     def fake_resume(job_id: str) -> dict[str, Any]:
         return {"id": job_id, "status": "in_progress", "resumed_from_step": 2}
 
-    monkeypatch.setattr("src.orchestrator.resume_job", fake_resume)
+    monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.resume_job", fake_resume)
 
     code, out, err = _run_cli(["resume-job", "app-123", "--json"])
 
@@ -54,7 +54,7 @@ def test_resume_not_found(monkeypatch: pytest.MonkeyPatch, resume_schema: dict[s
     def fake_resume(job_id: str) -> dict[str, Any]:
         raise LookupError(job_id)
 
-    monkeypatch.setattr("src.orchestrator.resume_job", fake_resume)
+    monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.resume_job", fake_resume)
 
     code, out, err = _run_cli(["resume-job", "missing", "--json"])
 
