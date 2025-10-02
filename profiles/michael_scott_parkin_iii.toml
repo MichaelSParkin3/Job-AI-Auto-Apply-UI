@@ -5,6 +5,7 @@ preferred_browser = "chromium"
 user_data_dir = "G:/Github_Repos/Job-AI-Auto-Apply-UI/Job-AI-Auto-Apply-UI/data/browser_profiles/michael_scott_parkin_iii"
 
 [defaults]
+current_company = "Freelance"
 email = "MichaelSParkin3@gmail.com"
 phone = "+1-555-010-4422"
 location = "Remote, USA"

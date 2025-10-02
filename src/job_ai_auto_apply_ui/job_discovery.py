@@ -9,6 +9,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
+import json
 from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,6 +27,8 @@ from .telemetry import log_event
 LOGGER = logging.getLogger(__name__)
 
 _BROWSER_TIMEOUT_SECONDS = 8.0
+# Total discovery timeout when also visiting postings via browser
+_BROWSER_DISCOVERY_TIMEOUT_SECONDS = 45.0
 _BROWSER_DISABLED_MODES = {"off", "disabled", "http"}
 
 
@@ -110,15 +113,25 @@ class _GoogleResultsParser(HTMLParser):
     # Helpers --------------------------------------------------------------
     @classmethod
     def _is_lever_link(cls, href: str) -> bool:
-        if cls.TARGET_DOMAIN in href:
-            return True
+        """Return True only for links that actually resolve to jobs.lever.co.
+
+        Accepts:
+        - Absolute http(s) links where host ends with jobs.lever.co
+        - Google "/url" wrappers whose q= target host ends with jobs.lever.co
+        Rejects everything else (including /search links and login redirects).
+        """
         parsed = urlparse(href)
-        if parsed.netloc and cls.TARGET_DOMAIN in parsed.netloc:
-            return True
+        # Google results often use /url?q=...
         if parsed.path.startswith("/url"):
             params = parse_qs(parsed.query)
             target = params.get("q", [""])[0]
-            return cls.TARGET_DOMAIN in target
+            if not target:
+                return False
+            t = urlparse(target)
+            return bool(t.scheme in {"http", "https"} and t.netloc.endswith(cls.TARGET_DOMAIN))
+        # Absolute direct link
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return parsed.netloc.endswith(cls.TARGET_DOMAIN)
         return False
 
     @staticmethod
@@ -286,96 +299,163 @@ def discover_jobs(
     """Discover Lever job postings for the given profile."""
     search_url = build_search_url(profile, window_hours)
     source_query = build_search_query(profile)
-    fetch_posting = fetch_posting or _default_fetch
-
-    if fetch_search is not None:
+    # If a custom fetch_search was injected (tests), use the legacy non-browser path.
+    if fetch_search is not None or _browser_mode() in _BROWSER_DISABLED_MODES:
+        # Legacy: load results (maybe via injected fetch), then fetch postings via HTTP
+        fetch_posting = fetch_posting or _default_fetch
         try:
-            html_document = fetch_search(search_url)
-        except Exception as exc:  # pragma: no cover - dependency override failure
+            html_document = (
+                fetch_search(search_url)
+                if fetch_search is not None
+                else _default_fetch(search_url)
+            )
+        except Exception as exc:  # pragma: no cover - dependency/network failure
             LOGGER.exception("Failed to fetch Google results: %s", exc)
             log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
             return []
-    else:
-        if _browser_mode() in _BROWSER_DISABLED_MODES:
-            LOGGER.info("Browser discovery disabled via environment; using HTTP fallback")
-            log_event("discover.browser_disabled", profile=profile.id)
-            try:
-                html_document = _default_fetch(search_url)
-            except Exception as exc:  # pragma: no cover - network failure
-                LOGGER.exception("Failed to fetch Google results: %s", exc)
-                log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
-                return []
-        else:
-            try:
-                html_document = _load_search_results_with_browser(
-                    profile=profile,
-                    search_url=search_url,
-                    browser_factory=browser_factory,
-                )
-            except Exception as exc:  # pragma: no cover - runtime/browser failure
-                LOGGER.exception("Browser-based discovery failed: %s", exc)
+
+        parser = _GoogleResultsParser()
+        parser.feed(html_document)
+        results = parser.results[: max(cap, 0)]
+
+        items: list[ApplicationItem] = []
+        for result in results:
+            parsed_url = urlparse(result.url)
+            if parsed_url.scheme not in {"http", "https"}:
+                LOGGER.warning("Skipping non-http result URL: %s", result.url)
                 log_event(
-                    "discover.browser_failed",
+                    "discover.result_skipped",
                     profile=profile.id,
-                    reason=type(exc).__name__,
+                    url=result.url,
+                    reason="invalid_scheme",
                 )
-                try:
-                    html_document = _default_fetch(search_url)
-                except Exception as fallback_exc:  # pragma: no cover - network failure
-                    LOGGER.exception("Fallback HTTP fetch failed: %s", fallback_exc)
-                    log_event("discover.error", profile=profile.id, reason="google_fetch_failed")
-                    return []
+                continue
+            try:
+                posting_html = fetch_posting(result.url)
+            except Exception as exc:  # pragma: no cover - network failure
+                LOGGER.warning("Failed to fetch posting %s: %s", result.url, exc)
+                log_event(
+                    "discover.posting_fetch_failed",
+                    profile=profile.id,
+                    url=result.url,
+                )
+                details = JobDetails(source_query=source_query, source_rank=result.rank)
+                title = result.title
+            else:
+                posting_parser = _LeverPostingParser(result.url)
+                posting_parser.feed(posting_html)
+                details = posting_parser.build_details()
+                details.source_query = source_query
+                details.source_rank = result.rank
+                title = posting_parser.title() or result.title
+                if result.snippet and not details.posting_excerpt:
+                    details.posting_excerpt = result.snippet
+                if details.apply_url is None:
+                    details.apply_url = result.url
 
-    parser = _GoogleResultsParser()
-    parser.feed(html_document)
-    results = parser.results[: max(cap, 0)]
-
-    items: list[ApplicationItem] = []
-    for result in results:
-        parsed_url = urlparse(result.url)
-        if parsed_url.scheme not in {"http", "https"}:
-            LOGGER.warning("Skipping non-http result URL: %s", result.url)
-            log_event(
-                "discover.result_skipped",
-                profile=profile.id,
+            company = result.company_slug()
+            item = ApplicationItem.new_from_discovery(
                 url=result.url,
-                reason="invalid_scheme",
+                company=company,
+                title=title,
+                details=details,
+                source_query=source_query,
+                source_rank=result.rank,
             )
-            continue
-        try:
-            posting_html = fetch_posting(result.url)
-        except Exception as exc:  # pragma: no cover - network failure
-            LOGGER.warning("Failed to fetch posting %s: %s", result.url, exc)
-            log_event(
-                "discover.posting_fetch_failed",
-                profile=profile.id,
-                url=result.url,
-            )
-            details = JobDetails(source_query=source_query, source_rank=result.rank)
-            title = result.title
-        else:
-            posting_parser = _LeverPostingParser(result.url)
-            posting_parser.feed(posting_html)
-            details = posting_parser.build_details()
-            details.source_query = source_query
-            details.source_rank = result.rank
-            title = posting_parser.title() or result.title
-            if result.snippet and not details.posting_excerpt:
-                details.posting_excerpt = result.snippet
-            if details.apply_url is None:
-                details.apply_url = result.url
+            items.append(item)
 
-        company = result.company_slug()
-        item = ApplicationItem.new_from_discovery(
-            url=result.url,
-            company=company,
-            title=title,
-            details=details,
-            source_query=source_query,
-            source_rank=result.rank,
+        log_event(
+            "discover.results",
+            profile=profile.id,
+            found=len(items),
+            cap=cap,
+            search_url=search_url,
         )
-        items.append(item)
+        return items
 
+    # Preferred new path: use a single browser session to load Google and visit postings
+    try:
+        items = _discover_with_browser_session(
+            profile=profile,
+            search_url=search_url,
+            source_query=source_query,
+            cap=cap,
+            browser_factory=browser_factory,
+        )
+    except Exception as exc:  # pragma: no cover - runtime/browser failure
+        LOGGER.exception("Browser-based discovery failed: %s", exc)
+        log_event(
+            "discover.browser_failed",
+            profile=profile.id,
+            reason=type(exc).__name__,
+        )
+        return []
+    return items
+
+def _discover_with_browser_session(
+    *,
+    profile: Profile,
+    search_url: str,
+    source_query: str,
+    cap: int,
+    browser_factory: Callable[[Profile], BrowserSession] | None,
+) -> list[ApplicationItem]:
+    """Drive Google and postings via browser-use and extract details from the DOM."""
+
+    factory = browser_factory or _default_browser_factory
+    session = factory(profile)
+    log_event(
+        "discover.browser_start",
+        profile=profile.id,
+        browser=getattr(session, "channel", None),
+    )
+
+    async def _run() -> list[ApplicationItem]:
+        await session.start()
+        try:
+            page = await session.get_current_page() or await session.new_page()
+            await page.goto(search_url)
+            try:
+                await _wait_for_search_results(page)
+            except TimeoutError:
+                LOGGER.warning("Timed out waiting for Google results to render")
+            html_document = await _capture_page_html(page)
+
+            parser = _GoogleResultsParser()
+            parser.feed(html_document)
+            results = parser.results[: max(cap, 0)]
+
+            items: list[ApplicationItem] = []
+            for result in results:
+                # Open each posting in a fresh tab to avoid Google result noise
+                try:
+                    item = await _extract_item_from_posting(session, result, source_query)
+                except Exception as exc:  # pragma: no cover - page/runtime issues
+                    LOGGER.warning("Failed to open posting %s: %s", result.url, exc)
+                    log_event(
+                        "discover.posting_fetch_failed",
+                        profile=profile.id,
+                        url=result.url,
+                    )
+                    details = JobDetails(source_query=source_query, source_rank=result.rank)
+                    title = result.title
+                    company = result.company_slug()
+                    item = ApplicationItem.new_from_discovery(
+                        url=result.url,
+                        company=company,
+                        title=title,
+                        details=details,
+                        source_query=source_query,
+                        source_rank=result.rank,
+                    )
+                items.append(item)
+
+            return items
+        finally:
+            with suppress(Exception):
+                await session.stop()
+
+    items = asyncio.run(asyncio.wait_for(_run(), timeout=_BROWSER_DISCOVERY_TIMEOUT_SECONDS))
     log_event(
         "discover.results",
         profile=profile.id,
@@ -383,7 +463,112 @@ def discover_jobs(
         cap=cap,
         search_url=search_url,
     )
+    log_event("discover.browser_complete", profile=profile.id)
     return items
+
+async def _extract_item_from_posting(
+    session: BrowserSession,
+    result: GoogleSearchResult,
+    source_query: str,
+) -> ApplicationItem:
+    """Open a posting in the browser and extract normalized details."""
+    page = await session.new_page()
+    await page.goto(result.url)
+
+    # Best-effort: wait briefly for either headline or application form
+    try:
+        await asyncio.wait_for(
+            _wait_for_any_selector(
+                page,
+                [".posting-headline h2", "form#application-form", "[data-qa='job-description']"],
+            ),
+            timeout=6.0,
+        )
+    except asyncio.TimeoutError:
+        pass
+
+    # Extract via JS to avoid brittle HTML parsing
+    data = await page.evaluate(
+        """
+        () => {
+          const q = (sel) => document.querySelector(sel);
+          const t = (el) => (el && el.textContent ? el.textContent.trim() : null);
+          const title = t(q('.posting-headline h2')) || (document.title || null);
+          const jobLocation = t(q('.posting-categories .location'));
+          const department = t(q('.posting-categories .department'));
+          const employment = t(q('.posting-categories .commitment'));
+          const workModel = t(q('.posting-categories .workplaceTypes'));
+          const descEl = q('[data-qa="job-description"]');
+          const description = descEl ? descEl.innerText : '';
+          const applyEl = q('a.postings-btn.template-btn-submit[href*="/apply"]');
+          const locHref = (window && window.location) ? String(window.location.href || window.location) : null;
+          const applyUrl = applyEl ? applyEl.href : (locHref && locHref.includes('/apply') ? locHref : null);
+          return JSON.stringify({ title, location: jobLocation, department, employment, workModel, description, applyUrl });
+        }
+        """
+    )
+
+    # Coerce evaluate result to dict
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            data = {}
+    elif not isinstance(data, dict):
+        data = {}
+
+    # Build details
+    description = str(data.get("description") or "") if isinstance(data, dict) else ""
+    excerpt = description[:1500] if description else None
+    posting_text = description[:8192] if description else None
+    employment_type = (str(data.get("employment") or "unknown").split("/")[0].strip()).lower()
+    work_model = str(data.get("workModel") or "unknown").lower()
+
+    details = JobDetails(
+        location=_none_if_empty(data.get("location")),
+        department=_none_if_empty(data.get("department")),
+        employment_type=employment_type or "unknown",
+        work_model=work_model or "unknown",
+        posting_excerpt=excerpt,
+        posting_text=posting_text,
+        apply_url=_none_if_empty(data.get("applyUrl")) or result.url,
+        extracted_at=datetime.now(UTC),
+        source_query=source_query,
+        source_rank=result.rank,
+    )
+
+    title = _none_if_empty(data.get("title")) or result.title
+    company = result.company_slug()
+    item = ApplicationItem.new_from_discovery(
+        url=result.url,
+        company=company,
+        title=title,
+        details=details,
+        source_query=source_query,
+        source_rank=result.rank,
+    )
+    return item
+
+async def _wait_for_any_selector(page, selectors: list[str]) -> None:
+    """Return when any selector appears; no-op if none are found in time."""
+    deadline = time.monotonic() + 6.0
+    while time.monotonic() < deadline:
+        try:
+            for sel in selectors:
+                els = await page.get_elements_by_css_selector(sel)
+                if els:
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+    # Let caller decide on timeout handling
+    raise asyncio.TimeoutError
+
+def _none_if_empty(value: object) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
 
 
 def _default_fetch(url: str) -> str:
