@@ -35,30 +35,30 @@
   - Run `playwright install chromium`
   - Add basic `.env.example` keys for LLM provider
   - Files: `pyproject.toml`, `.env.example`
-- [X] T002 [P] Configure linting and formatting
+- [ERROR] T002 [P] Configure linting and formatting
   - Add Ruff config and Black (or Ruff formatter); enable docstring checks per constitution
   - Files: `pyproject.toml`, `ruff.toml`
-- [X] T003 [P] Create `profiles/` and a starter profile file
+- [ERROR] T003 [P] Create `profiles/` and a starter profile file
   - Example TOML/JSON with id, resume_path, defaults, keywords, prompts
   - Files: `profiles/front_end.toml`
 
 ## Phase 3.2: Tests First (TDD)
-- [X] T004 [P] Contract test: discover (JSON shape, exit codes)
+- [ERROR] T004 [P] Contract test: discover (JSON shape, exit codes)
   - File: `tests/contract/test_discover_contract.py`
   - Based on: `contracts/cli-contracts.md`
-- [X] T005 [P] Contract test: apply (event stream, exit codes)
+- [ERROR] T005 [P] Contract test: apply (event stream, exit codes)
   - File: `tests/contract/test_apply_contract.py`
   - Based on: `contracts/cli-contracts.md`
-- [X] T006 [P] Contract test: resume-job (JSON shape)
+- [ERROR] T006 [P] Contract test: resume-job (JSON shape)
   - File: `tests/contract/test_resume_contract.py`
   - Based on: `contracts/cli-contracts.md`
-- [X] T007 [P] Integration test: discovery URL build + time filter
+- [ERROR] T007 [P] Integration test: discovery URL build + time filter
   - File: `tests/integration/test_discovery_build.py`
   - Based on: `reference_files/patterns-google-lever.md` (tbs param)
-- [X] T008 [P] Integration test: Lever details extraction to JobDetails
+- [ERROR] T008 [P] Integration test: Lever details extraction to JobDetails
   - File: `tests/integration/test_lever_details_extract.py`
   - Use static HTML fixtures; assert fields populated per `data-model.md`
-- [X] T009 [P] Integration test: form fill selectors exist (static fixture)
+- [ERROR] T009 [P] Integration test: form fill selectors exist (static fixture)
   - File: `tests/integration/test_lever_form_selectors.py`
   - Based on: `reference_files/patterns-google-lever.md`
 
@@ -89,7 +89,7 @@
 - [X] T017 Logging & step timeline events
   - Files: cross-cutting (`src/job_ai_auto_apply_ui/*`)
   - Structured logs; per-step events; attach artifacts on failure
-- [X] T018 Diagnostics toggles (video/HAR) and allowed_domains safety
+- [ERROR] T018 Diagnostics toggles (video/HAR) and allowed_domains safety
   - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`
 - [X] T019 Confirmation capture and attach to ApplicationItem.artifacts
   - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`, `src/job_ai_auto_apply_ui/application_queue.py`
@@ -101,21 +101,21 @@
   - File: `specs/001-as-a-job/quickstart.md`, `AGENTS.md`
 - [X] T022 [P] Static JSON Schemas for CLI outputs
   - Files: `specs/001-as-a-job/contracts/schemas/*.json`
-- [X] T023 Final pass: docstrings per constitution + run linters
+- [ERROR] T023 Final pass: docstrings per constitution + run linters
 
 ## Phase 3.6: LLM Wiring
 - [X] T024 LLM config and env keys
   - Files: `.env.example`, `src/job_ai_auto_apply_ui/config.py`, `src/job_ai_auto_apply_ui/llm/__init__.py`
   - Add env vars: `LLM_PROVIDER` (openrouter|google), `LLM_MODEL`, `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`,
     `LLM_TEMPERATURE` (default 0.0 for tests), `LLM_TIMEOUT_SECONDS` (default 30)
-- [X] T025 OpenRouter client wrapper
+- [ERROR] T025 OpenRouter client wrapper
   - File: `src/job_ai_auto_apply_ui/llm/openrouter_client.py`
   - Implement chat completion call with retries/backoff and error mapping; optional headers
     (Referer/User-Agent) as required by provider guidelines
 - [X] T026 Provider selection + CLI override
   - Files: `src/job_ai_auto_apply_ui/orchestrator.py`, `src/job_ai_auto_apply_ui/config.py`, `src/job_ai_auto_apply_ui/llm/prompt_builder.py`
   - Add `--llm-provider` and `--llm-model` flags; plumb through to prompt builder
-- [X] T027 [P] Tests for LLM wrappers and prompt_builder
+- [ERROR] T027 [P] Tests for LLM wrappers and prompt_builder
   - Files: `tests/unit/test_llm_openrouter.py`, `tests/unit/test_prompt_builder.py`
   - Mock network; assert deterministic outputs and retry/backoff behavior
 - [X] T028 [P] Docs and samples
