@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import httpx
 
 from . import job_discovery, profile_manager
-from .application_queue import ApplicationQueue, ApplicationStatus, Artifacts
+from .application_queue import ApplicationQueue, ApplicationStatus
 from .browser_agent import LeverApplyAgent, LeverFormPlan
 from .llm import load_llm_config
 from .profile_manager import Profile, ProfileNotFoundError

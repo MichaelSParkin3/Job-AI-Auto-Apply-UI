@@ -75,3 +75,71 @@ def test_discover_jobs_parses_results(monkeypatch) -> None:
     assert item.details.work_model == "remote"
     assert item.details.employment_type.startswith("full time")
     assert item.details.apply_url.endswith("/apply")
+
+
+class _StubPage:
+    def __init__(self, html: str) -> None:
+        self.html = html
+        self.visited_urls: list[str] = []
+
+    async def goto(self, url: str) -> None:
+        self.visited_urls.append(url)
+
+    async def get_elements_by_css_selector(self, selector: str) -> list[object]:
+        return [object()]
+
+    async def evaluate(self, script: str) -> str:
+        return self.html
+
+
+class _StubBrowserSession:
+    channel = "chrome"
+
+    def __init__(self, html: str) -> None:
+        self.page = _StubPage(html)
+        self.started = False
+        self.stopped = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+    async def get_current_page(self) -> _StubPage:  # pragma: no cover - exercised indirectly
+        return self.page
+
+    async def new_page(self) -> _StubPage:  # pragma: no cover - exercised indirectly
+        return self.page
+
+
+def test_discover_jobs_uses_browser_session(monkeypatch) -> None:
+    monkeypatch.setenv("AUTO_APPLY_BROWSER_MODE", "auto")
+    profile = _profile()
+    fixtures = Path(__file__).resolve().parents[1] / "fixtures"
+    posting_html = (fixtures / "lever_posting.html").read_text(encoding="utf-8")
+    search_html = """
+    <html>
+      <body>
+        <div class="g">
+          <a href="https://jobs.lever.co/example/123">Senior Frontend Engineer</a>
+          <div class="VwiC3b">Work with a remote-first team delivering Lever automations.</div>
+        </div>
+      </body>
+    </html>
+    """
+
+    stub_session = _StubBrowserSession(search_html)
+
+    items = discover_jobs(
+        profile=profile,
+        window_hours=24,
+        cap=5,
+        fetch_posting=lambda url: posting_html,
+        browser_factory=lambda _: stub_session,
+    )
+
+    assert stub_session.started is True
+    assert stub_session.stopped is True
+    assert stub_session.page.visited_urls == [build_search_url(profile, 24)]
+    assert len(items) == 1

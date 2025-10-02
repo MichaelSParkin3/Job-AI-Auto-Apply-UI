@@ -92,11 +92,11 @@ def analyze_form(html: str) -> LeverFormPlan:
 
     dynamic_questions: list[DynamicQuestion] = []
     for group_prefix, fields in template_specs:
-        for index, field in enumerate(fields):
-            prompt = str(field.get("text", "")).strip()
+        for index, field_spec in enumerate(fields):
+            prompt = str(field_spec.get("text", "")).strip()
             if not prompt:
                 continue
-            required = bool(field.get("required", False))
+            required = bool(field_spec.get("required", False))
             answer_name = f"{group_prefix}[field{index}]"
             answer_selector = answer_inputs.get(answer_name)
             if not answer_selector:

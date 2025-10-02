@@ -1,7 +1,7 @@
 import json
+import os
 from pathlib import Path
 
-import pytest
 from jsonschema import validate
 
 from job_ai_auto_apply_ui.orchestrator import main
@@ -12,9 +12,17 @@ def run_cli(args):
     from io import StringIO
     import contextlib
 
+    previous_mode = os.environ.get("AUTO_APPLY_BROWSER_MODE")
+    os.environ["AUTO_APPLY_BROWSER_MODE"] = "off"
     buf_out, buf_err = StringIO(), StringIO()
-    with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
-        code = main(args)
+    try:
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            code = main(args)
+    finally:
+        if previous_mode is None:
+            os.environ.pop("AUTO_APPLY_BROWSER_MODE", None)
+        else:
+            os.environ["AUTO_APPLY_BROWSER_MODE"] = previous_mode
     return code, buf_out.getvalue(), buf_err.getvalue()
 
 
