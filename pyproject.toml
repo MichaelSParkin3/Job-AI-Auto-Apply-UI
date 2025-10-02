@@ -21,3 +21,18 @@ auto-apply = "job_ai_auto_apply_ui.orchestrator:main"
 addopts = "-q"
 testpaths = ["tests"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "D"]
+ignore = ["D202", "D203", "D213", "D413"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["D"]
+"src/job_ai_auto_apply_ui/application_queue.py" = ["D"]
+

@@ -1,14 +1,17 @@
-"""Lever form parsing and automation scaffolding."""
+"""Utilities for analyzing Lever forms and configuring browser sessions."""
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Final
 from xml.etree import ElementTree as ET
 
 from ..application_queue import ApplicationItem, Artifacts
+from ..config import Settings, load_settings
 from ..profile_manager import Profile
 from ..telemetry import log_event
 
@@ -35,8 +38,86 @@ class LeverFormPlan:
     captcha_selector: str | None = "div#h-captcha"
 
 
+@dataclass(slots=True)
+class LeverBrowserOptions:
+    """Options controlling diagnostics capture and domain safety for sessions."""
+
+    allowed_domains: tuple[str, ...]
+    capture_video: bool = False
+    capture_har: bool = False
+    artifacts_dir: Path = Path("data") / "artifacts" / "browser"
+
+    @classmethod
+    def from_settings(
+        cls,
+        settings: Settings | None = None,
+        *,
+        profile: Profile | None = None,
+    ) -> "LeverBrowserOptions":
+        """Create options using project settings and optional profile context.
+
+        Args:
+            settings: Optional configuration instance. When ``None`` the
+                settings are loaded from the environment.
+            profile: Profile whose identifier namespaces the artifacts folder.
+
+        Returns:
+            LeverBrowserOptions: Diagnostics and domain configuration values.
+
+        """
+        resolved_settings = settings or load_settings()
+        allowed = tuple(
+            domain.strip()
+            for domain in resolved_settings.allowed_domains
+            if domain and domain.strip()
+        )
+        artifacts_root = Path(resolved_settings.artifacts_root)
+        if profile is not None:
+            artifacts_root = artifacts_root / profile.id
+        capture_video = bool(
+            resolved_settings.diagnostics_enabled
+            or resolved_settings.diagnostics_capture_video
+        )
+        capture_har = bool(
+            resolved_settings.diagnostics_enabled
+            or resolved_settings.diagnostics_capture_har
+        )
+        return cls(
+            allowed_domains=allowed,
+            capture_video=capture_video,
+            capture_har=capture_har,
+            artifacts_dir=artifacts_root,
+        )
+
+    def to_browser_use_kwargs(self) -> dict[str, object]:
+        """Return keyword arguments for ``browser_use`` session factories.
+
+        Returns:
+            dict[str, object]: Keyword arguments compatible with browser-use
+            session constructors.
+
+        """
+        kwargs: dict[str, object] = {
+            "allowed_domains": list(self.allowed_domains),
+            "artifacts_dir": str(self.artifacts_dir),
+        }
+        if self.capture_video:
+            kwargs["record_video"] = True
+        if self.capture_har:
+            kwargs["record_har"] = True
+        return kwargs
+
+
 def analyze_form(html: str) -> LeverFormPlan:
-    """Inspect Lever HTML and extract the selectors we care about."""
+    """Inspect Lever HTML and extract the selectors we care about.
+
+    Args:
+        html: Raw HTML content from a Lever application form.
+
+    Returns:
+        LeverFormPlan: Parsed selectors and metadata required for automation.
+
+    """
     sanitized = _strip_doctype(html)
     root = ET.fromstring(sanitized)
 
@@ -127,17 +208,100 @@ class LeverApplyAgent:
     downstream browser automation (browser-use/Playwright) to execute it.
     """
 
-    def __init__(self, planner: Callable[[str], LeverFormPlan] | None = None) -> None:
+    def __init__(
+        self,
+        planner: Callable[[str], LeverFormPlan] | None = None,
+        *,
+        options: LeverBrowserOptions | None = None,
+    ) -> None:
+        """Initialise the agent with a planner function and browser options.
+
+        Args:
+            planner: Callable that transforms HTML into a :class:`LeverFormPlan`.
+            options: Browser diagnostics and safety configuration.
+
+        """
         self._planner = planner or analyze_form
+        self._options = options or LeverBrowserOptions.from_settings()
 
     def build_plan(self, html: str) -> LeverFormPlan:
-        """Return a form plan from raw HTML."""
+        """Return a form plan from raw HTML.
+
+        Args:
+            html: Form markup to analyse for selectors.
+
+        Returns:
+            LeverFormPlan: Parsed selectors ready for execution.
+
+        """
         return self._planner(html)
 
     def submit_stub(self, *, profile: Profile, item: ApplicationItem) -> Artifacts:
-        """Stub submission used until browser automation is implemented."""
+        """Stub submission used until browser automation is implemented.
+
+        Args:
+            profile: Active profile responsible for the submission.
+            item: Queue item currently being processed.
+
+        Returns:
+            Artifacts: Confirmation artifacts that mimic a successful submit.
+
+        """
+        if item.details and item.details.apply_url:
+            ensure_allowed_domain(item.details.apply_url, self._options.allowed_domains)
         log_event("apply.stub", profile=profile.id, item=item.id)
         return Artifacts(confirmation_text="submitted (stub)")
+
+
+def ensure_allowed_domain(url: str, allowed_domains: Iterable[str]) -> None:
+    """Validate that ``url`` matches the configured ``allowed_domains`` pattern list.
+
+    Args:
+        url: Absolute URL that will be opened in the browser session.
+        allowed_domains: Domain glob patterns that are permitted.
+
+    Raises:
+        ValueError: If the URL host is not allowed.
+
+    """
+    if not is_allowed_domain(url, allowed_domains):
+        raise ValueError(f"Unsafe form domain: {url}")
+
+
+def is_allowed_domain(url: str, allowed_domains: Iterable[str]) -> bool:
+    """Return ``True`` when ``url`` hosts match any of the allowed domain globs.
+
+    Args:
+        url: Absolute URL evaluated for safety.
+        allowed_domains: Domain glob patterns (supports ``*.example.com`` and
+            ``example.*`` shorthands).
+
+    Returns:
+        bool: ``True`` when the URL host is permitted, ``False`` otherwise.
+
+    """
+    match = _ALLOWED_DOMAIN_REGEX.match(url)
+    if not match:
+        return False
+    host = match.group("host").lower()
+    for domain in allowed_domains:
+        pattern = domain.lower()
+        if pattern == host:
+            return True
+        if pattern.startswith("*."):
+            suffix = pattern[1:]
+            if host.endswith(suffix):
+                return True
+        if pattern.endswith(".*"):
+            prefix = pattern[:-2]
+            if host.startswith(prefix):
+                return True
+        if pattern in host:
+            return True
+    return False
+
+
+_ALLOWED_DOMAIN_REGEX: Final[re.Pattern[str]] = re.compile(r"^https?://(?P<host>[^/]+)")
 
 
 def _strip_doctype(html: str) -> str:
@@ -162,4 +326,5 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 
 
 def _normalize_question_key(text: str) -> str:
-    return " ".join(text.lower().split())
+    cleaned = re.sub(r"[^\w\s]", "", text.lower())
+    return " ".join(cleaned.split())

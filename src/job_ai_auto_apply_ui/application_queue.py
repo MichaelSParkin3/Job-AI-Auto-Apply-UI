@@ -42,6 +42,12 @@ class Reason:
     message: str
 
     def to_dict(self) -> dict[str, str]:
+        """Convert the reason into a serialisable dictionary.
+
+        Returns:
+            dict[str, str]: Mapping with ``code`` and ``message`` keys.
+
+        """
         return {"code": self.code, "message": self.message}
 
 
@@ -57,6 +63,12 @@ class Artifacts:
     confirmation_id: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
+        """Return a dictionary representation of the captured artifacts.
+
+        Returns:
+            dict[str, str | None]: Mapping of artifact fields to their values.
+
+        """
         return {
             "dom_snapshot_path": self.dom_snapshot_path,
             "screenshot_path": self.screenshot_path,
@@ -68,6 +80,15 @@ class Artifacts:
 
     @classmethod
     def from_dict(cls, data: MutableMapping[str, str | None]) -> Artifacts:
+        """Build an :class:`Artifacts` instance from a dictionary mapping.
+
+        Args:
+            data: Mapping containing artifact paths and confirmation metadata.
+
+        Returns:
+            Artifacts: Parsed artifact container.
+
+        """
         return cls(
             dom_snapshot_path=data.get("dom_snapshot_path"),
             screenshot_path=data.get("screenshot_path"),
@@ -98,6 +119,13 @@ class JobDetails:
     extracted_at: datetime | None = None
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise job details to a JSON-friendly mapping.
+
+        Returns:
+            dict[str, object]: Mapping containing location, posting metadata, and
+            auxiliary information for persistence.
+
+        """
         payload: dict[str, object] = {
             "location": self.location,
             "work_model": self.work_model,
@@ -118,6 +146,15 @@ class JobDetails:
 
     @classmethod
     def from_dict(cls, data: MutableMapping[str, object]) -> JobDetails:
+        """Create :class:`JobDetails` from a persisted mapping.
+
+        Args:
+            data: Mapping with stored job detail fields.
+
+        Returns:
+            JobDetails: Reconstructed details instance.
+
+        """
         return cls(
             location=_maybe_str(data.get("location")),
             work_model=_maybe_str(data.get("work_model")) or "unknown",
@@ -153,6 +190,12 @@ class ApplicationItem:
     reason: Reason | None = None
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise the queue item for persistence.
+
+        Returns:
+            dict[str, object]: Mapping of queue fields, artifacts, and details.
+
+        """
         payload: dict[str, object] = {
             "id": self.id,
             "url": self.url,
@@ -169,6 +212,12 @@ class ApplicationItem:
         return payload
 
     def to_contract_dict(self) -> dict[str, object]:
+        """Return the minimal contract payload exposed to CLI consumers.
+
+        Returns:
+            dict[str, object]: Mapping containing id, URL, company, title, and timestamp.
+
+        """
         return {
             "id": self.id,
             "url": self.url,
@@ -186,6 +235,12 @@ class ApplicationItem:
         self.reason = reason
 
     def attach_artifacts(self, artifacts: Artifacts) -> None:
+        """Attach captured artifacts to the item and refresh timestamps.
+
+        Args:
+            artifacts: Artifacts captured during processing.
+
+        """
         self.artifacts = artifacts
         self.last_updated_at = _now()
 
@@ -224,6 +279,15 @@ class ApplicationItem:
 
     @classmethod
     def from_dict(cls, data: MutableMapping[str, object]) -> ApplicationItem:
+        """Construct an :class:`ApplicationItem` from stored mapping data.
+
+        Args:
+            data: Mapping representing a persisted application item.
+
+        Returns:
+            ApplicationItem: Recreated queue item with nested structures restored.
+
+        """
         details_raw = data.get("details")
         reason_raw = data.get("reason")
         return cls(
@@ -249,6 +313,13 @@ class ApplicationQueue:
     """JSON-backed queue persistence for application items."""
 
     def __init__(self, profile_id: str, base_dir: Path | None = None) -> None:
+        """Initialise a queue for the given profile, loading persisted items.
+
+        Args:
+            profile_id: Profile identifier used to namescape queue storage.
+            base_dir: Optional directory override for queue persistence.
+        """
+
         self.profile_id = profile_id
         root = Path(base_dir) if base_dir else Path.cwd() / "data" / "queues"
         root.mkdir(parents=True, exist_ok=True)
@@ -264,9 +335,13 @@ class ApplicationQueue:
                     self._hash_index[item.hash] = item.id
 
     def __len__(self) -> int:  # pragma: no cover - trivial
+        """Return the number of items stored in the queue."""
+
         return len(self._items)
 
     def iter_items(self) -> Iterator[ApplicationItem]:
+        """Yield items ordered by discovery timestamp."""
+
         return iter(sorted(self._items.values(), key=lambda item: item.discovered_at))
 
     def get(self, item_id: str) -> ApplicationItem | None:

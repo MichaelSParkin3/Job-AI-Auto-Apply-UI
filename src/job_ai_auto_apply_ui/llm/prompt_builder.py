@@ -1,7 +1,8 @@
-"""Prompt construction utilities for Lever auto-apply flows."""
+"""Prompt composition utilities for Lever dynamic questions."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
@@ -35,7 +36,16 @@ class PromptBuilder:
         cache: Mapping[str, str] | None = None,
         provider: str | None = None,
     ) -> None:
-        """Store profile context and optional cache settings."""
+        """Store profile context and optional cache settings.
+
+        Args:
+            profile: Active profile whose defaults, keywords, and prompts prime the
+                generated messages.
+            cache: Optional cache mapping normalized question text to prepared
+                answers that can bypass the LLM.
+            provider: Optional provider name appended to the system prompt for
+                auditing purposes.
+        """
         self.profile = profile
         self._cache = cache or {}
         self.provider = provider
@@ -47,7 +57,16 @@ class PromptBuilder:
         job: JobDetails,
         extra_context: Iterable[str] | None = None,
     ) -> PromptPlan:
-        """Create a prompt payload for a dynamic question."""
+        """Create a prompt payload for a dynamic question.
+
+        Args:
+            question: Question metadata extracted from the Lever form.
+            job: Structured job details that enrich the generated prompt.
+            extra_context: Optional bullet points appended to the user message.
+
+        Returns:
+            PromptPlan: Plan describing cache key and chat messages to send.
+        """
         cache_key = self._normalize_question_key(question.text)
         if cache_key in self._cache:
             return PromptPlan(
@@ -88,7 +107,10 @@ class PromptBuilder:
 
     @staticmethod
     def _normalize_question_key(text: str) -> str:
-        return " ".join(text.lower().split())
+        """Normalize question text into a consistent cache key."""
+
+        cleaned = re.sub(r"[^\w\s]", "", text.lower())
+        return " ".join(cleaned.split())
 
 
 def _format_profile(profile: Profile) -> str:

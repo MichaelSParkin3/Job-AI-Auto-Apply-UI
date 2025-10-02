@@ -9,8 +9,8 @@ from job_ai_auto_apply_ui.orchestrator import main
 
 def run_cli(args):
     """Run the CLI main with given args and capture output."""
-    from io import StringIO
     import contextlib
+    from io import StringIO
 
     previous_mode = os.environ.get("AUTO_APPLY_BROWSER_MODE")
     os.environ["AUTO_APPLY_BROWSER_MODE"] = "off"

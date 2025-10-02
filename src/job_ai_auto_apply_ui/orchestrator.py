@@ -8,24 +8,39 @@ import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 import httpx
 
 from . import job_discovery, profile_manager
 from .application_queue import ApplicationQueue, ApplicationStatus
-from .browser_agent import LeverApplyAgent, LeverFormPlan
+from .browser_agent import (
+    LeverApplyAgent,
+    LeverBrowserOptions,
+    LeverFormPlan,
+    ensure_allowed_domain,
+)
+from .config import load_settings
 from .llm import load_llm_config
 from .profile_manager import Profile, ProfileNotFoundError
 from .telemetry import bind_timeline, log_event
 
 
 def _print_json(obj: object) -> None:
+    """Serialize ``obj`` to JSON and emit it on stdout."""
+
     print(json.dumps(obj, ensure_ascii=False))
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
-    """Execute the `discover` command and emit queue updates."""
+    """Execute the ``discover`` command and emit queue updates.
+
+    Args:
+        args: Parsed CLI arguments for the ``discover`` subcommand.
+
+    Returns:
+        int: Exit code (0 on success, 2 when no new items were found).
+
+    """
     try:
         profile_obj = profile_manager.load_profile(args.profile)
     except ProfileNotFoundError:
@@ -74,7 +89,15 @@ def cmd_discover(args: argparse.Namespace) -> int:
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
-    """Execute the `apply` command for the provided profile."""
+    """Execute the ``apply`` command for the provided profile.
+
+    Args:
+        args: Parsed CLI arguments for the ``apply`` subcommand.
+
+    Returns:
+        int: Exit code ``0`` when all items were submitted, ``3`` when any failed.
+
+    """
     try:
         profile_obj = profile_manager.load_profile(args.profile)
     except ProfileNotFoundError:
@@ -134,7 +157,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    """Resume a paused job from the persisted queues."""
+    """Resume a paused job from the persisted queues.
+
+    Args:
+        args: Parsed CLI arguments for the ``resume-job`` subcommand.
+
+    Returns:
+        int: Exit code ``0`` on success or ``4`` if the item could not be located.
+
+    """
     try:
         payload = resume_job(args.id)
     except LookupError:
@@ -160,10 +191,21 @@ def iter_apply_events(
     *,
     fetch_form: Callable[[str], str] | None = None,
 ) -> Iterator[dict[str, object]]:
-    """Yield apply events for streaming to the CLI."""
+    """Yield apply events for streaming to the CLI.
+
+    Args:
+        profile: Active profile driving the application session.
+        mode: ``"auto"`` or ``"supervised"`` mode indicator.
+        fetch_form: Optional callable to retrieve HTML for a posting form.
+
+    Yields:
+        dict[str, object]: Event payloads following the apply contract schema.
+
+    """
     profile = _ensure_profile(profile)
     queue = ApplicationQueue(profile.id)
-    agent = LeverApplyAgent()
+    browser_options = LeverBrowserOptions.from_settings(profile=profile)
+    agent = LeverApplyAgent(options=browser_options)
     submitted = 0
     failed = 0
     fetch_form = fetch_form or _default_form_fetch
@@ -302,6 +344,16 @@ def _ensure_iterable(raw: object) -> list[str]:
 
 
 def _plan_to_payload(plan: LeverFormPlan) -> dict[str, object]:
+    """Convert a :class:`LeverFormPlan` into a serializable dictionary.
+
+    Args:
+        plan: Plan generated from form analysis.
+
+    Returns:
+        dict[str, object]: JSON-serializable payload of selectors and metadata.
+
+    """
+
     return {
         "resume_input": plan.resume_input,
         "contact_fields": plan.contact_fields,
@@ -321,9 +373,21 @@ def _plan_to_payload(plan: LeverFormPlan) -> dict[str, object]:
 
 
 def _default_form_fetch(url: str) -> str:
-    parsed = urlparse(url)
-    if "jobs.lever.co" not in parsed.netloc:
-        raise ValueError(f"Unsafe form domain: {parsed.netloc}")
+    """Fetch Lever form HTML while enforcing allowed domain safety.
+
+    Args:
+        url: Target application form URL.
+
+    Returns:
+        str: Raw HTML contents of the requested form.
+
+    Raises:
+        ValueError: If the URL is outside the configured allow-list.
+
+    """
+
+    settings = load_settings()
+    ensure_allowed_domain(url, settings.allowed_domains)
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -338,7 +402,18 @@ def _default_form_fetch(url: str) -> str:
 
 
 def resume_job(job_id: str) -> dict[str, object]:
-    """Resume a job by id, raising LookupError when absent."""
+    """Resume a job by id, raising ``LookupError`` when absent.
+
+    Args:
+        job_id: Identifier returned from discovery/application queues.
+
+    Returns:
+        dict[str, object]: Payload describing resumed status and progress.
+
+    Raises:
+        LookupError: If the job cannot be found in any persisted queue file.
+
+    """
     queue_dir = Path.cwd() / "data" / "queues"
     queue_dir.mkdir(parents=True, exist_ok=True)
     for queue_path in queue_dir.glob("*.json"):
@@ -361,7 +436,12 @@ def resume_job(job_id: str) -> dict[str, object]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the top-level CLI argument parser."""
+    """Build the top-level CLI argument parser.
+
+    Returns:
+        argparse.ArgumentParser: Parser configured with all subcommands.
+
+    """
     parser = argparse.ArgumentParser(
         prog="auto-apply",
         description="Lever Auto‑Apply Assistant. Use --json for machine-readable outputs.",
@@ -394,7 +474,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_window_hours(value: str) -> int:
-    """Parse shorthand duration strings into hours."""
+    """Parse shorthand duration strings into integer hour counts.
+
+    Args:
+        value: Duration string such as ``"24h"`` or ``"7d"``.
+
+    Returns:
+        int: Number of hours represented by the input (minimum of 1).
+
+    """
     value = value.strip().lower()
     if value.endswith("h"):
         return max(1, int(value[:-1]))
@@ -406,7 +494,15 @@ def _parse_window_hours(value: str) -> int:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
-    """Entry point for the auto-apply CLI."""
+    """Entry point for the auto-apply CLI.
+
+    Args:
+        argv: Optional argument list to parse instead of ``sys.argv``.
+
+    Returns:
+        int: Exit code emitted by the chosen subcommand handler.
+
+    """
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     return args.func(args)
