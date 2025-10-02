@@ -238,14 +238,30 @@ class _LeverPostingParser(HTMLParser):
         return joined or None
 
 
+def _quote_query_term(term: str) -> str:
+    """Return a Google-safe quoted term, escaping embedded quotes."""
+
+    escaped = term.replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def build_search_query(profile: Profile, *, max_terms: int = 6) -> str:
     """Return the discovery search query for the profile."""
-    terms = [term for term in profile.discovery_terms() if term]
-    terms = terms[:max_terms]
+
+    seen: dict[str, None] = {}
+    for term in profile.discovery_terms():
+        if term and term not in seen:
+            seen[term] = None
+
+    terms = list(seen.keys())[:max_terms]
     if not terms:
         return "site:jobs.lever.co"
-    quoted = " ".join(f'"{term}"' for term in terms)
-    return f"site:jobs.lever.co {quoted}".strip()
+
+    if len(terms) == 1:
+        return f"site:jobs.lever.co {_quote_query_term(terms[0])}".strip()
+
+    joined = " OR ".join(_quote_query_term(term) for term in terms)
+    return f"site:jobs.lever.co ({joined})"
 
 
 def build_search_url(profile: Profile, window_hours: int) -> str:
