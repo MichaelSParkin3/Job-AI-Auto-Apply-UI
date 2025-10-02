@@ -359,21 +359,24 @@ class LeverApplyAgent:
 
         plan = await self.build_plan_in_browser(page)
 
-        # Upload resume
+        # Upload resume (prefer Playwright API; otherwise supervised manual)
         resume_path = str(profile.resolve_resume_path())
         try:
             if hasattr(page, "set_input_files"):
                 await page.set_input_files(plan.resume_input, resume_path)
             else:
-                # Try a JS-based fallback (may not work for file inputs)
-                await page.evaluate(
-                    f"(sel) => {{ const el = document.querySelector(sel); if(el) el.value=''; }}",
-                    plan.resume_input,
-                )
+                # No programmatic file upload available; prompt in supervised mode
+                if mode != "auto":
+                    print("Resume upload: session lacks set_input_files. Please attach your resume manually, then press Enter…")
+                    try:
+                        input()
+                    except Exception:
+                        pass
+                else:
+                    return Reason(code="resume_upload_unsupported", message="Browser session cannot attach files programmatically")
         except Exception:
-            # If supervised, allow manual attach
             if mode != "auto":
-                print("Please attach your resume manually in the browser, then press Enter to continue...")
+                print("Resume upload failed. Please attach manually, then press Enter…")
                 try:
                     input()
                 except Exception:
@@ -403,6 +406,11 @@ class LeverApplyAgent:
             hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
             value=profile.defaults.get("location"),
         )
+
+        # Pronouns (optional checkboxes). Supports single string or comma-separated list.
+        pronouns_raw = profile.defaults.get("pronouns")
+        if pronouns_raw:
+            await _set_pronouns(page, pronouns_raw)
 
         # Fill link fields if defaults contain recognizable keys
         for field_name, selector in plan.link_fields.items():
@@ -453,6 +461,53 @@ class LeverApplyAgent:
                     answer = profile.prompts.get("fallback_answer") or profile.prompts.get("default_long_form")
                 if answer:
                     await _fill_textarea(page, q.answer_selector, answer)
+
+        # Cover letter (textarea[name='comments'] or #additional-information) via LLM
+        try:
+            has_cover = await page.evaluate(
+                "() => !!(document.querySelector('textarea[name=\\'comments\\']') || document.querySelector('#additional-information'))"
+            )
+        except Exception:
+            has_cover = False
+        if has_cover:
+            cover_selector = "textarea[name='comments']"  # prefer named textarea
+            try:
+                exists_named = await page.evaluate("() => !!document.querySelector('textarea[name=\\'comments\\']')")
+            except Exception:
+                exists_named = False
+            if not exists_named:
+                cover_selector = "#additional-information"
+            cover_text = None
+            try:
+                client = OpenRouterClient.from_settings()
+                # Build a concise, tailored cover letter
+                job = item.details or JobDetails()
+                profile_links = {
+                    "portfolio_url": profile.defaults.get("portfolio_url"),
+                    "github_url": profile.defaults.get("github_url"),
+                    "linkedin_url": profile.defaults.get("linkedin_url"),
+                }
+                messages = [
+                    {"role": "system", "content": (
+                        "You write concise, tailored cover letters. 180-220 words, positive, specific, no fluff. "
+                        "Include a sentence on impact, a brief skills-to-role bridge, and a polite close."
+                    )},
+                    {"role": "user", "content": json.dumps({
+                        "job": job.to_dict(),
+                        "profile": {
+                            "name": profile.name,
+                            "resume_summary": profile.prompts.get("resume_summary"),
+                            "key_accomplishments": profile.prompts.get("key_accomplishments"),
+                            **profile_links,
+                        },
+                        "hint": profile.prompts.get("cover_letter"),
+                    }, ensure_ascii=False)},
+                ]
+                cover_text = client.complete(messages, temperature=0.2)
+            except Exception:
+                cover_text = profile.prompts.get("cover_letter")
+            if cover_text:
+                await _fill_textarea(page, cover_selector, cover_text)
 
         # Multiple-choice dynamic cards (checkboxes/radios) — simple heuristics
         try:
@@ -618,6 +673,42 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         pass
 
 
+async def _set_pronouns(page, pronouns: str | list[str]) -> None:
+    """Check pronoun checkboxes by value. Accepts a string or list of strings.
+
+    Matches by case-insensitive value, e.g., "He/him", "They/them", "Use name only".
+    """
+    def _normalize(x: str) -> str:
+        return str(x).strip().lower()
+
+    if isinstance(pronouns, str):
+        values = [v.strip() for v in pronouns.split(",") if v.strip()]
+    else:
+        values = [str(v).strip() for v in pronouns if v]
+    values_norm = [_normalize(v) for v in values]
+    try:
+        await page.evaluate(
+            """
+            (values) => {
+              const norm = (x) => String(x).trim().toLowerCase();
+              const inputs = Array.from(document.querySelectorAll("input[type='checkbox'][name='pronouns']"));
+              for (const v of values) {
+                for (const el of inputs) {
+                  const text = el.value || el.getAttribute('aria-label') || '';
+                  if (norm(text) === norm(v)) {
+                    el.checked = true;
+                    el.dispatchEvent(new Event('change', {bubbles:true}));
+                  }
+                }
+              }
+            }
+            """,
+            values_norm,
+        )
+    except Exception:
+        pass
+
+
 async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> None:
     """Type location then try to pick a suggestion; fallback to hidden input.
 
@@ -633,7 +724,7 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             value,
         )
         # Give Lever a moment to render suggestions
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(1.2)
         # Try clicking the first suggestion
         clicked = await page.evaluate(
             "(containerSel) => {\n              const c = document.querySelector('.dropdown-results');\n              if (!c) return false;\n              const first = c.querySelector('[data-value], li, div');\n              if (first && typeof first.click === 'function') { first.click(); return true; }\n              return false;\n            }",

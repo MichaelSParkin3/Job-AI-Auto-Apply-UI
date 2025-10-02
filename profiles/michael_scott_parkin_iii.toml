@@ -8,12 +8,13 @@ user_data_dir = "G:/Github_Repos/Job-AI-Auto-Apply-UI/Job-AI-Auto-Apply-UI/data/
 current_company = "Freelance"
 email = "MichaelSParkin3@gmail.com"
 phone = "+1-555-010-4422"
-location = "Remote, USA"
+location = "Hollister, CA"
 portfolio_url = "https://www.michaelsparkin.com/"
 github_url = "https://github.com/MichaelSParkin3"
 linkedin_url = "https://www.linkedin.com/in/michael-s-parkin"
 work_authorization = "Authorized to work in the United States"
 salary_expectation = "Open to discussion"
+pronouns = "He/him"
 
 [keywords]
 roles = [
