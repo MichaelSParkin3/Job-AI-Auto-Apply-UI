@@ -359,30 +359,20 @@ class LeverApplyAgent:
 
         plan = await self.build_plan_in_browser(page)
 
-        # Upload resume (prefer Playwright API; otherwise supervised manual)
+        # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
-        try:
-            if hasattr(page, "set_input_files"):
-                await page.set_input_files(plan.resume_input, resume_path)
-            else:
-                # No programmatic file upload available; prompt in supervised mode
-                if mode != "auto":
-                    print("Resume upload: session lacks set_input_files. Please attach your resume manually, then press Enter…")
-                    try:
-                        input()
-                    except Exception:
-                        pass
-                else:
-                    return Reason(code="resume_upload_unsupported", message="Browser session cannot attach files programmatically")
-        except Exception:
+        uploaded = await _upload_resume(page, plan.resume_input, resume_path)
+        if not uploaded:
             if mode != "auto":
-                print("Resume upload failed. Please attach manually, then press Enter…")
+                print("Resume upload not detected. Please attach manually in the browser, then press Enter…")
                 try:
                     input()
                 except Exception:
                     pass
-            else:
-                return Reason(code="resume_upload_failed", message="Could not attach resume file")
+                # Re-check after manual attach
+                uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
+            if not uploaded:
+                return Reason(code="resume_upload_failed", message="Resume not attached")
 
         # Fill contact fields from profile defaults (with sensible fallbacks)
         await _fill_if_available(
@@ -671,6 +661,106 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         )
     except Exception:
         pass
+
+
+async def _upload_resume(page, selector: str, path: str) -> bool:
+    """Attach a resume file using best available mechanism and wait for success.
+
+    Strategy (in order):
+    1) Playwright locator.set_input_files if available
+    2) Playwright page.set_input_files if available
+    3) File chooser flow: click the visible button and set files on chooser
+    After attempting, wait for UI signals that upload succeeded.
+    """
+    # Ensure input exists in DOM
+    try:
+        await page.get_elements_by_css_selector(selector)
+    except Exception:
+        return False
+
+    # 1) Locator-based API
+    try:
+        if hasattr(page, "locator"):
+            await page.locator(selector).set_input_files(path)
+            ok = await _wait_for_resume_upload(page, selector)
+            if ok:
+                return True
+    except Exception:
+        pass
+
+    # 2) Page-level API
+    try:
+        if hasattr(page, "set_input_files"):
+            await page.set_input_files(selector, path)
+            ok = await _wait_for_resume_upload(page, selector)
+            if ok:
+                return True
+    except Exception:
+        pass
+
+    # 3) File chooser flow if supported
+    try:
+        # Some wrappers expose expect_file_chooser or wait_for_event('filechooser')
+        if hasattr(page, "expect_file_chooser"):
+            async with page.expect_file_chooser() as fc_info:
+                await page.evaluate("(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }", selector)
+            fc = await fc_info
+            await fc.set_files(path)
+            ok = await _wait_for_resume_upload(page, selector)
+            if ok:
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 12.0) -> bool:
+    """Wait until the resume input reflects an attached file or Lever shows success.
+
+    Signals considered success:
+    - input.files.length > 0
+    - hidden input resumeStorageId populated
+    - .resume-upload-success is visible
+    Failure signals (return False early):
+    - .resume-upload-failure visible
+    - .resume-upload-oversize visible
+    """
+    deadline = asyncio.get_event_loop().time() + max(1.0, timeout)
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            state = await page.evaluate(
+                """
+                (sel) => {
+                  const el = document.querySelector(sel);
+                  const files = el && el.files ? el.files.length : 0;
+                  const ok1 = files && files > 0;
+                  const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
+                  const ok3 = (() => {
+                    const s = document.querySelector('.resume-upload-success');
+                    return !!(s && s.offsetParent !== null);
+                  })();
+                  const fail1 = (() => {
+                    const f = document.querySelector('.resume-upload-failure');
+                    return !!(f && f.offsetParent !== null);
+                  })();
+                  const fail2 = (() => {
+                    const o = document.querySelector('.resume-upload-oversize');
+                    return !!(o && o.offsetParent !== null);
+                  })();
+                  return { ok: (ok1 || ok2 || ok3), fail: (fail1 || fail2) };
+                }
+                """,
+                selector,
+            )
+            if state and state.get("ok"):
+                return True
+            if state and state.get("fail"):
+                return False
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+    return False
 
 
 async def _set_pronouns(page, pronouns: str | list[str]) -> None:

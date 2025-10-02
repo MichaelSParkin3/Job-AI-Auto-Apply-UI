@@ -78,9 +78,9 @@
       "url": "https://jobs.lever.co/spotify/e8f4474d-2a32-4622-abdf-3b70d500fac9",
       "company": "spotify",
       "title": "Senior Fullstack Engineer, Commerce Platform",
-      "status": "in_progress",
+      "status": "failed",
       "discovered_at": "2025-10-02T05:19:24.372972+00:00",
-      "last_updated_at": "2025-10-02T05:40:37.616101+00:00",
+      "last_updated_at": "2025-10-02T14:57:51.652265+00:00",
       "hash": "d40d17b08f679352dae836feb0faefd5c85a9c63edbaf09f11ede6a3bfd23ea1",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -106,16 +106,19 @@
         "closed": false,
         "extracted_at": "2025-10-02T05:19:24.372940+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "captcha_blocked",
+        "message": "hCaptcha detected on form"
+      }
     },
     {
       "id": "0199a35c638c9307724a65a20fef",
       "url": "https://jobs.lever.co/kixie/3a557d7d-1aa4-47c2-a3b2-a45bf9d7ef57",
       "company": "kixie",
       "title": "Staff Software Engineer - Full Stack",
-      "status": "new",
+      "status": "in_progress",
       "discovered_at": "2025-10-02T05:19:25.068191+00:00",
-      "last_updated_at": "2025-10-02T05:19:25.068191+00:00",
+      "last_updated_at": "2025-10-02T14:57:51.654369+00:00",
       "hash": "cc3a18a036f966521beaa71d3768b48ca0d6e104b1d6eb80cbe2c0bd8fd729f8",
       "artifacts": {
         "dom_snapshot_path": null,
