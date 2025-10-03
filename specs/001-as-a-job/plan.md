@@ -104,7 +104,7 @@ Follow these steps in order; each step cites the spec or reference to consult wh
 - References: data-model.md → Profile; spec.md → FR-003; quickstart.md step 1.
 
 2) Queue + persistence (`src/job_ai_auto_apply_ui/application_queue.py`)
-- Purpose: Create/read/update ApplicationItem; enforce hash de-dup; manage statuses and artifacts.
+- Purpose: Create/read/update ApplicationItem; enforce hash de-dup; manage statuses and artifacts; tolerate `details=None` until extraction populates metadata.
 - References: data-model.md → ApplicationItem, Artifacts; spec.md → FR-002, FR-006, FR-013.
 
 3) Discovery (`src/job_ai_auto_apply_ui/job_discovery.py`)
@@ -112,7 +112,7 @@ Follow these steps in order; each step cites the spec or reference to consult wh
 - References: reference_files/patterns-google-lever.md → Google; spec.md → FR-001, FR-018, FR-032, FR-028.
 
 4) Details extraction (`src/job_ai_auto_apply_ui/job_discovery.py`)
-- Purpose: For each posting, fetch and normalize JobDetails (title, location, department, work_model, employment_type, excerpt/text, apply_url).
+- Purpose: For each posting, fetch and normalize JobDetails (title, location, department, work_model, employment_type, excerpt/text, apply_url) while allowing free-form values when canonical enums are unavailable.
 - References: data-model.md → JobDetails; reference_files/patterns-google-lever.md → Posting page selectors; spec.md → new acceptance bullets 10–11.
 
 5) Browser agent for Lever (`src/job_ai_auto_apply_ui/browser_agent/lever.py`)

@@ -25,7 +25,7 @@ Date: 2025-10-01
 - reason: object { code: string, message: string } | null
 - artifacts: Artifacts
 - hash: string (sha256 of url|company|title)
-- details: JobDetails
+- details: JobDetails | null (null until extraction populates normalized fields)
 
 ### AnswerCache
 - id: string (ulid)
@@ -48,19 +48,19 @@ Date: 2025-10-01
 
 ### JobDetails
 - location: string | null
-- work_model: enum { remote, hybrid, onsite, unknown }
-- employment_type: enum { full_time, part_time, contract, intern, temporary, unknown }
+- work_model: string (normalized to remote|hybrid|onsite when known; otherwise free-form)
+- employment_type: string (normalized to full_time|part_time|contract|intern|temporary when known; otherwise free-form)
 - department: string | null
 - posting_date: datetime | null
-- compensation: object | null { currency: string | null, min: number | null, max: number | null, period: enum { hourly, yearly, unknown } | null }
-- posting_excerpt: string (≤1500 chars, trimmed paragraphs)
-- posting_text: string (≤8192 chars, cleaned of HTML)
+- compensation: object | null { currency: string | null, min: number | null, max: number | null, period: string | null }
+- posting_excerpt: string | null (≤1500 chars when present)
+- posting_text: string | null (≤8192 chars when present)
 - tech_tags: list[string]
 - source_query: string | null
 - source_rank: int | null
 - apply_url: string | null
 - closed: bool (default false)
-- extracted_at: datetime
+- extracted_at: datetime | null
 
 ### Config
 - dwell_seconds: float (default 0.8)

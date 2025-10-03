@@ -4,9 +4,12 @@
 2. Run discovery:
    - Human: `discover --profile my-profile`
    - JSON: `discover --profile my-profile --json > queue.json`
-3. Start applying (supervised by default):
-   - Human: `apply --profile my-profile`
+3. Start applying (supervised by default, JSON optional):
+   - Supervised review: `apply --profile my-profile`
+   - Explicit supervised flag (for clarity in scripts): `apply --profile my-profile --supervised`
    - Auto-submit: `apply --profile my-profile --auto`
+   - JSON stream + overrides: `apply --profile my-profile --json --llm-provider openrouter --llm-model gpt-best --use-llm-locator`
+   - Resume diagnostics toggle: append `--debug-resume-widget --resume-wait-timeout-seconds 45`
 4. Handle CAPTCHAs:
    - When blocked, note the job id and run `resume-job <id>` after manual solve.
 5. Review logs and artifacts under `data/`.

@@ -303,12 +303,19 @@ def iter_apply_events(
         if artifacts:
             queue.mark_submitted(item.id, artifacts)
             submitted += 1
-            timeline.info("item.submitted", confirmation_text=artifacts.confirmation_text)
-            yield {
+            timeline.info(
+                "item.submitted",
+                confirmation_text=artifacts.confirmation_text,
+                confirmation_id=artifacts.confirmation_id,
+            )
+            event_payload = {
                 "event": "submitted",
                 "id": item.id,
                 "confirmation_text": artifacts.confirmation_text,
             }
+            if artifacts.confirmation_id:
+                event_payload["confirmation_id"] = artifacts.confirmation_id
+            yield event_payload
         else:
             failed += 1
             queue.mark_failed(item.id, Reason(code=reason.get("code", "failed"), message=reason.get("message", "Failed")))

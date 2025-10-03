@@ -145,17 +145,17 @@
 /specs/001-as-a-job> Task: "T027 Tests for LLM wrappers and prompt_builder"
 ```
 ## Reconciliation Tasks
-- [ ] RT001 Update CLI documentation to match implemented flags
+- [X] RT001 Update CLI documentation to match implemented flags
   - Description: Reflect new apply command toggles (`--llm-provider`, `--llm-model`, `--use-llm-locator`/`--no-use-llm-locator`, `--debug-resume-widget`, `--resume-wait-timeout-seconds`) and remove the undocumented `--discovery-only` reference.
   - Acceptance Criteria: spec.md FR-030 describes actual modes; cli-contracts.md lists current flags and exit codes; quickstart.md includes guidance for the new options; contract tests cover parser acceptance for these flags.
   - Files: `specs/001-as-a-job/spec.md`, `specs/001-as-a-job/contracts/cli-contracts.md`, `specs/001-as-a-job/quickstart.md`, `tests/contract/test_apply_contract.py`.
   - Tests First: Extend contract test to assert argparse accepts the documented flags before editing docs.
-- [ ] RT002 Align JobDetails normalization expectations with current model behavior
+- [X] RT002 Align JobDetails normalization expectations with current model behavior
   - Description: Update data-model.md (and related spec sections) to note that `ApplicationItem.details` may be null until extraction completes and that work_model/employment_type values are stored as free-form strings with suggested normalization.
   - Acceptance Criteria: data-model.md reflects optional details and string-based enums; spec acceptance/test narratives reference the updated normalization approach; plan references remain valid.
   - Files: `specs/001-as-a-job/data-model.md`, `specs/001-as-a-job/spec.md`, `specs/001-as-a-job/plan.md`.
   - Tests First: Add or update unit test coverage in `tests/unit/test_queue.py` to confirm serialization when details is null before updating docs.
-- [ ] RT003 Emit confirmation identifiers in apply event stream when available
+- [X] RT003 Emit confirmation identifiers in apply event stream when available
   - Description: Update orchestrator.iter_apply_events to include `confirmation_id` alongside `confirmation_text` when artifacts supply it so that the runtime matches the documented sample and schema.
   - Acceptance Criteria: `submitted` events contain both confirmation text and id when present; contract test asserts the field; schema remains satisfied.
   - Files: `src/job_ai_auto_apply_ui/orchestrator.py`, `tests/contract/test_apply_contract.py`.

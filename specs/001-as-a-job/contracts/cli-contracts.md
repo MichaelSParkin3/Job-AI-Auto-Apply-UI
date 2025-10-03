@@ -17,6 +17,9 @@ Schema: `contracts/schemas/discover.schema.json`
 
 ## apply
 - Command: `apply --profile <name> [--auto|--supervised] [--json]`
+- Provider overrides: `--llm-provider <name>`, `--llm-model <model>`
+- Resume upload tuning: `--use-llm-locator` | `--no-use-llm-locator`,
+  `--debug-resume-widget`, `--resume-wait-timeout-seconds <int>`
 - Output stream (JSON lines when `--json`):
 ```
 {"event":"start","profile":"<name>"}
@@ -25,6 +28,7 @@ Schema: `contracts/schemas/discover.schema.json`
 {"event":"failed","id":"...","reason":{"code":"captcha_blocked","message":"..."}}
 {"event":"end","summary":{"submitted":N,"failed":M}}
 ```
+- Submitted events include `confirmation_text` and attach `confirmation_id` when an identifier is captured from the site.
 - Exit codes: 0 success; 3 partial failures; 1 fatal error
 
 Schema (per line): `contracts/schemas/apply-event.schema.json`

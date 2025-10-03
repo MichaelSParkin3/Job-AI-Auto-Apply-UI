@@ -150,8 +150,11 @@ prompts), so that I save time while keeping control and traceability.
 - **FR-020**: System MUST capture and attach the final application URL and timestamp
   to submitted items.
 - **FR-030**: Default mode MUST auto-fill forms and pause at the final submit step
-  for one-click user approval (use `--auto` to submit without pausing; use
-  `--discovery-only` to skip applying).
+  for one-click user approval. Operators MAY pass `--auto` to submit without
+  pausing or `--supervised` to opt-in explicitly. Apply runs MUST honor documented
+  toggles for LLM selection (`--llm-provider`, `--llm-model`) and resume upload
+  handling (`--use-llm-locator` / `--no-use-llm-locator`,
+  `--debug-resume-widget`, `--resume-wait-timeout-seconds`).
 - **FR-032**: System MUST cap discovery at a configurable maximum of 10 items per
   run by default; queue size may be smaller when fewer matching postings exist.
 - **FR-033**: AnswerCache MUST reuse answers per profile for generic fields (e.g.,
@@ -186,7 +189,8 @@ prompts), so that I save time while keeping control and traceability.
 - **Profile**: Selected configuration for applying (resume path, defaults, keywords,
   prompts); may include a `user_data_dir` for cookie reuse and a preferred browser.
 - **ApplicationItem**: A discovered posting to process. Fields: id, url, company,
-  title, status, discovered_at, last_updated_at, reason, artifacts, hash.
+  title, status, discovered_at, last_updated_at, reason, artifacts, hash, and
+  optional `details` populated after extraction completes.
 - **AnswerCache**: Q/A pairs used to fill forms (question key → prepared answer),
   seeded from resume/job description; reused across retries. Entries carry `type`
   = {generic | long_form}, `scope` default `profile` for generic, and may include
