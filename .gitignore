@@ -64,3 +64,6 @@ playwright-report/
 profiles/*.local.*
 profiles/*.secret.*
 
+
+# External repos (do not track in Git)
+external/Job-AI-Auto-Apply/
