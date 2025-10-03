@@ -85,6 +85,34 @@ class Settings:
         default_factory=lambda: _get_bool("AUTO_APPLY_CAPTURE_HAR", False)
     )
 
+    # Resume upload feature flags
+    use_llm_locator: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_USE_LLM_LOCATOR", False)
+    )
+    debug_resume_widget: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_DEBUG_RESUME_WIDGET", False)
+    )
+    resume_wait_timeout_seconds: int = field(
+        default_factory=lambda: _get_int("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", 25)
+    )
+
+    # Stealth / anti-detection
+    browser_locale: str = field(
+        default_factory=lambda: os.getenv("BROWSER_LOCALE", "en-US")
+    )
+    browser_timezone: str = field(
+        default_factory=lambda: os.getenv("BROWSER_TIMEZONE", "America/Los_Angeles")
+    )
+    browser_viewport_width: int = field(
+        default_factory=lambda: _get_int("BROWSER_VIEWPORT_WIDTH", 1280)
+    )
+    browser_viewport_height: int = field(
+        default_factory=lambda: _get_int("BROWSER_VIEWPORT_HEIGHT", 800)
+    )
+    disable_default_extensions: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_DISABLE_DEFAULT_EXTENSIONS", True)
+    )
+
     def artifacts_path(self, profile: str | None = None) -> Path:
         """Return the artifacts directory path, optionally namespaced per profile.
 

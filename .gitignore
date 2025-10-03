@@ -52,7 +52,7 @@ tmp/
 !data/
 data/*
 !data/queues/
-data/queues/*
+!data/queues/*
 !data/queues/dev.json
 
 # Playwright artifacts (if enabled)

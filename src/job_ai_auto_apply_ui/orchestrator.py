@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import asyncio
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,17 +13,41 @@ from pathlib import Path
 import httpx
 
 from . import job_discovery, profile_manager
-from .application_queue import ApplicationQueue, ApplicationStatus
+
+# Auto-load .env if present (no-op if package missing)
+try:  # pragma: no cover - optional
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv()
+except Exception:
+    pass
+from .application_queue import ApplicationQueue, ApplicationStatus, Artifacts, Reason
 from .browser_agent import (
     LeverApplyAgent,
     LeverBrowserOptions,
     LeverFormPlan,
     ensure_allowed_domain,
 )
+from browser_use.browser.session import BrowserSession
 from .config import load_settings
 from .llm import load_llm_config
 from .profile_manager import Profile, ProfileNotFoundError
 from .telemetry import bind_timeline, log_event
+
+# Internal: mirror discovery's browser channel resolver for apply
+
+def _resolve_browser_channel(preferred: str | None) -> str | None:
+    if not preferred:
+        return "chrome"
+    normalized = preferred.strip().lower()
+    mapping = {
+        "chrome": "chrome",
+        "google chrome": "chrome",
+        "chromium": "chromium",
+        "msedge": "msedge",
+        "edge": "msedge",
+        "microsoft edge": "msedge",
+    }
+    return mapping.get(normalized, "chrome")
 
 
 def _print_json(obj: object) -> None:
@@ -102,6 +127,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
         profile_obj = profile_manager.load_profile(args.profile)
     except ProfileNotFoundError:
         profile_obj = {"id": args.profile, "name": args.profile.title()}
+    # Apply CLI overrides via environment so downstream helpers pick them up
+    import os as _os
+    if hasattr(args, "use_llm_locator") and args.use_llm_locator is not None:
+        _os.environ["AUTO_APPLY_USE_LLM_LOCATOR"] = "1" if args.use_llm_locator else "0"
+    if getattr(args, "debug_resume_widget", False):
+        _os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] = "1"
+    if getattr(args, "resume_wait_timeout_seconds", None) is not None:
+        _os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(args.resume_wait_timeout_seconds)
+
     mode = "auto" if args.auto else "supervised"
     llm_config = load_llm_config()
     if getattr(args, "llm_provider", None):
@@ -208,10 +242,10 @@ def iter_apply_events(
     agent = LeverApplyAgent(options=browser_options)
     submitted = 0
     failed = 0
-    fetch_form = fetch_form or _default_form_fetch
     yield {"event": "start", "profile": profile.id}
     pending = queue.pending()
     log_event("apply.pending", profile=profile.id, count=len(pending))
+
     for item in pending:
         if item.status != ApplicationStatus.IN_PROGRESS:
             queue.resume(item.id)
@@ -219,45 +253,68 @@ def iter_apply_events(
         timeline.info("item.start")
         yield {"event": "item", "id": item.id, "status": ApplicationStatus.IN_PROGRESS.value}
 
-        apply_url = None
-        if item.details and item.details.apply_url:
-            apply_url = item.details.apply_url
-        elif item.details and item.details.apply_url is None:
-            apply_url = item.url
-        else:
-            apply_url = item.url
-
-        plan_payload: dict[str, object] | None = None
-        if apply_url:
-            try:
-                form_html = fetch_form(apply_url)
-            except Exception as exc:  # pragma: no cover - network/runtime failure
-                timeline.warning("form.fetch_failed", error=str(exc), url=apply_url)
-                log_event("apply.form_fetch_failed", profile=profile.id, url=apply_url)
-            else:
+        def _browser_apply_one() -> tuple[Artifacts | None, dict | None]:
+            async def _run() -> tuple[Artifacts | None, dict | None]:
+                # Create a fresh browser session per item for simplicity
+                channel = _resolve_browser_channel(profile.preferred_browser)
+                user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
+                # Apply stealth env (TZ/LANG/LC_ALL) then launch with supported kwargs only
+                browser_options.apply_stealth_environment()
+                session = BrowserSession(
+                    headless=False,
+                    channel=channel,
+                    user_data_dir=user_data_dir,
+                    keep_alive=True,
+                    **browser_options.to_browser_use_kwargs(),
+                )
+                await session.start()
                 try:
-                    plan = agent.build_plan(form_html)
-                except ValueError as exc:
-                    timeline.warning("form.parse_failed", error=str(exc))
-                    log_event("apply.form_parse_failed", profile=profile.id, url=apply_url)
-                else:
-                    timeline.info("form.plan_ready", dynamic_questions=len(plan.dynamic_questions))
-                    if mode != "auto":
-                        timeline.info("form.awaiting_approval")
-                    plan_payload = _plan_to_payload(plan)
+                    result = await agent.execute_in_browser(
+                        session=session,
+                        profile=profile,
+                        item=item,
+                        mode=mode,
+                    )
+                    if isinstance(result, Artifacts):
+                        return result, None
+                    else:
+                        # Reason -> dict for event
+                        reason = {"code": result.code, "message": result.message}
+                        return None, reason
+                finally:
+                    try:
+                        await session.stop()
+                    except Exception:
+                        pass
+            return asyncio.run(_run())
 
-        confirmation = agent.submit_stub(profile=profile, item=item)
-        queue.mark_submitted(item.id, confirmation)
-        submitted += 1
-        timeline.info("item.submitted", confirmation_text=confirmation.confirmation_text)
-        payload = {
-            "event": "submitted",
-            "id": item.id,
-            "confirmation_text": confirmation.confirmation_text,
-        }
-        if plan_payload:
-            payload["plan"] = plan_payload
-        yield payload
+        try:
+            artifacts, reason = _browser_apply_one()
+        except ValueError as exc:
+            timeline.warning("form.fetch_failed", error=str(exc))
+            log_event("apply.form_fetch_failed", profile=profile.id, url=item.details.apply_url if item.details else item.url)
+            reason = {"code": "invalid_domain", "message": str(exc)}
+            artifacts = None
+        except Exception as exc:
+            timeline.warning("form.runtime_error", error=str(exc))
+            reason = {"code": "runtime_error", "message": str(exc)}
+            artifacts = None
+
+        if artifacts:
+            queue.mark_submitted(item.id, artifacts)
+            submitted += 1
+            timeline.info("item.submitted", confirmation_text=artifacts.confirmation_text)
+            yield {
+                "event": "submitted",
+                "id": item.id,
+                "confirmation_text": artifacts.confirmation_text,
+            }
+        else:
+            failed += 1
+            queue.mark_failed(item.id, Reason(code=reason.get("code", "failed"), message=reason.get("message", "Failed")))
+            timeline.info("item.failed", reason=reason)
+            yield {"event": "failed", "id": item.id, "reason": reason}
+
     yield {"event": "end", "summary": {"submitted": submitted, "failed": failed}}
 
 
@@ -463,6 +520,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--json", action="store_true")
     p_apply.add_argument("--llm-provider", help="Override configured LLM provider")
     p_apply.add_argument("--llm-model", help="Override configured LLM model")
+    # Resume upload tuning / diagnostics
+    p_apply.add_argument(
+        "--use-llm-locator",
+        action="store_true",
+        help="Enable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=1)",
+    )
+    p_apply.add_argument(
+        "--no-use-llm-locator",
+        dest="use_llm_locator",
+        action="store_false",
+        help="Disable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=0)",
+    )
+    p_apply.add_argument(
+        "--debug-resume-widget",
+        action="store_true",
+        help="Emit structured widget snapshot when upload not detected (AUTO_APPLY_DEBUG_RESUME_WIDGET=1)",
+    )
+    p_apply.add_argument(
+        "--resume-wait-timeout-seconds",
+        type=int,
+        help="Override wait for upload success signals (AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)",
+    )
     p_apply.set_defaults(func=cmd_apply)
 
     p_resume = sub.add_parser("resume-job", help="Resume a blocked job")
