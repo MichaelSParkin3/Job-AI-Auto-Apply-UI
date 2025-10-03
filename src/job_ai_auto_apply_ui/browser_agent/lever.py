@@ -387,7 +387,7 @@ class LeverApplyAgent:
             if current is not None and current is not page:
                 page = current
                 try:
-                    log_event("apply.page_focus.changed", reason="post_navigate")
+                    log_event("apply.page_focus.changed", reason="post_navigate"); await _close_stray_about_blank_tabs(session)
                 except Exception:
                     pass
         except Exception:
@@ -416,7 +416,7 @@ class LeverApplyAgent:
         # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
         uploaded = await _upload_resume(session, page, plan.resume_input, resume_path)
-        if not uploaded:
+        if not uploaded:\n            # grace re-check in case UI just updated\n            try:\n                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):\n                    uploaded = True\n            except Exception:\n                pass\n            if not uploaded:
             if mode != "auto":
                 print("Resume upload not detected. Please attach manually in the browser, then press Enterâ€¦")
                 try:
@@ -425,7 +425,7 @@ class LeverApplyAgent:
                     pass
                 # Re-check after manual attach
                 uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
-            if not uploaded:
+            if not uploaded:\n            # grace re-check in case UI just updated\n            try:\n                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):\n                    uploaded = True\n            except Exception:\n                pass\n            if not uploaded:
                 return Reason(code="resume_upload_failed", message="Resume not attached")
 
         # Fill contact fields from profile defaults (with sensible fallbacks)
@@ -741,6 +741,27 @@ async def _fill_if_available(page, selector: str | None, value: str | None) -> N
         pass
 
 
+
+def _quiet_js_eval_enabled() -> bool:
+    try:
+        import os as _os
+        v = _os.getenv("AUTO_APPLY_DEBUG_JS_EVAL", "").strip().lower()
+        return v in ("1", "true", "on", "yes")
+    except Exception:
+        return False
+
+
+async def _evaluate_quiet(page, script: str, *args):
+    """Call page.evaluate while suppressing noisy stdout prints unless DEBUG is enabled."""
+    if _quiet_js_eval_enabled():
+        return await page.evaluate(script, *args)
+    try:
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            return await page.evaluate(script, *args)
+    except Exception:
+        return await page.evaluate(script, *args)
 async def _fill_textarea(page, selector: str, value: str) -> None:
     try:
         await page.evaluate(
@@ -752,7 +773,37 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         pass
 
 
-async def _robust_navigate(session: BrowserSession, page, url: str) -> None:
+async def _close_stray_about_blank_tabs(session: BrowserSession) -> None:\nasync def _close_stray_about_blank_tabs(session: BrowserSession) -> None:
+    """Best-effort: close background about:blank/new-tab pages via CDP if available."""
+    try:
+        if not hasattr(session, "get_or_create_cdp_session"):
+            return
+        cdp_session = await session.get_or_create_cdp_session()  # type: ignore[attr-defined]
+        cdp = getattr(cdp_session, "cdp_client", None)
+        sid = getattr(cdp_session, "session_id", None)
+        current_target = getattr(cdp_session, "target_id", None)
+        if cdp is None:
+            return
+        # Get all targets
+        targets = await cdp.send.Target.getTargets(params={}, session_id=sid)
+        items = targets.get("targetInfos") or targets.get("targetInfo") or []
+        for t in items:
+            try:
+                tid = t.get("targetId") or t.get("targetID")
+                if not tid or (current_target and str(tid) == str(current_target)):
+                    continue
+                if t.get("type") != "page":
+                    continue
+                url = (t.get("url") or "").lower().strip()
+                if url in ("about:blank", "chrome://newtab", "chrome://new-tab-page/"):
+                    try:
+                        await cdp.send.Target.closeTarget(params={"targetId": tid}, session_id=sid)
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+    except Exception:
+        return\nasync def _robust_navigate(session: BrowserSession, page, url: str) -> None:
     """Navigate to URL using Browser-Use event bus, then fall back to CDP, then page.goto.
 
     Logs apply.navigate.start/ok/fail and final href to make failures diagnosable.
@@ -1269,7 +1320,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
     deadline = asyncio.get_event_loop().time() + max(1.0, timeout)
     while asyncio.get_event_loop().time() < deadline:
         try:
-            state = await page.evaluate(
+            state = await _evaluate_quiet(
                 """
                 (sel) => {
                   const el = document.querySelector(sel);
@@ -1313,7 +1364,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                     settle_end = 0
                 while asyncio.get_event_loop().time() < settle_end:
                     try:
-                        s2 = await page.evaluate(
+                        s2 = await _evaluate_quiet(
                             """
                             (sel) => {
                               const el = document.querySelector(sel);
@@ -1351,7 +1402,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
         debug = False
     if debug:
         try:
-            snapshot = await page.evaluate(
+            snapshot = await _evaluate_quiet(
                 """
                 (sel) => {
                   const el = document.querySelector(sel);
@@ -1688,7 +1739,7 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
 async def _log_resume_postmortem(page, selector: str) -> None:
     """Emit a compact diagnostic snapshot regardless of debug flags."""
     try:
-        snapshot = await page.evaluate(
+        snapshot = await _evaluate_quiet(
             """
             (sel) => {
               const el = document.querySelector(sel);
@@ -1833,7 +1884,7 @@ async def _hcaptcha_state(page) -> dict:
     - blocking: visible and either covers notable viewport area or has pointer events enabled
     """
     try:
-        state = await page.evaluate(
+        state = await _evaluate_quiet(
             """
             () => {
               const res = { present: false, visible: false, blocking: false, iframes: 0, cover: 0 };
@@ -2062,6 +2113,12 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
+
+
+
+
+
 
 
 
