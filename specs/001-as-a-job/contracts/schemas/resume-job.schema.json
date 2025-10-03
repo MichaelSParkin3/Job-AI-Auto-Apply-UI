@@ -6,7 +6,7 @@
   "required": ["id", "status", "resumed_from_step"],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
-    "status": { "const": "in_progress" },
+    "status": { "enum": ["in_progress", "not_found"] },
     "resumed_from_step": { "type": "integer", "minimum": 0 }
   },
   "additionalProperties": false

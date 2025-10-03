@@ -72,17 +72,20 @@ specs/001-as-a-job/
 ### Source Code (repository root)
 ```
 src/
-├── orchestrator.py
-├── profile_manager.py
-├── job_discovery.py
-├── application_queue.py
-├── browser_agent/
-│  ├── __init__.py
-│  └── lever.py
-└── llm/
-   ├── __init__.py
-   ├── prompt_builder.py
-   └── openrouter_client.py
+└── job_ai_auto_apply_ui/
+    ├── __init__.py
+    ├── application_queue.py
+    ├── browser_agent/
+    │   ├── __init__.py
+    │   └── lever.py
+    ├── config.py
+    ├── job_discovery.py
+    ├── llm/
+    │   ├── __init__.py
+    │   └── prompt_builder.py
+    ├── orchestrator.py
+    ├── profile_manager.py
+    └── telemetry.py
 
 tests/
 ├── contract/
@@ -90,38 +93,38 @@ tests/
 └── unit/
 ```
 
-**Structure Decision**: Single-project repository with `src/` for libraries and `tests/` for
-contract/integration/unit tests; no additional services introduced.
+**Structure Decision**: Single-project repository with `src/job_ai_auto_apply_ui` as the primary
+library package and `tests/` for contract/integration/unit suites; no additional services introduced.
 
 ## Core Implementation Outline
 Follow these steps in order; each step cites the spec or reference to consult while implementing.
 
-1) Profile management (src/profile_manager.py)
+1) Profile management (`src/job_ai_auto_apply_ui/profile_manager.py`)
 - Purpose: Load active profile (resume_path, defaults, keywords, prompts, user_data_dir, preferred_browser).
 - References: data-model.md → Profile; spec.md → FR-003; quickstart.md step 1.
 
-2) Queue + persistence (src/application_queue.py)
+2) Queue + persistence (`src/job_ai_auto_apply_ui/application_queue.py`)
 - Purpose: Create/read/update ApplicationItem; enforce hash de-dup; manage statuses and artifacts.
 - References: data-model.md → ApplicationItem, Artifacts; spec.md → FR-002, FR-006, FR-013.
 
-3) Discovery (src/job_discovery.py)
+3) Discovery (`src/job_ai_auto_apply_ui/job_discovery.py`)
 - Purpose: Build Google URL with `tbs` time filter; collect Lever links; capture source_query and source_rank.
 - References: reference_files/patterns-google-lever.md → Google; spec.md → FR-001, FR-018, FR-032, FR-028.
 
-4) Details extraction (src/job_discovery.py)
+4) Details extraction (`src/job_ai_auto_apply_ui/job_discovery.py`)
 - Purpose: For each posting, fetch and normalize JobDetails (title, location, department, work_model, employment_type, excerpt/text, apply_url).
 - References: data-model.md → JobDetails; reference_files/patterns-google-lever.md → Posting page selectors; spec.md → new acceptance bullets 10–11.
 
-5) Browser agent for Lever (src/browser_agent/lever.py)
+5) Browser agent for Lever (`src/job_ai_auto_apply_ui/browser_agent/lever.py`)
 - Purpose: Headful session; resume upload; contact+links; dynamic cards; submit; hCaptcha detection and persistence on block.
 - References: reference_files/patterns-google-lever.md → Form selectors; spec.md → FR-004, FR-011, FR-012, FR-026, FR-027, FR-030.
 - Operational notes: browser-user-0.7.X-changes.md → hooks/event bus; browser-use-testing-tips.md → allowed_domains, artifacts.
 
-6) Prompt builder (src/llm/prompt_builder.py)
+6) Prompt builder (`src/job_ai_auto_apply_ui/llm/prompt_builder.py`)
 - Purpose: Build JSON answers for long-form questions from Profile + JobDetails + posting_excerpt; respect AnswerCache rules.
 - References: reference_files/mvp-architecture.md → LLM Orchestration; spec.md → FR-033; data-model.md → AnswerCache.
 
-7) Orchestrator CLI (src/orchestrator.py)
+7) Orchestrator CLI (`src/job_ai_auto_apply_ui/orchestrator.py`)
 - Purpose: Wire `discover`, `apply`, `resume-job` to library calls; honor `--json` and exit codes; supervised default.
 - References: contracts/cli-contracts.md; spec.md → FR-014, FR-019, FR-030.
 

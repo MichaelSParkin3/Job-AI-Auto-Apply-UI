@@ -1,0 +1,19 @@
+id = "front_end"
+name = "Front End Specialist"
+resume_path = "resumes/front_end_specialist.pdf"
+
+[defaults]
+location = "Remote"
+work_authorization = "US Citizen"
+
+[keywords.roles]
+primary = [
+  "Senior Front End Developer",
+  "Staff Frontend Engineer",
+  "Principal Frontend Engineer",
+]
+secondary = ["React", "TypeScript", "Next.js"]
+
+[prompts]
+cover_letter = "Highlight large-scale front-end leadership, accessibility wins, and cross-team impact."
+portfolio = "Include latest React/Next.js case studies with metrics."

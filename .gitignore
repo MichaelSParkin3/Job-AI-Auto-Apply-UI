@@ -48,6 +48,13 @@ data/
 logs/
 tmp/
 
+# Preserve deterministic queue fixture for contracts
+!data/
+data/*
+!data/queues/
+!data/queues/*
+!data/queues/dev.json
+
 # Playwright artifacts (if enabled)
 playwright/.cache/
 test-results/
