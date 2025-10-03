@@ -1,17 +1,40 @@
-"""Contract tests for the `discover` CLI command."""
+﻿"""Contract tests for the `discover` CLI command."""
 
 from __future__ import annotations
 
+import contextlib
+import importlib
 import json
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 from jsonschema import validate
 
-from job_ai_auto_apply_ui.orchestrator import main
+
+def _load_orchestrator() -> Any:
+    """Import the orchestrator module without pulling in browser automation."""
+
+    for name in (
+        "job_ai_auto_apply_ui.browser_agent",
+        "job_ai_auto_apply_ui.browser_agent.lever",
+        "job_ai_auto_apply_ui.orchestrator",
+    ):
+        sys.modules.pop(name, None)
+    module = importlib.import_module("job_ai_auto_apply_ui.orchestrator")
+    assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
+    return module
+
+
+@pytest.fixture()
+def orchestrator_module() -> Any:
+    """Provide a fresh orchestrator import for each test."""
+
+    return _load_orchestrator()
 
 
 @dataclass
@@ -22,14 +45,12 @@ class _FakeItem:
         return self.data
 
 
-def _run_cli(args: Iterable[str]) -> tuple[int, str, str]:
+def _run_cli(module: Any, args: Iterable[str]) -> tuple[int, str, str]:
     """Run the CLI with the provided arguments and capture stdio."""
-    import contextlib
-    from io import StringIO
 
     stdout, stderr = StringIO(), StringIO()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = main(list(args))
+        code = module.main(list(args))
     return code, stdout.getvalue(), stderr.getvalue()
 
 
@@ -42,10 +63,21 @@ def discover_schema() -> dict[str, Any]:
     return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
+def test_build_parser_keeps_browser_lazy(orchestrator_module: Any) -> None:
+    """Building the CLI parser must not pull browser modules into sys.modules."""
+
+    orchestrator_module.build_parser()
+    assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
+
+
+
 def test_discover_json_success(
-    monkeypatch: pytest.MonkeyPatch, discover_schema: dict[str, Any]
+    monkeypatch: pytest.MonkeyPatch,
+    discover_schema: dict[str, Any],
+    orchestrator_module: Any,
 ) -> None:
     """Successful discovery returns JSON that matches the schema and exit code 0."""
+
     fake_items: list[_FakeItem] = [
         _FakeItem(
             {
@@ -76,7 +108,8 @@ def test_discover_json_success(
     )
 
     code, out, err = _run_cli(
-        ["discover", "--profile", "front_end", "--window", "24h", "--cap", "5", "--json"]
+        orchestrator_module,
+        ["discover", "--profile", "front_end", "--window", "24h", "--cap", "5", "--json"],
     )
 
     assert code == 0
@@ -84,10 +117,14 @@ def test_discover_json_success(
     validate(instance=payload, schema=discover_schema)
     assert payload["items"] == [item.data for item in fake_items]
     assert err == ""
+    assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
+
 
 
 def test_discover_json_no_results(
-    monkeypatch: pytest.MonkeyPatch, discover_schema: dict[str, Any]
+    monkeypatch: pytest.MonkeyPatch,
+    discover_schema: dict[str, Any],
+    orchestrator_module: Any,
 ) -> None:
     """When no items are discovered the command exits with code 2."""
 
@@ -104,10 +141,11 @@ def test_discover_json_no_results(
         "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
     )
 
-    code, out, err = _run_cli(["discover", "--profile", "front_end", "--json"])
+    code, out, err = _run_cli(orchestrator_module, ["discover", "--profile", "front_end", "--json"])
 
     assert code == 2
     payload = json.loads(out)
     validate(instance=payload, schema=discover_schema)
     assert payload["items"] == []
     assert err == ""
+    assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules

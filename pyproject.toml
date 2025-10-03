@@ -36,4 +36,7 @@ quote-style = "double"
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["D"]
 "src/job_ai_auto_apply_ui/application_queue.py" = ["D"]
+"src/job_ai_auto_apply_ui/browser_agent/lever.py" = ["E501"]
+"src/job_ai_auto_apply_ui/job_discovery.py" = ["E501"]
+
 

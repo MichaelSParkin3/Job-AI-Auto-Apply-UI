@@ -5,25 +5,40 @@ from __future__ import annotations
 import asyncio
 import html
 import io
+import json
 import logging
 import os
 import time
 from collections.abc import Callable
-import json
 from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 import httpx
-from browser_use.browser.session import BrowserSession
-from .browser_agent import LeverBrowserOptions
 
 from .application_queue import ApplicationItem, JobDetails
 from .profile_manager import Profile
 from .telemetry import log_event
+
+if TYPE_CHECKING:
+    from browser_use.browser.session import BrowserSession
+
+
+_BROWSER_DISCOVERY_RUNTIME: tuple[type[Any], type[Any]] | None = None
+
+def _load_browser_discovery_runtime() -> tuple[type[Any], type[Any]]:
+    """Load Lever browser dependencies only when needed by discovery."""
+    global _BROWSER_DISCOVERY_RUNTIME
+    if _BROWSER_DISCOVERY_RUNTIME is None:
+        from browser_use.browser.session import BrowserSession
+
+        from .browser_agent import LeverBrowserOptions
+
+        _BROWSER_DISCOVERY_RUNTIME = (LeverBrowserOptions, BrowserSession)
+    return _BROWSER_DISCOVERY_RUNTIME
 
 LOGGER = logging.getLogger(__name__)
 
@@ -645,6 +660,8 @@ def _load_search_results_with_browser(
 
 def _default_browser_factory(profile: Profile) -> BrowserSession:
     """Return a BrowserSession configured for discovery with stealth settings."""
+
+    LeverBrowserOptions, BrowserSession = _load_browser_discovery_runtime()
 
     channel = _resolve_browser_channel(profile.preferred_browser)
     user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None

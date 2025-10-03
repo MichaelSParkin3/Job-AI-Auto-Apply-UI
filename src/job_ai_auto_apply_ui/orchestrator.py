@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
-import asyncio
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -21,17 +22,34 @@ try:  # pragma: no cover - optional
 except Exception:
     pass
 from .application_queue import ApplicationQueue, ApplicationStatus, Artifacts, Reason
-from .browser_agent import (
-    LeverApplyAgent,
-    LeverBrowserOptions,
-    LeverFormPlan,
-    ensure_allowed_domain,
-)
-from browser_use.browser.session import BrowserSession
 from .config import load_settings
 from .llm import load_llm_config
 from .profile_manager import Profile, ProfileNotFoundError
 from .telemetry import bind_timeline, log_event
+
+if TYPE_CHECKING:
+    from .browser_agent import LeverFormPlan
+
+_BROWSER_RUNTIME: tuple[type[Any], type[Any], type[Any]] | None = None
+_ENSURE_ALLOWED_DOMAIN: Callable[[str, Iterable[str]], None] | None = None
+
+def _load_browser_runtime() -> tuple[type[Any], type[Any], type[Any]]:
+    """Lazily import browser automation dependencies for apply flows."""
+    global _BROWSER_RUNTIME
+    if _BROWSER_RUNTIME is None:
+        from browser_use.browser.session import BrowserSession
+
+        from .browser_agent import LeverApplyAgent, LeverBrowserOptions
+        _BROWSER_RUNTIME = (LeverBrowserOptions, LeverApplyAgent, BrowserSession)
+    return _BROWSER_RUNTIME
+
+def _ensure_allowed_domain_safe(url: str, allowed_domains: Iterable[str]) -> None:
+    """Invoke ensure_allowed_domain without importing browser modules at import time."""
+    global _ENSURE_ALLOWED_DOMAIN
+    if _ENSURE_ALLOWED_DOMAIN is None:
+        from .browser_agent import ensure_allowed_domain as _ensure_allowed
+        _ENSURE_ALLOWED_DOMAIN = _ensure_allowed
+    _ENSURE_ALLOWED_DOMAIN(url, list(allowed_domains))
 
 # Internal: mirror discovery's browser channel resolver for apply
 
@@ -134,7 +152,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if getattr(args, "debug_resume_widget", False):
         _os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] = "1"
     if getattr(args, "resume_wait_timeout_seconds", None) is not None:
-        _os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(args.resume_wait_timeout_seconds)
+        _os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(
+        args.resume_wait_timeout_seconds
+    )
 
     mode = "auto" if args.auto else "supervised"
     llm_config = load_llm_config()
@@ -238,6 +258,7 @@ def iter_apply_events(
     """
     profile = _ensure_profile(profile)
     queue = ApplicationQueue(profile.id)
+    LeverBrowserOptions, LeverApplyAgent, BrowserSession = _load_browser_runtime()
     browser_options = LeverBrowserOptions.from_settings(profile=profile)
     agent = LeverApplyAgent(options=browser_options)
     submitted = 0
@@ -292,7 +313,11 @@ def iter_apply_events(
             artifacts, reason = _browser_apply_one()
         except ValueError as exc:
             timeline.warning("form.fetch_failed", error=str(exc))
-            log_event("apply.form_fetch_failed", profile=profile.id, url=item.details.apply_url if item.details else item.url)
+            log_event(
+                "apply.form_fetch_failed",
+                profile=profile.id,
+                url=item.details.apply_url if item.details else item.url,
+            )
             reason = {"code": "invalid_domain", "message": str(exc)}
             artifacts = None
         except Exception as exc:
@@ -318,7 +343,13 @@ def iter_apply_events(
             yield event_payload
         else:
             failed += 1
-            queue.mark_failed(item.id, Reason(code=reason.get("code", "failed"), message=reason.get("message", "Failed")))
+            queue.mark_failed(
+                item.id,
+                Reason(
+                    code=reason.get("code", "failed"),
+                    message=reason.get("message", "Failed"),
+                ),
+            )
             timeline.info("item.failed", reason=reason)
             yield {"event": "failed", "id": item.id, "reason": reason}
 
@@ -407,7 +438,7 @@ def _ensure_iterable(raw: object) -> list[str]:
     return [str(raw)]
 
 
-def _plan_to_payload(plan: LeverFormPlan) -> dict[str, object]:
+def _plan_to_payload(plan: "LeverFormPlan") -> dict[str, object]:
     """Convert a :class:`LeverFormPlan` into a serializable dictionary.
 
     Args:
@@ -451,7 +482,7 @@ def _default_form_fetch(url: str) -> str:
     """
 
     settings = load_settings()
-    ensure_allowed_domain(url, settings.allowed_domains)
+    _ensure_allowed_domain_safe(url, settings.allowed_domains)
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -531,23 +562,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument(
         "--use-llm-locator",
         action="store_true",
-        help="Enable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=1)",
+        help=(
+            "Enable LLM-powered element finding for resume upload "
+            "(sets AUTO_APPLY_USE_LLM_LOCATOR=1)"
+        ),
     )
     p_apply.add_argument(
         "--no-use-llm-locator",
         dest="use_llm_locator",
         action="store_false",
-        help="Disable LLM-powered element finding for resume upload (sets AUTO_APPLY_USE_LLM_LOCATOR=0)",
+        help=(
+            "Disable LLM-powered element finding for resume upload "
+            "(sets AUTO_APPLY_USE_LLM_LOCATOR=0)"
+        ),
     )
     p_apply.add_argument(
         "--debug-resume-widget",
         action="store_true",
-        help="Emit structured widget snapshot when upload not detected (AUTO_APPLY_DEBUG_RESUME_WIDGET=1)",
+        help=(
+            "Emit structured widget snapshot when upload not detected "
+            "(AUTO_APPLY_DEBUG_RESUME_WIDGET=1)"
+        ),
     )
     p_apply.add_argument(
         "--resume-wait-timeout-seconds",
         type=int,
-        help="Override wait for upload success signals (AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)",
+        help=(
+            "Override wait for upload success signals "
+            "(AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)"
+        ),
     )
     p_apply.set_defaults(func=cmd_apply)
 

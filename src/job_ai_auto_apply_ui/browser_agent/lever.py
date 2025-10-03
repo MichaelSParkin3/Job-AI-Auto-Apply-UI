@@ -7,7 +7,6 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 from xml.etree import ElementTree as ET
@@ -251,10 +250,12 @@ class LeverApplyAgent:
         *,
         options: LeverBrowserOptions | None = None,
     ) -> None:
+        """Create an agent with an optional planner and browser options."""
         self._planner = planner or analyze_form
         self._options = options or LeverBrowserOptions.from_settings()
 
     def build_plan(self, html: str) -> LeverFormPlan:
+        """Return a Lever form plan from cached HTML analysis."""
         return self._planner(html)
 
     async def build_plan_in_browser(self, page) -> LeverFormPlan:
@@ -387,7 +388,8 @@ class LeverApplyAgent:
             if current is not None and current is not page:
                 page = current
                 try:
-                    log_event("apply.page_focus.changed", reason="post_navigate"); await _close_stray_about_blank_tabs(session)
+                    log_event("apply.page_focus.changed", reason="post_navigate")
+                    await _close_stray_about_blank_tabs(session)
                 except Exception:
                     pass
         except Exception:
@@ -416,17 +418,32 @@ class LeverApplyAgent:
         # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
         uploaded = await _upload_resume(session, page, plan.resume_input, resume_path)
-        if not uploaded:\n            # grace re-check in case UI just updated\n            try:\n                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):\n                    uploaded = True\n            except Exception:\n                pass\n            if not uploaded:
-            if mode != "auto":
-                print("Resume upload not detected. Please attach manually in the browser, then press Enterâ€¦")
-                try:
-                    input()
-                except Exception:
-                    pass
-                # Re-check after manual attach
-                uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
-            if not uploaded:\n            # grace re-check in case UI just updated\n            try:\n                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):\n                    uploaded = True\n            except Exception:\n                pass\n            if not uploaded:
-                return Reason(code="resume_upload_failed", message="Resume not attached")
+        if not uploaded:
+            try:
+                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):
+                    uploaded = True
+            except Exception:
+                pass
+
+        if not uploaded and mode != "auto":
+            print(
+                "Resume upload not detected. Please attach manually in the browser, then press Enter…"
+            )
+            try:
+                input()
+            except Exception:
+                pass
+            uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
+
+        if not uploaded:
+            try:
+                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):
+                    uploaded = True
+            except Exception:
+                pass
+
+        if not uploaded:
+            return Reason(code="resume_upload_failed", message="Resume not attached")
 
         # Fill contact fields from profile defaults (with sensible fallbacks)
         await _fill_if_available(
@@ -756,7 +773,8 @@ async def _evaluate_quiet(page, script: str, *args):
     if _quiet_js_eval_enabled():
         return await page.evaluate(script, *args)
     try:
-        import io, contextlib
+        import contextlib
+        import io
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             return await page.evaluate(script, *args)
@@ -773,8 +791,8 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         pass
 
 
-async def _close_stray_about_blank_tabs(session: BrowserSession) -> None:\nasync def _close_stray_about_blank_tabs(session: BrowserSession) -> None:
-    """Best-effort: close background about:blank/new-tab pages via CDP if available."""
+async def _close_stray_about_blank_tabs(session: BrowserSession) -> None:
+    """Best-effort: close background about:blank/new-tab pages via CDP when supported."""
     try:
         if not hasattr(session, "get_or_create_cdp_session"):
             return
@@ -784,26 +802,27 @@ async def _close_stray_about_blank_tabs(session: BrowserSession) -> None:\nasync
         current_target = getattr(cdp_session, "target_id", None)
         if cdp is None:
             return
-        # Get all targets
         targets = await cdp.send.Target.getTargets(params={}, session_id=sid)
         items = targets.get("targetInfos") or targets.get("targetInfo") or []
-        for t in items:
+        for target in items:
             try:
-                tid = t.get("targetId") or t.get("targetID")
-                if not tid or (current_target and str(tid) == str(current_target)):
+                target_id = target.get("targetId") or target.get("targetID")
+                if not target_id or (current_target and str(target_id) == str(current_target)):
                     continue
-                if t.get("type") != "page":
+                if target.get("type") != "page":
                     continue
-                url = (t.get("url") or "").lower().strip()
+                url = (target.get("url") or "").lower().strip()
                 if url in ("about:blank", "chrome://newtab", "chrome://new-tab-page/"):
                     try:
-                        await cdp.send.Target.closeTarget(params={"targetId": tid}, session_id=sid)
+                        await cdp.send.Target.closeTarget(params={"targetId": target_id}, session_id=sid)
                     except Exception:
                         pass
             except Exception:
                 continue
     except Exception:
-        return\nasync def _robust_navigate(session: BrowserSession, page, url: str) -> None:
+        return
+
+async def _robust_navigate(session: BrowserSession, page, url: str) -> None:
     """Navigate to URL using Browser-Use event bus, then fall back to CDP, then page.goto.
 
     Logs apply.navigate.start/ok/fail and final href to make failures diagnosable.
@@ -1105,7 +1124,9 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                     llm_obj = None
                     if _os.getenv("GOOGLE_API_KEY"):
                         try:
-                            from browser_use.llm.google import ChatGoogle as _BUGemini  # type: ignore
+                            from browser_use.llm.google import (
+                                ChatGoogle as _BUGemini,  # type: ignore
+                            )
                             llm_obj = _BUGemini()
                         except Exception:
                             llm_obj = None
@@ -2113,6 +2134,9 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
+
+
 
 
 

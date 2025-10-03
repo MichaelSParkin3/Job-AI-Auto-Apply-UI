@@ -327,7 +327,8 @@ class ApplicationQueue:
         self._items: dict[str, ApplicationItem] = {}
         self._hash_index: dict[str, str] = {}
         if self._path.exists():
-            # Tolerate UTF-8 BOM if the file was edited with tools that insert it (e.g., PowerShell Out-File -Encoding utf8).
+            # Tolerate UTF-8 BOM if the file was edited with tools that insert it.
+            # Example: PowerShell Out-File -Encoding utf8.
             data = json.loads(self._path.read_text(encoding="utf-8-sig"))
             for raw in data.get("items", []):
                 if isinstance(raw, MutableMapping):

@@ -160,3 +160,20 @@
   - Acceptance Criteria: `submitted` events contain both confirmation text and id when present; contract test asserts the field; schema remains satisfied.
   - Files: `src/job_ai_auto_apply_ui/orchestrator.py`, `tests/contract/test_apply_contract.py`.
   - Tests First: Enhance the apply contract test to expect the `confirmation_id` field before modifying the implementation.
+
+## Phase 3.7: Stabilization (Tests + Runtime)
+- [X] T029 [P] Unblock contract tests by isolating CLI parser from heavy imports
+  - Description: Ensure `pytest tests/contract -q` does not import `browser_agent/lever.py`.
+  - Actions: Move heavy imports inside command handlers or behind a feature flag (e.g., `AUTO_APPLY_ENABLE_BROWSER=1`); provide safe fallbacks/mocks for `LeverBrowserOptions` in CLI parse-only paths.
+  - Files: `src/job_ai_auto_apply_ui/orchestrator.py`, `src/job_ai_auto_apply_ui/job_discovery.py`, `tests/contract/test_apply_contract.py` (adjust to assert no browser import on parse).
+  - Acceptance: Running `pytest tests/contract -q` succeeds on a fresh env even if `browser_agent/lever.py` has syntax errors; contract tests continue to validate new flags and event schema.
+
+- [X] T030 [P] Strengthen queue serialization tests for `details=None`
+  - Description: Add explicit fixtures and assertions for `ApplicationItem.details is None` and enum/string fields; cover round‑trip JSON and status transitions.
+  - Files: `tests/unit/test_queue.py`, `src/job_ai_auto_apply_ui/application_queue.py` (only if parsing adjustments required).
+  - Acceptance: `pytest tests/unit/test_queue.py -q` passes; failure messages clearly indicate schema mismatches.
+
+- [X] T031 Fix runtime SyntaxError in `browser_agent/lever.py` and satisfy Ruff
+  - Description: Remove stray escaped newlines and incomplete blocks around resume upload re‑check; refactor long lines/import order per Ruff.
+  - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`.
+  - Acceptance: `python -m job_ai_auto_apply_ui.orchestrator --help` imports without error; `auto-apply apply ...` starts; `pytest -q` runs collection phase without SyntaxError; `ruff check .` passes for `browser_agent/lever.py`.
