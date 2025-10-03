@@ -258,12 +258,14 @@ def iter_apply_events(
                 # Create a fresh browser session per item for simplicity
                 channel = _resolve_browser_channel(profile.preferred_browser)
                 user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
+                # Apply stealth env (TZ/LANG/LC_ALL) then launch with supported kwargs only
+                browser_options.apply_stealth_environment()
                 session = BrowserSession(
                     headless=False,
                     channel=channel,
                     user_data_dir=user_data_dir,
-                    allowed_domains=list(browser_options.allowed_domains),
                     keep_alive=True,
+                    **browser_options.to_browser_use_kwargs(),
                 )
                 await session.start()
                 try:

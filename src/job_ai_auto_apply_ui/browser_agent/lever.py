@@ -46,12 +46,17 @@ class LeverFormPlan:
 
 @dataclass(slots=True)
 class LeverBrowserOptions:
-    """Options controlling diagnostics capture and domain safety for sessions."""
+    """Options controlling diagnostics capture, domain allow-list, and stealth."""
 
     allowed_domains: tuple[str, ...]
     capture_video: bool = False
     capture_har: bool = False
     artifacts_dir: Path = Path("data") / "artifacts" / "browser"
+    locale: str = "en-US"
+    timezone: str = "America/Los_Angeles"
+    viewport_width: int = 1280
+    viewport_height: int = 800
+    disable_default_extensions: bool = True
 
     @classmethod
     def from_settings(
@@ -93,25 +98,50 @@ class LeverBrowserOptions:
             capture_video=capture_video,
             capture_har=capture_har,
             artifacts_dir=artifacts_root,
+            locale=str(resolved_settings.browser_locale or "en-US"),
+            timezone=str(resolved_settings.browser_timezone or "America/Los_Angeles"),
+            viewport_width=int(getattr(resolved_settings, "browser_viewport_width", 1280)),
+            viewport_height=int(getattr(resolved_settings, "browser_viewport_height", 800)),
+            disable_default_extensions=bool(getattr(resolved_settings, "disable_default_extensions", True)),
         )
 
     def to_browser_use_kwargs(self) -> dict[str, object]:
-        """Return keyword arguments for ``browser_use`` session factories.
+        """Return only BrowserSession-supported kwargs.
 
-        Returns:
-            dict[str, object]: Keyword arguments compatible with browser-use
-            session constructors.
-
+        Note: The upstream BrowserSession in this project does not accept
+        env/headers/args/window_size/artifacts_dir. We limit to allowed_domains
+        and record_* flags that have been supported historically.
         """
-        kwargs: dict[str, object] = {
-            "allowed_domains": list(self.allowed_domains),
-            "artifacts_dir": str(self.artifacts_dir),
-        }
-        if self.capture_video:
-            kwargs["record_video"] = True
-        if self.capture_har:
-            kwargs["record_har"] = True
-        return kwargs
+        return {"allowed_domains": list(self.allowed_domains)}
+
+    def apply_stealth_environment(self) -> None:
+        """Apply locale/timezone to process env before launching the browser.
+
+        While BrowserSession here does not expose header/args hooks, aligning
+        TZ/LANG/LC_ALL still improves JS-observable environment consistency.
+        """
+        try:
+            import os as _os
+            _os.environ["TZ"] = str(self.timezone)
+            # Normalize locale for POSIX-style env
+            loc = self.locale.replace("-", "_")
+            if "." not in loc:
+                loc = f"{loc}.UTF-8"
+            _os.environ["LANG"] = loc
+            _os.environ["LC_ALL"] = loc
+            try:
+                log_event(
+                    "browser.stealth_config",
+                    locale=self.locale,
+                    timezone=self.timezone,
+                    window_size={"width": self.viewport_width, "height": self.viewport_height},
+                    disable_default_extensions=self.disable_default_extensions,
+                    allowed_domains=list(self.allowed_domains),
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 def analyze_form(html: str) -> LeverFormPlan:
@@ -349,15 +379,39 @@ class LeverApplyAgent:
         ensure_allowed_domain(apply_url, self._options.allowed_domains)
 
         page = await session.new_page()
-        await page.goto(apply_url)
-        # Wait for form root or captcha
-        await _wait_for_any(page, ["form#application-form", "div#h-captcha", "#application"])
-
-        # Detect CAPTCHA early
-        if await _exists(page, self._options, selector="div#h-captcha"):
-            return Reason(code="captcha_blocked", message="hCaptcha detected on form")
+        # Robust navigate: event-bus -> CDP -> page.goto, with verification + logs
+        await _robust_navigate(session, page, apply_url)
+        # Re-focus active page in case navigation opened or switched tabs
+        try:
+            current = await getattr(session, "get_current_page")()  # type: ignore[attr-defined]
+            if current is not None and current is not page:
+                page = current
+                try:
+                    log_event("apply.page_focus.changed", reason="post_navigate")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Wait for form root (captcha may be present in DOM but hidden; do not bail yet)
+        await _wait_for_any(page, ["form#application-form", "#application"])  # removed presence-only captcha wait
+        try:
+            state = await _hcaptcha_state(page)
+            if state.get("present") and not state.get("visible"):
+                log_event("captcha.present", visible=False)
+            elif state.get("visible"):
+                log_event("captcha.present", visible=True)
+        except Exception:
+            pass
 
         plan = await self.build_plan_in_browser(page)
+
+        # Enable resume widget first: set location to activate disabled upload button variants
+        await _set_structured_location(
+            page,
+            input_selector=plan.contact_fields.get("location") or "#location-input",
+            hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
+            value=profile.defaults.get("location"),
+        )
 
         # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
@@ -389,13 +443,7 @@ class LeverApplyAgent:
             plan.contact_fields.get("org") or "input[data-qa='org-input'][name='org']",
             profile.defaults.get("current_company") or profile.defaults.get("company"),
         )
-        # Structured location: type and select first suggestion; fallback to hidden
-        await _set_structured_location(
-            page,
-            input_selector=plan.contact_fields.get("location") or "#location-input",
-            hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
-            value=profile.defaults.get("location"),
-        )
+        # Structured location already handled above to enable resume upload
 
         # Pronouns (optional checkboxes). Supports single string or comma-separated list.
         pronouns_raw = profile.defaults.get("pronouns")
@@ -552,8 +600,14 @@ class LeverApplyAgent:
         await _click(page, plan.submit_button)
         await asyncio.sleep(2.0)
         # hCaptcha check after click
-        if plan.captcha_selector and await _exists(page, self._options, selector=plan.captcha_selector):
-            return Reason(code="captcha_blocked", message="hCaptcha shown on submit")
+        # Detect blocking captcha only after submit attempt, using visibility/overlay heuristics
+        try:
+            cstate = await _hcaptcha_state(page)
+            if cstate.get("blocking"):
+                log_event("captcha.blocking_visible", details=cstate)
+                return Reason(code="captcha_blocked", message="hCaptcha visible and blocking submission")
+        except Exception:
+            pass
 
         # Post-submit sanity: page should either navigate or hide form
         still_has_form = await page.evaluate("() => !!document.querySelector('form#application-form')")
@@ -617,17 +671,52 @@ def _strip_doctype(html: str) -> str:
 
 
 async def _wait_for_any(page, selectors: list[str]) -> None:
-    """Wait until any of the selectors appear or timeout."""
-    deadline = asyncio.get_event_loop().time() + 12.0
+    """Wait until any of the selectors appear or timeout.
+
+    Emits lightweight telemetry to help diagnose timeouts (e.g., CDP disconnects).
+    """
+    timeout_s = 20.0
+    try:
+        import os as _os
+        env_to = float(_os.getenv("AUTO_APPLY_FORM_WAIT_TIMEOUT_SECONDS", "0") or 0)
+        if env_to > 0:
+            timeout_s = max(5.0, env_to)
+    except Exception:
+        pass
+    try:
+        log_event("form.wait.start", selectors=selectors, timeoutSeconds=timeout_s)
+    except Exception:
+        pass
+    deadline = asyncio.get_event_loop().time() + timeout_s
+    poll_errors = 0
     while asyncio.get_event_loop().time() < deadline:
         for sel in selectors:
             try:
                 els = await page.get_elements_by_css_selector(sel)
-            except Exception:
-                els = []
-            if els:
-                return
+                if els:
+                    try:
+                        log_event("form.wait.found", selector=sel)
+                    except Exception:
+                        pass
+                    return
+            except Exception as e:
+                poll_errors += 1
+                if poll_errors <= 2:
+                    try:
+                        log_event("form.wait.poll_error", selector=sel, error=str(e))
+                    except Exception:
+                        pass
         await asyncio.sleep(0.3)
+    try:
+        # Try to capture current URL for context
+        href = None
+        try:
+            href = await page.evaluate("() => window.location && window.location.href || ''")
+        except Exception:
+            href = None
+        log_event("form.wait.timeout", selectors=selectors, pollErrors=poll_errors, url=href)
+    except Exception:
+        pass
     raise TimeoutError("Expected elements did not render in time")
 
 
@@ -663,6 +752,125 @@ async def _fill_textarea(page, selector: str, value: str) -> None:
         pass
 
 
+async def _robust_navigate(session: BrowserSession, page, url: str) -> None:
+    """Navigate to URL using Browser-Use event bus, then fall back to CDP, then page.goto.
+
+    Logs apply.navigate.start/ok/fail and final href to make failures diagnosable.
+    """
+    try:
+        log_event("apply.navigate.start", url=url)
+    except Exception:
+        pass
+    # 1) Browser-Use event bus
+    try:
+        bus = getattr(session, "event_bus", None)
+        if bus is not None:
+            try:
+                from browser_use.browser.events import NavigateToUrlEvent  # type: ignore
+            except Exception:
+                NavigateToUrlEvent = None  # type: ignore
+            if NavigateToUrlEvent is not None:
+                try:
+                    ev = session.event_bus.dispatch(NavigateToUrlEvent(url=url, new_tab=False))
+                    await ev
+                    await ev.event_result(raise_if_any=True, raise_if_none=False)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    # Verify and return if navigated
+    try:
+        href = await page.evaluate("() => window.location && window.location.href || ''")
+        if isinstance(href, str) and href and href != "about:blank":
+            try:
+                log_event("apply.navigate.ok", method="event_bus", href=href)
+            except Exception:
+                pass
+            return
+    except Exception:
+        pass
+    # 2) CDP Page.navigate fallback
+    try:
+        send = await _get_cdp_sender(page, session)
+        if send is not None:
+            try:
+                await send("Page.enable", {})
+            except Exception:
+                pass
+            await send("Page.navigate", {"url": url, "transitionType": "typed"})
+            # brief settle
+            try:
+                await asyncio.sleep(0.2)
+            except Exception:
+                pass
+            try:
+                href = await page.evaluate("() => window.location && window.location.href || ''")
+            except Exception:
+                href = None
+            if isinstance(href, str) and href and href != "about:blank":
+                try:
+                    log_event("apply.navigate.ok", method="cdp", href=href)
+                except Exception:
+                    pass
+                return
+    except Exception as e:
+        try:
+            log_event("apply.navigate.cdp.error", error=str(e))
+        except Exception:
+            pass
+    # 3) page.goto best-effort
+    try:
+        if hasattr(page, "goto"):
+            await page.goto(url)
+            try:
+                href = await page.evaluate("() => window.location && window.location.href || ''")
+            except Exception:
+                href = None
+            if isinstance(href, str) and href and href != "about:blank":
+                try:
+                    log_event("apply.navigate.ok", method="page.goto", href=href)
+                except Exception:
+                    pass
+                return
+    except Exception as e:
+        try:
+            log_event("apply.navigate.page.error", error=str(e))
+        except Exception:
+            pass
+    try:
+        href = await page.evaluate("() => window.location && window.location.href || ''")
+    except Exception:
+        href = None
+    try:
+        log_event("apply.navigate.fail", href=href or "")
+    except Exception:
+        pass
+    # Let caller continue to wait; _wait_for_any will timeout and log URL
+
+
+async def _get_cdp_sender(page, session: BrowserSession | None):
+    """Return a callable to send CDP methods or None if unavailable.
+
+    Mirrors client discovery used in _cdp_set_file_input_files.
+    """
+    for obj in (page, getattr(page, "context", None), session):
+        if obj is None:
+            continue
+        for attr in ("cdp_client", "_cdp_client", "cdp", "_cdp", "client", "_client"):
+            try:
+                cand = getattr(obj, attr, None)
+            except Exception:
+                cand = None
+            if cand is None:
+                continue
+            for name in ("send", "execute", "call", "invoke", "call_method"):
+                try:
+                    fn = getattr(cand, name, None)
+                except Exception:
+                    fn = None
+                if callable(fn):
+                    return fn
+    return None
 async def _upload_resume(session: BrowserSession | None, page, selector: str, path: str) -> bool:
     """Attach a resume file using best available mechanism and wait for success.
 
@@ -678,6 +886,18 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
         await page.get_elements_by_css_selector(selector)
     except Exception:
         return False
+    # Capabilities snapshot for diagnostics
+    try:
+        caps = {
+            "has_locator": bool(getattr(page, "locator", None)),
+            "has_set_input_files": bool(getattr(page, "set_input_files", None)),
+            "has_frame_locator": bool(getattr(page, "frame_locator", None)),
+            "has_expect_file_chooser": bool(getattr(page, "expect_file_chooser", None)),
+            "has_event_bus": bool(getattr(session, "event_bus", None)) if session is not None else False,
+        }
+        log_event("resume_upload.start", selector=selector, capabilities=caps)
+    except Exception:
+        pass
 
     # 1) Locator-based API (works even if input is hidden)
     try:
@@ -720,13 +940,22 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
     try:
         if hasattr(page, "frame_locator") and hasattr(page, "locator"):
             # Try a handful of iframes
-            for i in range(0, 5):
+            for i in range(0, 20):
                 try:
                     try:
                         log_event("resume_upload.attempt", method="frame_locator", index=i)
                     except Exception:
                         pass
                     frame_loc = page.frame_locator("iframe").nth(i)
+                    # Best-effort: ensure the input is present before setting files
+                    try:
+                        exists = await frame_loc.locator(selector).count()
+                        if hasattr(exists, "__await__"):
+                            exists = await exists
+                        if not exists:
+                            continue
+                    except Exception:
+                        pass
                     loc = frame_loc.locator(selector)
                     await loc.set_input_files(path)
                     ok = await _wait_for_resume_upload(page, selector)
@@ -769,6 +998,30 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
         except Exception:
             pass
         await page.evaluate("() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }")
+        # Give the page a brief moment to render/recreate the input
+        try:
+            await asyncio.sleep(0.4)
+        except Exception:
+            pass
+        # Refresh the selector in case the input was re-mounted
+        try:
+            new_selector = await page.evaluate(
+                """
+                () => {
+                  const el = document.querySelector('input#resume-upload-input[name="resume"]')
+                          || document.querySelector('input[name="resume"]')
+                          || document.querySelector('input[type="file"]');
+                  if (!el) return null;
+                  if (el.id) return `#${el.id}`;
+                  if (el.name) return `input[name='${el.name}']`;
+                  return 'input[type="file"]';
+                }
+                """
+            )
+            if isinstance(new_selector, str) and new_selector:
+                selector = new_selector
+        except Exception:
+            pass
         if hasattr(page, "locator"):
             await page.locator(selector).set_input_files(path)
             ok = await _wait_for_resume_upload(page, selector)
@@ -797,13 +1050,36 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 # Try to pass an explicit LLM if available; otherwise rely on defaults
                 element = None
                 try:
-                    try:
-                        from browser_use.llm.openai import ChatOpenAI as _BUChat
-                        # Model choice can be wired from settings later; default to a fast model
-                        llm_obj = _BUChat(model="gpt-4.1-mini")
-                    except Exception:
-                        llm_obj = None
+                    import os as _os
+                    llm_obj = None
+                    if _os.getenv("GOOGLE_API_KEY"):
+                        try:
+                            from browser_use.llm.google import ChatGoogle as _BUGemini  # type: ignore
+                            llm_obj = _BUGemini()
+                        except Exception:
+                            llm_obj = None
+                    if llm_obj is None and (_os.getenv("OPENROUTER_API_KEY") or _os.getenv("OPENAI_API_KEY")):
+                        try:
+                            if _os.getenv("OPENROUTER_API_KEY") and not _os.getenv("OPENAI_API_KEY"):
+                                _os.environ["OPENAI_API_KEY"] = _os.getenv("OPENROUTER_API_KEY") or ""
+                                if not _os.getenv("OPENAI_BASE_URL") and not _os.getenv("OPENAI_API_BASE"):
+                                    _os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
+                            from browser_use.llm.openai import ChatOpenAI as _BUChat
+                            llm_obj = _BUChat()
+                        except Exception:
+                            llm_obj = None
                     if llm_obj is not None:
+                        # Pass model from env if available to improve accuracy (OpenRouter/Google)
+                        try:
+                            import os as _os
+                            model_name = _os.getenv("LLM_MODEL")
+                            if model_name and hasattr(llm_obj, "model"):
+                                try:
+                                    llm_obj.model = model_name  # best-effort; some clients accept assignment
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                         element = await page.must_get_element_by_prompt(
                             "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
                             llm=llm_obj,
@@ -820,6 +1096,25 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 except Exception:
                     pass
                 element = None
+            if element is None:
+                # Retry with a couple of prompt variants to increase recall
+                try:
+                    alt_prompts = [
+                        "the file upload control (input[type=\\\"file\\\"]) used to attach a resume/CV inside the application form",
+                        "the resume/CV chooser input element in the application form",
+                    ]
+                    for ptxt in alt_prompts:
+                        try:
+                            if llm_obj is not None and hasattr(page, "must_get_element_by_prompt"):
+                                element = await page.must_get_element_by_prompt(ptxt, llm=llm_obj)
+                            elif hasattr(page, "must_get_element_by_prompt"):
+                                element = await page.must_get_element_by_prompt(ptxt)
+                            if element is not None:
+                                break
+                        except Exception:
+                            element = None
+                except Exception:
+                    element = None
             if element is not None:
                 new_selector = None
                 try:
@@ -882,6 +1177,11 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                             return True
                 except Exception:
                     pass
+            else:
+                try:
+                    log_event("resume_upload.llm_locator.result", css_selector=None, backend_node_id=None)
+                except Exception:
+                    pass
         except Exception as _e:
             try:
                 log_event("resume_upload.llm_locator.error", error=str(_e))
@@ -894,7 +1194,12 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             log_event("resume_upload.cdp.start", selector=selector)
         except Exception:
             pass
-        if await _cdp_set_file_input_files(page, selector, path, backend_node_id=backend_id):
+        if await _cdp_set_file_input_files(page, selector, path, backend_node_id=backend_id, session=session):
+            # Nudge UI listeners in case the widget needs explicit events
+            try:
+                await _dispatch_file_input_events(page, selector)
+            except Exception:
+                pass
             ok = await _wait_for_resume_upload(page, selector)
             if ok:
                 try:
@@ -911,6 +1216,10 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
     # 7) Event-bus upload fallback (browser-use CDP sessions)
     try:
         if session is not None:
+            try:
+                log_event("resume_upload.eventbus.start")
+            except Exception:
+                pass
             ok = await _eventbus_upload_resume(session, selector, path)
             if ok:
                 done = await _wait_for_resume_upload(page, selector)
@@ -926,6 +1235,15 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
         except Exception:
             pass
     
+    # No branch succeeded; emit compact postmortem for diagnostics
+    try:
+        await _log_resume_postmortem(page, selector)
+    except Exception:
+        pass
+    try:
+        log_event("resume_upload.failed_all_branches", selector=selector)
+    except Exception:
+        pass
     return False
 
 
@@ -935,7 +1253,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
     Signals considered success:
     - input.files.length > 0
     - hidden input resumeStorageId populated
-    - .resume-upload-success is visible OR span.filename contains text
+    - .resume-upload-success or .application-upload-success visible OR span.filename has text
     Failure signals (return False early):
     - .resume-upload-failure visible
     - .resume-upload-oversize visible
@@ -958,11 +1276,11 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                   const files = el && el.files ? el.files.length : 0;
                   const ok1 = files && files > 0;
                   const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
+                  const visible = (n) => { if (!n) return false; const st = window.getComputedStyle(n); return st && st.display !== 'none' && st.visibility !== 'hidden'; };
                   const ok3 = (() => {
-                    const s = document.querySelector('.resume-upload-success');
-                    if (!s) return false;
-                    const style = window.getComputedStyle(s);
-                    return style && style.display !== 'none' && style.visibility !== 'hidden';
+                    const s1 = document.querySelector('.resume-upload-success');
+                    const s2 = document.querySelector('.application-upload-success');
+                    return visible(s1) || visible(s2);
                   })();
                   const ok4 = (() => {
                     const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
@@ -988,6 +1306,37 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                 selector,
             )
             if state and state.get("ok"):
+                # Short settle: ensure state remains OK briefly and no failure banners appear
+                try:
+                    settle_end = asyncio.get_event_loop().time() + 1.0
+                except Exception:
+                    settle_end = 0
+                while asyncio.get_event_loop().time() < settle_end:
+                    try:
+                        s2 = await page.evaluate(
+                            """
+                            (sel) => {
+                              const el = document.querySelector(sel);
+                              const files = el && el.files ? el.files.length : 0;
+                              const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
+                              const fail = (() => {
+                                const f = document.querySelector('.resume-upload-failure');
+                                const o = document.querySelector('.resume-upload-oversize');
+                                const v = (n) => { if (!n) return false; const s = window.getComputedStyle(n); return s.display !== 'none' && s.visibility !== 'hidden'; };
+                                return v(f) || v(o);
+                              })();
+                              return { ok: (files>0 || ok2) && !fail, fail };
+                            }
+                            """,
+                            selector,
+                        )
+                        if s2 and s2.get("fail"):
+                            return False
+                        if s2 and s2.get("ok"):
+                            pass
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.15)
                 return True
             if state and state.get("fail"):
                 return False
@@ -1009,12 +1358,12 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                   const files = el && el.files ? el.files.length : 0;
                   const storage = document.querySelector('input[name=\"resumeStorageId\"]');
                   const storageVal = storage ? (storage.value || '') : '';
-                  const success = document.querySelector('.resume-upload-success');
+                  const success = document.querySelector('.resume-upload-success') || document.querySelector('.application-upload-success');
                   const fail = document.querySelector('.resume-upload-failure');
                   const oversize = document.querySelector('.resume-upload-oversize');
                   const styleStr = (n) => {
-                    if (!n) return '';
-                    try { const s = window.getComputedStyle(n); return ${s.display}|; } catch { return ''; }
+                    if (!n) return "";
+                    try { const s = window.getComputedStyle(n); return (s.display||"") + "|" + (s.visibility||""); } catch { return ""; }
                   };
                   const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
                   const filename = (() => {
@@ -1044,6 +1393,24 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
     return False
 
 
+async def _dispatch_file_input_events(page, selector: str) -> None:
+    """Dispatch input/change events on the file input to trigger UI listeners."""
+    try:
+        await page.evaluate(
+            """
+            (sel) => {
+              const el = document.querySelector(sel);
+              if (!el) return false;
+              try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch {}
+              try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch {}
+              return true;
+            }
+            """,
+            selector,
+        )
+    except Exception:
+        pass
+
 async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: str) -> bool:
     """Try to upload a file via browser-use event bus fallback.
 
@@ -1065,9 +1432,13 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
             except Exception:
                 pass
             return False
-        # Heuristic: probe first 10 DOM elements indexed by the session and try uploading
+        # Heuristic: probe first N DOM elements by index and try uploading when type is file
         from browser_use.browser.events import UploadFileEvent  # type: ignore
-        for idx in range(0, 10):
+        scanned = 0
+        matched = 0
+        # Increase scan window; bail early on first success
+        MAX_SCAN = 300
+        for idx in range(0, MAX_SCAN):
             try:
                 el = await get_by_index(idx)
             except Exception:
@@ -1084,8 +1455,14 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
                         ok_type = bool(maybe)
                 except Exception:
                     ok_type = False
+                scanned += 1
                 if not ok_type:
                     continue
+                matched += 1
+                try:
+                    log_event("resume_upload.eventbus.try", index=idx)
+                except Exception:
+                    pass
             except Exception:
                 continue
             try:
@@ -1099,12 +1476,16 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
                 return True
             except Exception:
                 continue
+        try:
+            log_event("resume_upload.eventbus.candidates_scanned", scanned=scanned, matched=matched)
+        except Exception:
+            pass
     except Exception:
         pass
     return False
 
 
-async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node_id: int | None = None) -> bool:
+async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node_id: int | None = None, session: BrowserSession | None = None) -> bool:
     """Best-effort CDP fallback using DOM.setFileInputFiles.
 
     Tries to find a CDP client on the page/session and call the DevTools
@@ -1113,6 +1494,59 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
     Returns:
         True if the CDP call was sent and did not error, False otherwise.
     """
+    # Preferred path: use Browser-Use's typed CDP session if available
+    if session is not None and hasattr(session, "get_or_create_cdp_session"):
+        try:
+            try:
+                log_event("resume_upload.cdp.typed.start", selector=selector)
+            except Exception:
+                pass
+            cdp_session = await session.get_or_create_cdp_session()  # type: ignore[attr-defined]
+            cdp_client = getattr(cdp_session, "cdp_client", None)
+            session_id = getattr(cdp_session, "session_id", None)
+            if cdp_client is not None and session_id is not None:
+                try:
+                    await cdp_client.send.DOM.enable(session_id=session_id)
+                except Exception:
+                    pass
+                # Runtime.evaluate to get objectId for exact selector
+                evaluation = await cdp_client.send.Runtime.evaluate(
+                    params={
+                        "expression": f"(() => document.querySelector({json.dumps(selector)}))()",
+                        "objectGroup": "file-upload",
+                        "includeCommandLineAPI": True,
+                        "returnByValue": False,
+                        "awaitPromise": True,
+                    },
+                    session_id=session_id,
+                )
+                result = evaluation.get("result", {}) if isinstance(evaluation, dict) else {}
+                object_id = result.get("objectId")
+                if object_id:
+                    try:
+                        await cdp_client.send.DOM.setFileInputFiles(
+                            params={"files": [path], "objectId": object_id},
+                            session_id=session_id,
+                        )
+                        try:
+                            log_event("resume_upload.cdp.typed.success")
+                        except Exception:
+                            pass
+                        return True
+                    finally:
+                        try:
+                            await cdp_client.send.Runtime.releaseObjectGroup(  # type: ignore[attr-defined]
+                                params={"objectGroup": "file-upload"},
+                                session_id=session_id,
+                            )
+                        except Exception:
+                            pass
+        except Exception as e:
+            try:
+                log_event("resume_upload.cdp.typed.error", error=str(e))
+            except Exception:
+                pass
+
     client = None
     for attr in ("cdp_client", "_cdp_client", "cdp", "_cdp", "client", "_client"):
         try:
@@ -1133,6 +1567,15 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
                         break
         except Exception:
             pass
+    if client is None and session is not None:
+        for attr in ("cdp_client", "_cdp_client", "cdp", "_cdp", "client", "_client"):
+            try:
+                cand = getattr(session, attr, None)
+                if cand is not None:
+                    client = cand
+                    break
+            except Exception:
+                continue
     if client is None:
         return False
     send = None
@@ -1151,6 +1594,34 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
             await send("DOM.enable", {})
         except Exception:
             pass
+        # Preferred: Runtime.evaluate to get objectId for exact element, then set files by objectId
+        try:
+            evaluation = await send(
+                "Runtime.evaluate",
+                {
+                    "expression": f"(() => document.querySelector({json.dumps(selector)}))()",
+                    "objectGroup": "file-upload",
+                    "includeCommandLineAPI": True,
+                    "returnByValue": False,
+                    "awaitPromise": True,
+                },
+            )
+            result = evaluation.get("result", {}) if isinstance(evaluation, dict) else {}
+            object_id = result.get("objectId")
+            if object_id:
+                try:
+                    await send("DOM.setFileInputFiles", {"files": [path], "objectId": object_id})
+                    return True
+                finally:
+                    try:
+                        await send("Runtime.releaseObjectGroup", {"objectGroup": "file-upload"})
+                    except Exception:
+                        pass
+        except Exception as _e:
+            try:
+                log_event("resume_upload.cdp.object_id.error", error=str(_e))
+            except Exception:
+                pass
         doc = await send("DOM.getDocument", {"depth": -1, "pierce": True})
         root = None
         if isinstance(doc, dict):
@@ -1168,12 +1639,87 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
         node_id = None
         if isinstance(q, dict):
             node_id = q.get("nodeId")
-        if not node_id:
-            return False
-        await send("DOM.setFileInputFiles", {"files": [path], "nodeId": node_id})
-        return True
+        if node_id:
+            await send("DOM.setFileInputFiles", {"files": [path], "nodeId": node_id})
+            return True
+        # Fallback: flattened document (pierce shadow DOM) search for input[type=file]
+        try:
+            flat = await send("DOM.getFlattenedDocument", {"depth": -1, "pierce": True})
+        except Exception:
+            flat = None
+        if isinstance(flat, dict):
+            nodes = flat.get("nodes") or []
+            def _attrs_map(n):
+                attrs = n.get("attributes") or []
+                try:
+                    it = iter(attrs)
+                    return {k:v for k,v in zip(it, it)}
+                except Exception:
+                    return {}
+            best = None
+            for n in nodes:
+                try:
+                    if str(n.get("nodeName") or "").upper() != "INPUT":
+                        continue
+                    attrs = _attrs_map(n)
+                    if str(attrs.get("type", "")).lower() != "file":
+                        continue
+                    # Prefer name="resume" when present
+                    score = 1
+                    if str(attrs.get("name", "")).lower() == "resume":
+                        score = 2
+                    bni = n.get("backendNodeId") or n.get("backendNodeID")
+                    if bni:
+                        if best is None or score > best[0]:
+                            best = (score, int(bni))
+                except Exception:
+                    continue
+            if best is not None:
+                try:
+                    await send("DOM.setFileInputFiles", {"files": [path], "backendNodeId": best[1]})
+                    return True
+                except Exception:
+                    pass
+        return False
     except Exception:
         return False
+
+
+async def _log_resume_postmortem(page, selector: str) -> None:
+    """Emit a compact diagnostic snapshot regardless of debug flags."""
+    try:
+        snapshot = await page.evaluate(
+            """
+            (sel) => {
+              const el = document.querySelector(sel);
+              const files = el && el.files ? el.files.length : 0;
+              const storage = document.querySelector('input[name=\"resumeStorageId\"]');
+              const storageVal = storage ? (storage.value || '') : '';
+              const s1 = document.querySelector('.resume-upload-success');
+              const s2 = document.querySelector('.application-upload-success');
+              const f1 = document.querySelector('.resume-upload-failure');
+              const o1 = document.querySelector('.resume-upload-oversize');
+              const vis = (n) => { try { const s = n && window.getComputedStyle(n); return !!(s && s.display !== 'none' && s.visibility !== 'hidden'); } catch { return false; } };
+              const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
+              const outer = container ? container.outerHTML : (el ? el.outerHTML : '');
+              return {
+                files,
+                storage_id_len: storageVal.length,
+                success_visible: vis(s1) || vis(s2),
+                failure_visible: vis(f1),
+                oversize_visible: vis(o1),
+                outer_truncated: outer ? outer.slice(0, 1200) : '',
+              };
+            }
+            """,
+            selector,
+        )
+    except Exception:
+        snapshot = None
+    try:
+        log_event("resume_upload.postmortem", snapshot=snapshot or {})
+    except Exception:
+        pass
 async def _set_pronouns(page, pronouns: str | list[str]) -> None:
     """Check pronoun checkboxes by value. Accepts a string or list of strings.
 
@@ -1277,6 +1823,62 @@ async def _form_report_validity(page) -> None:
     except Exception:
         pass
 
+
+async def _hcaptcha_state(page) -> dict:
+    """Return presence/visibility/blocking state of hCaptcha on the page.
+
+    Heuristics:
+    - present: div#h-captcha exists in DOM
+    - visible: any hCaptcha iframe (or container) is displayed/visible with non-trivial size
+    - blocking: visible and either covers notable viewport area or has pointer events enabled
+    """
+    try:
+        state = await page.evaluate(
+            """
+            () => {
+              const res = { present: false, visible: false, blocking: false, iframes: 0, cover: 0 };
+              const c = document.querySelector('div#h-captcha');
+              if (!c) return res;
+              res.present = true;
+              const rectC = c.getBoundingClientRect();
+              const styleC = window.getComputedStyle(c);
+              const visC = (styleC.display !== 'none' && styleC.visibility !== 'hidden' && rectC.width > 1 && rectC.height > 1 && parseFloat(styleC.opacity || '1') > 0.01);
+              let visibleIFrame = false;
+              let maxCover = 0;
+              const iframes = c.querySelectorAll('iframe');
+              res.iframes = iframes.length;
+              const vw = Math.max(1, window.innerWidth || 1);
+              const vh = Math.max(1, window.innerHeight || 1);
+              for (const f of iframes) {
+                const r = f.getBoundingClientRect();
+                const s = window.getComputedStyle(f);
+                const v = (s.display !== 'none' && s.visibility !== 'hidden' && r.width > 20 && r.height > 20 && parseFloat(s.opacity || '1') > 0.01);
+                if (v) {
+                  visibleIFrame = true;
+                  const cover = Math.min(1, (r.width * r.height) / (vw * vh));
+                  if (cover > maxCover) maxCover = cover;
+                }
+              }
+              res.visible = visC || visibleIFrame;
+              res.cover = Number(maxCover.toFixed(3));
+              // Blocking if visible and either large overlay or pointer-events enabled
+              let pe = false;
+              if (visibleIFrame) {
+                for (const f of iframes) {
+                  const s = window.getComputedStyle(f);
+                  if (s.pointerEvents && s.pointerEvents !== 'none') { pe = true; break; }
+                }
+              }
+              res.blocking = res.visible && (res.cover >= 0.2 || pe);
+              return res;
+            }
+            """
+        )
+        if state and isinstance(state, dict):
+            return state
+    except Exception:
+        pass
+    return {"present": False, "visible": False, "blocking": False}
 
 async def _collect_invalid_fields(page) -> list[dict]:
     try:
@@ -1460,6 +2062,8 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
+
 
 
 

@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 import httpx
 from browser_use.browser.session import BrowserSession
+from .browser_agent import LeverBrowserOptions
 
 from .application_queue import ApplicationItem, JobDetails
 from .profile_manager import Profile
@@ -643,21 +644,25 @@ def _load_search_results_with_browser(
 
 
 def _default_browser_factory(profile: Profile) -> BrowserSession:
-    """Return a BrowserSession configured for discovery."""
+    """Return a BrowserSession configured for discovery with stealth settings."""
 
     channel = _resolve_browser_channel(profile.preferred_browser)
     user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
-    allowed_domains = [
+    options = LeverBrowserOptions.from_settings()
+    # Narrow allowed domains for discovery specifically
+    discovery_domains = [
         "google.com",
         "www.google.com",
         "jobs.lever.co",
     ]
+    options.apply_stealth_environment()
+    kwargs = {"allowed_domains": discovery_domains}
     return BrowserSession(
         headless=False,
         channel=channel,
         user_data_dir=user_data_dir,
-        allowed_domains=allowed_domains,
         keep_alive=True,
+        **kwargs,
     )
 
 
