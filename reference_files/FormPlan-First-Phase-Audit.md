@@ -23,7 +23,7 @@ The current Lever automation focuses on a selector-centric `LeverFormPlan` datac
 - Location gate: detect `#location-input` + hidden `input[name="selectedLocation"]`, ensure JSON value has non-empty `name` before proceeding.
 - Deterministic fill: profile defaults for name/email/phone/links; only escalate to LLM for unmapped/invalid fields.
 - Validity check: always `reportValidity()` then `checkValidity()`, capture `:invalid` elements for gaps.
-- Deterministic submit only after valid; do not bypass CAPTCHA—block submission and mark for review.
+- Deterministic submit only after valid; do not bypass CAPTCHA—on Lever, **check CAPTCHA immediately after submit** (presence before submit is normal), then pause/mark for review if visible/blocking.
 - Hooks/observability: snapshot invalid fields, log artifacts, pause when captcha present.
 - CDP/profile/allowed_domains configuration ready for stable deterministic runs.
 
@@ -162,7 +162,7 @@ if cstate.get("blocking"):
 ## Risks & Prioritized Recommendations (No code changes)
 - **Blockers**
   - Introduce spec-compliant FormPlan schema (`meta`, `widgets.resume`, `fields[]`, `submit`) with selector precedence metadata. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L34-L43】【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L321-L364】
-  - Enforce captcha gate (pause/abort submit) when `captchaSelector` is present or visible before clicking submit. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L397-L405】【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L548-L575】
+  - Enforce Lever-specific CAPTCHA policy: **do not block on presence before submit**; **after the submit click**, detect if CAPTCHA is visible/blocking or an error banner indicates CAPTCHA, then pause/mark for review. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L397-L405】【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L548-L575】
 - **Majors**
   - Reorder resume pipeline to remain deterministic (remove LLM locator from Phase 1, keep event bus/CDP fallbacks) and surface success/failure signals via FormPlan. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L970-L1319】
   - Add location gate assertion ensuring hidden `selectedLocation` JSON contains a non-empty `name` prior to resume upload. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L1831-L1859】
@@ -174,7 +174,7 @@ if cstate.get("blocking"):
   - Simplify navigation fallbacks once deterministic path is stable; keep telemetry but reduce branches. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L820-L918】
 
 **Quick Wins (1–3h)**
-- Add pre-submit captcha guard that pauses or returns a review reason before `_click`. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L548-L575】
+- Add a **post-submit** CAPTCHA check that pauses or returns a review reason immediately after clicking submit. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L548-L575】
 - Call `reportValidity()` unconditionally before `checkValidity()` and collect `:invalid` selectors via `querySelectorAll`. 【F:src/job_ai_auto_apply_ui/browser_agent/lever.py†L582-L613】
 
 **Medium (0.5–1d)**

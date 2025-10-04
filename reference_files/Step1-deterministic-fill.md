@@ -288,7 +288,7 @@ agent = Agent(
 
 ### D) Lifecycle hooks for observability & guardrails
 
-Use hooks to snapshot your plan, form validity, and block risky transitions (e.g., do not submit if `captchaSelector` is present).
+Use hooks to snapshot your plan and form validity. For Lever, the CAPTCHA element is often present from page load and only blocks after clicking submit, so **do not block on mere presence**; handle CAPTCHA **immediately after the submit attempt**.
 
 ```python
 async def on_step_start(agent):
@@ -297,9 +297,18 @@ async def on_step_start(agent):
     agent.state.debug = agent.state.get('debug', {}) | { 'invalid': invalid }
 
 async def on_step_end(agent):
-    # Prevent accidental submits behind captcha
-    has_captcha = await agent.browser_session.get_current_page().evaluate("() => !!document.querySelector('.h-captcha, .g-recaptcha')")
-    if has_captcha:
+    # After a submit attempt, check if CAPTCHA is now visible/blocking.
+    captcha_blocking = await agent.browser_session.get_current_page().evaluate("""() => {
+  const el = document.querySelector('.h-captcha, .g-recaptcha');
+  if (!el) return false;
+  const style = window.getComputedStyle(el);
+  const visible = style && style.display !== 'none' && style.visibility !== 'hidden';
+  // Consider blocking if visible or an error banner references CAPTCHA.
+  const banner = document.querySelector('.captcha-error, .captcha-required, .g-recaptcha-error');
+  return !!(visible || banner);
+}
+""");
+    if captcha_blocking:
         agent.pause()   # handoff to supervised/manual review
 ```
 
@@ -318,7 +327,7 @@ async def on_step_end(agent):
 
 1) **iFrames / hidden inputs.** Use `execute_js` for frame‑scoped queries or fall back to the CDP file input setter through the Actor when “click to open chooser” widgets intercept events.
 2) **Location autocomplete.** Treat it as a gate: type, press Enter, then assert `selectedLocation` JSON has a non‑empty `name`. Only then attempt resume upload.
-3) **CAPTCHA present.** Do **not** attempt to bypass. Pause, persist artifacts (screenshot, DOM snapshot), and mark the queue item for manual review.
+3) **CAPTCHA (Lever-specific).** The CAPTCHA node may exist before submit. **Do not** block based on presence. Attempt submit; **if after submit** the CAPTCHA becomes visible or the page returns a CAPTCHA-required error, pause, persist artifacts (screenshot, DOM snapshot), and mark for manual review.
 
 
 ---
@@ -339,7 +348,7 @@ These patterns are intentionally captured by the selectors/signals in the JSON s
 1) **DOM scan** → build FormPlan once.
 2) **Fill deterministic**: profile name/email/phone/links; set location gate; upload resume; collect questions.
 3) **Validate** with `reportValidity()`/`checkValidity()`. If invalid: collect `:invalid` and **only then** call a narrow LLM tool pass.
-4) **Submit** deterministically; if the page remains or a captcha appears, persist artifacts and mark for review.
+4) **Submit** deterministically; **immediately after submit**, check whether a CAPTCHA has become visible or an error indicates CAPTCHA is required. If so, persist artifacts and mark for review.
 
 That’s it—repeatable, observable, and LLM‑minimal.
 
