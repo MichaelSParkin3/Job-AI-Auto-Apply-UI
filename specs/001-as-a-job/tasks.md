@@ -219,23 +219,23 @@ task start T027 --repo /workspace/Job-AI-Auto-Apply-UI
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/unit/test_browser_agent_captcha.py`
 
 ### Phase 3.8.2: Core Implementation
-- [ ] T038 Align `build_plan_in_browser` with Step1 JSON schema
+- [X] T038 Align `build_plan_in_browser` with Step1 JSON schema
   - Description: Refactor the browser script to return `meta`, `widgets.resume` (input/triggers/success/failure), `fields[]` entries with selector precedence and alternates, and `submit` selectors exactly as defined in `/reference_files/Step1-deterministic-fill.md`.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
-- [ ] T039 Implement selector precedence utility with alternates
+- [X] T039 Implement selector precedence utility with alternates
   - Description: Update selector helpers to prefer `name` over `id`, capture fallback sequences, and store alternates for resilience during execution; adjust downstream consumers to use the enriched data.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
-- [ ] T040 Refine resume upload pipeline for deterministic signals
+- [X] T040 Refine resume upload pipeline for deterministic signals
   - Description: Reorder `_upload_resume` steps to remove LLM locator branches, leverage plan-provided triggers/signals, and abort on failure signals per Step1 guidance.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
-- [ ] T041 Enforce location gate assertion before resume upload
+- [X] T041 Enforce location gate assertion before resume upload
   - Description: Ensure `_set_structured_location` validates hidden JSON contains a non-empty `name`, blocking further execution and surfacing a deterministic error when unmet.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
-- [ ] T042 Guarantee validity gating order and invalid snapshots
+- [X] T042 Guarantee validity gating order and invalid snapshots
   - Description: Call `reportValidity()` before `checkValidity()`, gather `:invalid` selectors, and plumb results into logging/artifact capture to satisfy audit findings.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
