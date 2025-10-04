@@ -1,7 +1,7 @@
 # Tasks: Lever Auto‑Apply Assistant (Google Sourcing + Lever Forms)
 
-**Input**: Design documents from `G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\001-as-a-job\`
-**Prerequisites**: plan.md (required), research.md, data-model.md, contracts/ , quickstart.md
+**Input**: Design documents from `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/`
+**Prerequisites**: `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/plan.md` (required), `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/research.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/data-model.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/contracts/`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/quickstart.md`
 
 ## Execution Flow (main)
 ```
@@ -129,20 +129,31 @@
 - `job_discovery.py` details extraction (T013) after URL build (T012)
 - Browser agent (T014) before confirmation capture (T019)
 - LLM wiring: T024 before T025; T025 before T026; T026 before T027; T028 after T026
+- Step1 fixture (T032) before new Step1 tests (T033–T037)
+- Step1 tests (T033–T037) before deterministic core updates (T038–T042)
+- Core Step1 updates (T038–T042) before CAPTCHA/telemetry integration (T043)
+- Implementation (T038–T043) before documentation polish (T044–T045)
 
 ## Parallel Example
 ```
 # Launch independent contract tests in parallel:
-/specs/001-as-a-job> Task: "T004 Contract test discover"
-/specs/001-as-a-job> Task: "T005 Contract test apply"
-/specs/001-as-a-job> Task: "T006 Contract test resume-job"
+task start T004 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T005 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T006 --repo /workspace/Job-AI-Auto-Apply-UI
 
 # Launch independent integration selector checks:
-/specs/001-as-a-job> Task: "T007 Discovery URL build"
-/specs/001-as-a-job> Task: "T009 Lever form selectors"
+task start T007 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T009 --repo /workspace/Job-AI-Auto-Apply-UI
+
+# Launch new Step1 deterministic tests together once the fixture exists:
+task start T033 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T034 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T035 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T036 --repo /workspace/Job-AI-Auto-Apply-UI
+task start T037 --repo /workspace/Job-AI-Auto-Apply-UI
 
 # LLM tests can run in parallel once wrappers are in place:
-/specs/001-as-a-job> Task: "T027 Tests for LLM wrappers and prompt_builder"
+task start T027 --repo /workspace/Job-AI-Auto-Apply-UI
 ```
 ## Reconciliation Tasks
 - [X] RT001 Update CLI documentation to match implemented flags
@@ -177,3 +188,66 @@
   - Description: Remove stray escaped newlines and incomplete blocks around resume upload re‑check; refactor long lines/import order per Ruff.
   - Files: `src/job_ai_auto_apply_ui/browser_agent/lever.py`.
   - Acceptance: `python -m job_ai_auto_apply_ui.orchestrator --help` imports without error; `auto-apply apply ...` starts; `pytest -q` runs collection phase without SyntaxError; `ruff check .` passes for `browser_agent/lever.py`.
+
+## Phase 3.8: Step1 Deterministic Alignment
+
+### Setup
+- [ ] T032 Create deterministic Lever HTML fixture for Step1 validation
+  - Description: Capture a representative Lever application DOM with resume widget, contact fields, location gate, EEO block, and captcha placeholder that matches `/reference_files/Step1-deterministic-fill.md` selectors.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/fixtures/lever_step1_form.html`
+
+### Phase 3.8.1: Tests First (TDD)
+- [ ] T033 [P] Integration test for spec-compliant FormPlan JSON
+  - Description: Load the Step1 fixture in Playwright, call `build_plan_in_browser`, and assert the returned object exposes `meta`, `widgets.resume`, `fields[]` with selector precedence metadata, and `submit` per spec; verify resume signals and location gate flags.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_formplan_json.py`
+
+- [ ] T034 [P] Integration test for selector precedence and alternates
+  - Description: Using the Step1 fixture, assert selector extraction records primary selector order (`name`→`id`→`data-qa`→aria/role→text→nth) and captures alternates for varied elements.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_selector_precedence.py`
+
+- [ ] T035 [P] Integration test for location gate enforcement
+  - Description: Validate that executing the browser agent against the fixture blocks progression until hidden `selectedLocation` JSON contains a non-empty `name` and logs a deterministic error when missing.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_location_gate.py`
+
+- [ ] T036 [P] Unit test for validity gating order
+  - Description: Mock the Playwright page to ensure `reportValidity()` is invoked before `checkValidity()`, and that invalid selectors from `querySelectorAll(':invalid')` are recorded for logging/observability.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/unit/test_browser_agent_validity.py`
+
+- [ ] T037 [P] Unit test for post-submit CAPTCHA handling
+  - Description: Assert that when `_hcaptcha_state` reports a visible CAPTCHA after submit, execution halts with a review reason and artifacts captured before further retries.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/unit/test_browser_agent_captcha.py`
+
+### Phase 3.8.2: Core Implementation
+- [ ] T038 Align `build_plan_in_browser` with Step1 JSON schema
+  - Description: Refactor the browser script to return `meta`, `widgets.resume` (input/triggers/success/failure), `fields[]` entries with selector precedence and alternates, and `submit` selectors exactly as defined in `/reference_files/Step1-deterministic-fill.md`.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
+
+- [ ] T039 Implement selector precedence utility with alternates
+  - Description: Update selector helpers to prefer `name` over `id`, capture fallback sequences, and store alternates for resilience during execution; adjust downstream consumers to use the enriched data.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
+
+- [ ] T040 Refine resume upload pipeline for deterministic signals
+  - Description: Reorder `_upload_resume` steps to remove LLM locator branches, leverage plan-provided triggers/signals, and abort on failure signals per Step1 guidance.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
+
+- [ ] T041 Enforce location gate assertion before resume upload
+  - Description: Ensure `_set_structured_location` validates hidden JSON contains a non-empty `name`, blocking further execution and surfacing a deterministic error when unmet.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
+
+- [ ] T042 Guarantee validity gating order and invalid snapshots
+  - Description: Call `reportValidity()` before `checkValidity()`, gather `:invalid` selectors, and plumb results into logging/artifact capture to satisfy audit findings.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
+
+### Phase 3.8.3: Integration
+- [ ] T043 Block submission on post-submit CAPTCHA visibility with observability hooks
+  - Description: After clicking submit, detect visible CAPTCHA states, pause execution with structured reasons, and trigger artifact capture hooks for downstream review.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`, `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/telemetry.py`
+
+### Phase 3.8.4: Polish
+- [ ] T044 [P] Document deterministic FormPlan contract updates
+  - Description: Update `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/spec.md`, `plan.md`, and `contracts/cli-contracts.md` to reflect the Step1 schema, location gate enforcement, and CAPTCHA handling policy.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/spec.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/plan.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/contracts/cli-contracts.md`
+
+- [ ] T045 [P] Update quickstart and AGENTS guidance for deterministic mode
+  - Description: Refresh `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/quickstart.md` and repository `AGENTS.md` with new validation steps, artifact expectations, and CAPTCHA pause workflow.
+  - Files: `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/quickstart.md`, `/workspace/Job-AI-Auto-Apply-UI/AGENTS.md`
