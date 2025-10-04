@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lever Application Step 1</title>
+    <style>
+      .hidden { display: none; }
+      .dropdown-results { border: 1px solid #ccc; }
+      .dropdown-results li { cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="application">
+      <form id="application-form">
+        <section class="application-section resume-section">
+          <div class="application-question application-upload">
+            <label class="application-label" for="resume-upload-input">
+              <span class="text">Resume</span>
+            </label>
+            <input
+              id="resume-upload-input"
+              name="resume"
+              type="file"
+              data-qa="input-resume"
+              accept="application/pdf"
+            />
+            <button data-qa="input-resume" type="button">Upload resume</button>
+            <div class="resume-upload-success hidden">Upload complete</div>
+            <div class="application-upload-success hidden">File attached</div>
+            <div class="resume-upload-failure hidden">Upload failed</div>
+            <div class="resume-upload-oversize hidden">File too large</div>
+            <div class="filename hidden">resume.pdf</div>
+            <input name="resumeStorageId" type="hidden" />
+          </div>
+        </section>
+
+        <section class="application-section contact-section">
+          <div class="application-question">
+            <label class="application-label" for="candidate-name">
+              <span class="text">Full name</span>
+            </label>
+            <input
+              id="candidate-name"
+              name="name"
+              type="text"
+              required
+              data-qa="name-input"
+              autocomplete="name"
+            />
+          </div>
+
+          <div class="application-question">
+            <label class="application-label" for="candidate-email">
+              <span class="text">Email</span>
+            </label>
+            <input
+              id="candidate-email"
+              name="email"
+              type="email"
+              required
+              data-qa="email-input"
+              pattern="[a-zA-Z0-9.#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+            />
+          </div>
+
+          <div class="application-question">
+            <label class="application-label" for="candidate-phone">
+              <span class="text">Phone</span>
+            </label>
+            <input
+              id="candidate-phone"
+              name="phone"
+              type="tel"
+              data-qa="phone-input"
+              placeholder="Optional"
+            />
+          </div>
+
+          <div class="application-question location-question">
+            <label class="application-label" for="location-input">
+              <span class="text">Current location</span>
+            </label>
+            <input
+              id="location-input"
+              class="location-input"
+              name="location"
+              type="text"
+              data-qa="location-input"
+              autocomplete="off"
+            />
+            <input
+              id="selected-location"
+              name="selectedLocation"
+              type="hidden"
+              value='{"name": ""}'
+            />
+            <ul class="dropdown-results">
+              <li data-value='{"name": "San Francisco, CA"}'>San Francisco, CA</li>
+              <li data-value='{"name": "New York, NY"}'>New York, NY</li>
+            </ul>
+          </div>
+
+          <div class="application-question">
+            <label class="application-label" for="linkedin-url">
+              <span class="text">LinkedIn</span>
+            </label>
+            <input
+              id="linkedin-url"
+              name="urls[LinkedIn]"
+              type="url"
+              placeholder="https://linkedin.com/in/"
+            />
+          </div>
+
+          <div class="application-question">
+            <label class="application-label" for="portfolio-url">
+              <span class="text">Portfolio</span>
+            </label>
+            <input
+              id="portfolio-url"
+              name="urls[Portfolio]"
+              type="url"
+              placeholder="https://example.com"
+            />
+          </div>
+        </section>
+
+        <section class="application-section dynamic-section">
+          <input
+            type="hidden"
+            name="additionalQuestions[0][baseTemplate]"
+            value='{"fields":[{"text":"Why do you want to work with us?","required":true}]}'
+          />
+          <div class="application-question custom-question">
+            <label class="application-label" for="additional-question-0">
+              <span class="text">Why do you want to work with us?</span>
+            </label>
+            <textarea
+              id="additional-question-0"
+              name="additionalQuestions[0][field0]"
+              data-qa="long-form-answer"
+            ></textarea>
+          </div>
+        </section>
+
+        <section class="application-section eeo-section">
+          <div class="eeo-survey">
+            <h2>Equal Opportunity Survey</h2>
+            <div class="application-question">
+              <label class="application-label" for="gender-select">
+                <span class="text">Gender</span>
+              </label>
+              <select id="gender-select" name="eeoGender" required>
+                <option value="">Select…</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="nonbinary">Non-binary</option>
+                <option value="na">Prefer not to disclose</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <div id="h-captcha" class="h-captcha" data-testid="captcha">
+          <iframe title="captcha" src="about:blank"></iframe>
+        </div>
+
+        <footer class="application-actions">
+          <button id="btn-submit" type="submit">Submit application</button>
+        </footer>
+      </form>
+    </div>
+  </body>
+</html>

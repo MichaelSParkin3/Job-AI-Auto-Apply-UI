@@ -192,29 +192,29 @@ task start T027 --repo /workspace/Job-AI-Auto-Apply-UI
 ## Phase 3.8: Step1 Deterministic Alignment
 
 ### Setup
-- [ ] T032 Create deterministic Lever HTML fixture for Step1 validation
+- [X] T032 Create deterministic Lever HTML fixture for Step1 validation
   - Description: Capture a representative Lever application DOM with resume widget, contact fields, location gate, EEO block, and captcha placeholder that matches `/reference_files/Step1-deterministic-fill.md` selectors.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/fixtures/lever_step1_form.html`
   - Real Sample Lever job application pages and forms are located in this folder, use them for reference of real world examples: `/reference_files/sample_html`
 
 ### Phase 3.8.1: Tests First (TDD)
-- [ ] T033 [P] Integration test for spec-compliant FormPlan JSON
+- [X] T033 [P] Integration test for spec-compliant FormPlan JSON
   - Description: Load the Step1 fixture in Playwright, call `build_plan_in_browser`, and assert the returned object exposes `meta`, `widgets.resume`, `fields[]` with selector precedence metadata, and `submit` per spec; verify resume signals and location gate flags.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_formplan_json.py`
 
-- [ ] T034 [P] Integration test for selector precedence and alternates
+- [X] T034 [P] Integration test for selector precedence and alternates
   - Description: Using the Step1 fixture, assert selector extraction records primary selector order (`name`→`id`→`data-qa`→aria/role→text→nth) and captures alternates for varied elements.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_selector_precedence.py`
 
-- [ ] T035 [P] Integration test for location gate enforcement
+- [X] T035 [P] Integration test for location gate enforcement
   - Description: Validate that executing the browser agent against the fixture blocks progression until hidden `selectedLocation` JSON contains a non-empty `name` and logs a deterministic error when missing.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/integration/test_lever_location_gate.py`
 
-- [ ] T036 [P] Unit test for validity gating order
+- [X] T036 [P] Unit test for validity gating order
   - Description: Mock the Playwright page to ensure `reportValidity()` is invoked before `checkValidity()`, and that invalid selectors from `querySelectorAll(':invalid')` are recorded for logging/observability.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/unit/test_browser_agent_validity.py`
 
-- [ ] T037 [P] Unit test for post-submit CAPTCHA handling
+- [X] T037 [P] Unit test for post-submit CAPTCHA handling
   - Description: Assert that when `_hcaptcha_state` reports a visible CAPTCHA after submit, execution halts with a review reason and artifacts captured before further retries.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/unit/test_browser_agent_captcha.py`
 
