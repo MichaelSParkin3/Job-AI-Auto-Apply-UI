@@ -12,6 +12,8 @@
    - Resume diagnostics toggle: append `--debug-resume-widget --resume-wait-timeout-seconds 45`
 4. Handle CAPTCHAs:
    - When blocked, note the job id and run `resume-job <id>` after manual solve.
+   - Each block captures a DOM snapshot + screenshot under `data/artifacts/...` and logs
+     `captcha.capture.artifacts` for audit.
 5. Review logs and artifacts under `data/`.
 
 Acceptance validation

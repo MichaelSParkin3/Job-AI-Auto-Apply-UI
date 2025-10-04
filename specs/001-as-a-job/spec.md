@@ -120,6 +120,10 @@ prompts), so that I save time while keeping control and traceability.
   keywords, prompts) used to populate forms.
 - **FR-004**: System MUST auto-fill Lever application forms using deterministic
   JSON field mappings and helper selectors for common widgets.
+- **FR-004a**: The runtime MUST emit a Step1-compliant form plan containing
+  `meta`, `widgets.resume`, `fields[]`, and `submit` entries with selector
+  precedence, alternates, and a `requiresLocationGate` flag so that downstream
+  automation can reason about location gating and resume upload signals.
 - **FR-005**: System MUST capture submission confirmations (text, IDs, or emails)
   and attach them to the queue item.
 - **FR-006**: System MUST maintain statuses: `new`, `in_progress`, `captcha_blocked`,
@@ -136,6 +140,9 @@ prompts), so that I save time while keeping control and traceability.
   resume automatically after user completes the step.
 - **FR-012**: System MUST validate key elements before fill to detect content drift
   and abort with a clear log when validation fails.
+- **FR-012a**: When a post-submit CAPTCHA remains visible, the assistant MUST log
+  the blocking state, capture DOM + screenshot artifacts, and return
+  `captcha_blocked` for manual follow-up.
 - **FR-013**: System MUST de-duplicate new discoveries against existing items by
   hash of URL/company/title and update status appropriately.
 - **FR-014**: System MUST produce human-readable logs and optional `--json` outputs

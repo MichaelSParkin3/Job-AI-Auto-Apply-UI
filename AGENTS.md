@@ -27,6 +27,8 @@ Python 3.11: Follow standard conventions
 ## Recent Changes
 - 001-as-a-job: Added Python 3.11 + browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog
 - 001-as-a-job: Apply CLI exposes LLM overrides and resume diagnostics flags; supervised remains default mode.
+- 001-as-a-job: Lever agent now emits Step1 deterministic form plans and captures DOM/screenshot artifacts when post-submit
+  CAPTCHAs block progress (`captcha.capture.artifacts`).
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

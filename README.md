@@ -138,6 +138,7 @@ Tip: all of the above can be set inline per‑run, or placed in `.env`.
 - `discover` parses Google results and filters `jobs.lever.co` links, then enqueues items in `data/queues/<profile>.json`.
 - `apply` launches a Browser‑Use session, navigates to the company’s Lever form, and:
   - Ensures navigation landed on `/apply` (closes stray `about:blank` tabs)
+  - Builds a deterministic Step 1 form plan (resume widget signals, selector precedence, location gate metadata)
   - Fills gating fields (e.g., location) when needed
   - Uploads the resume via CDP (`DOM.setFileInputFiles`) with fallbacks
   - Completes basic contact fields and submits
@@ -147,6 +148,7 @@ Tip: all of the above can be set inline per‑run, or placed in `.env`.
 
 - Logs: structured events like `apply.start`, `form.wait.*`, `resume_upload.*` are emitted in JSON
 - Artifacts: enable `AUTO_APPLY_DIAGNOSTICS=1` or `AUTO_APPLY_CAPTURE_VIDEO/…` to save video/HAR
+- CAPTCHA blocks: post-submit hCaptcha visibility triggers `_capture_review_artifacts` to save DOM + screenshot before pausing queue items
 - Upload troubleshooting: set `AUTO_APPLY_DEBUG_RESUME_WIDGET=1` to capture a resume widget snapshot when detection fails
 
 ## Troubleshooting

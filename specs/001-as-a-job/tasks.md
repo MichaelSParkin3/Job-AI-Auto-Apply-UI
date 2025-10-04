@@ -240,15 +240,15 @@ task start T027 --repo /workspace/Job-AI-Auto-Apply-UI
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`
 
 ### Phase 3.8.3: Integration
-- [ ] T043 Block submission on post-submit CAPTCHA visibility with observability hooks
+- [X] T043 Block submission on post-submit CAPTCHA visibility with observability hooks
   - Description: After clicking submit, detect visible CAPTCHA states, pause execution with structured reasons, and trigger artifact capture hooks for downstream review.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/browser_agent/lever.py`, `/workspace/Job-AI-Auto-Apply-UI/src/job_ai_auto_apply_ui/telemetry.py`
 
 ### Phase 3.8.4: Polish
-- [ ] T044 [P] Document deterministic FormPlan contract updates
+- [X] T044 [P] Document deterministic FormPlan contract updates
   - Description: Update `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/spec.md`, `plan.md`, and `contracts/cli-contracts.md` to reflect the Step1 schema, location gate enforcement, and CAPTCHA handling policy.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/spec.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/plan.md`, `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/contracts/cli-contracts.md`
 
-- [ ] T045 [P] Update quickstart and AGENTS guidance for deterministic mode
+- [X] T045 [P] Update quickstart and AGENTS guidance for deterministic mode
   - Description: Refresh `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/quickstart.md` and repository `AGENTS.md` with new validation steps, artifact expectations, and CAPTCHA pause workflow.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/specs/001-as-a-job/quickstart.md`, `/workspace/Job-AI-Auto-Apply-UI/AGENTS.md`

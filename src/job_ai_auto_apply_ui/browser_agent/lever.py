@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -499,6 +500,66 @@ class LeverApplyAgent:
         plan.setdefault("submit", {})
         return plan
 
+    async def _capture_review_artifacts(self, page, *, prefix: str) -> dict[str, str]:
+        """Persist DOM and screenshot artifacts when manual review is required."""
+
+        artifacts_dir = self._options.artifacts_dir
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        suffix = f"{timestamp}-{time.time_ns() % 1_000_000:06d}"
+        base_path = artifacts_dir / f"{prefix}-{suffix}"
+        captured: dict[str, str] = {}
+
+        try:
+            html = await page.content()
+        except Exception:
+            html = None
+        if isinstance(html, str) and html.strip():
+            dom_path = base_path.with_suffix(".html")
+            try:
+                dom_path.write_text(html, encoding="utf-8")
+                captured["dom_snapshot_path"] = str(dom_path)
+            except Exception:
+                pass
+
+        screenshot_path = base_path.with_suffix(".png")
+        if hasattr(page, "screenshot"):
+            try:
+                await page.screenshot(path=str(screenshot_path))
+                captured["screenshot_path"] = str(screenshot_path)
+            except Exception:
+                if screenshot_path.exists():
+                    try:
+                        screenshot_path.unlink()
+                    except Exception:
+                        pass
+
+        if captured:
+            try:
+                log_event("captcha.capture.artifacts", prefix=prefix, artifacts=captured)
+            except Exception:
+                pass
+
+        return captured
+
+    async def execute_in_browser(
+        self,
+        *,
+        session: BrowserSession,
+        profile: Profile,
+        item: ApplicationItem,
+        mode: str,
+    ) -> Artifacts | Reason:
+        """Delegate to the module-level implementation for backward compatibility."""
+
+        return await _execute_in_browser_impl(
+            self,
+            session=session,
+            profile=profile,
+            item=item,
+            mode=mode,
+        )
+
 
 def _selector_meta_from_selector(selector: str | None) -> dict[str, object]:
     base_precedence = ["name", "id", "data-qa", "aria", "text", "nth"]
@@ -638,11 +699,11 @@ def _coerce_step1_plan(plan: object) -> dict[str, object]:
         }
     return {"meta": {}, "widgets": {}, "fields": [], "submit": {}}
 
-    async def execute_in_browser(
-        self,
-        *,
-        session: BrowserSession,
-        profile: Profile,
+async def _execute_in_browser_impl(
+    self,
+    *,
+    session: BrowserSession,
+    profile: Profile,
         item: ApplicationItem,
         mode: str,
     ) -> Artifacts | Reason:
@@ -923,7 +984,11 @@ def _coerce_step1_plan(plan: object) -> dict[str, object]:
         try:
             cstate = await _hcaptcha_state(page)
             if cstate.get("blocking"):
-                return await handle_captcha_block(page, state=cstate, capture_callback=None)
+                return await handle_captcha_block(
+                    page,
+                    state=cstate,
+                    capture_callback=self._capture_review_artifacts,
+                )
         except Exception:
             pass
 
@@ -1931,7 +1996,7 @@ async def handle_captcha_block(
     page,
     *,
     state: Mapping[str, object] | object,
-    capture_callback: Callable[[object, str], Awaitable[Mapping[str, str]]] | None = None,
+    capture_callback: Callable[..., Awaitable[Mapping[str, object] | None]] | None = None,
 ) -> Reason:
     """Emit telemetry, capture artifacts, and return a blocking reason for CAPTCHA visibility."""
 
@@ -1940,9 +2005,17 @@ async def handle_captcha_block(
     except Exception:
         pass
 
+    captured: dict[str, object] | None = None
     if capture_callback is not None:
         try:
-            await capture_callback(page, prefix="captcha-block")
+            maybe = await capture_callback(page, prefix="captcha-block")
+        except Exception:
+            maybe = None
+        if isinstance(maybe, Mapping):
+            captured = {str(key): value for key, value in maybe.items()}
+    if captured:
+        try:
+            log_event("captcha.blocking_captured", artifacts=captured)
         except Exception:
             pass
 
