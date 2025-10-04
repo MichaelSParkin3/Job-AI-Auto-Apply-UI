@@ -195,6 +195,7 @@ task start T027 --repo /workspace/Job-AI-Auto-Apply-UI
 - [ ] T032 Create deterministic Lever HTML fixture for Step1 validation
   - Description: Capture a representative Lever application DOM with resume widget, contact fields, location gate, EEO block, and captcha placeholder that matches `/reference_files/Step1-deterministic-fill.md` selectors.
   - Files: `/workspace/Job-AI-Auto-Apply-UI/tests/fixtures/lever_step1_form.html`
+  - Real Sample Lever job application pages and forms are located in this folder, use them for reference of real world examples: `/reference_files/sample_html`
 
 ### Phase 3.8.1: Tests First (TDD)
 - [ ] T033 [P] Integration test for spec-compliant FormPlan JSON
