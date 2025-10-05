@@ -268,13 +268,15 @@ class LeverApplyAgent:
             () => {
               const toArray = (value) => Array.from(value || []);
               const dedupe = (items) => Array.from(new Set((items || []).filter(Boolean)));
-              const escapeAttr = (value) => String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-              const escapeText = (value) => String(value).replace(/"/g, '\\"');
-              const labelText = (el) => {
+              // Safer escaping helpers that avoid brittle quoting
+              const q = (v) => JSON.stringify(String(v));
+              
+
+const labelText = (el) => {
                 if (!el) return "";
                 const id = el.id || "";
                 if (id) {
-                  const direct = document.querySelector(`label[for='${escapeAttr(id)}']`);
+                  const direct = document.querySelector(`label[for=${q(id)}]`);
                   if (direct && direct.textContent) {
                     return direct.textContent.trim();
                   }
@@ -338,23 +340,23 @@ class LeverApplyAgent:
                   const value = attrs[key];
                   if (!value) continue;
                   if (key === 'id') {
-                    primary = `#${escapeAttr(value)}`;
+                    primary = `[id=${q(value)}]`;
                   } else if (key === 'name') {
-                    const typeSuffix = kind === 'file' && typeAttr ? `[type='${escapeAttr(typeAttr)}']` : '';
-                    primary = `${tag}${typeSuffix}[name='${escapeAttr(value)}']`;
+                    const typeSuffix = kind === 'file' && typeAttr ? `[type=${q(typeAttr)}]` : '';
+                    primary = `${tag}${typeSuffix}[name=${q(value)}]`;
                     if (kind !== 'file' && attrs['data-qa']) {
-                      primary += `[data-qa='${escapeAttr(attrs['data-qa'])}']`;
-                    }
+                      primary += `[data-qa=${q(attrs['data-qa'])}]`;
+                  }
                   } else if (key === 'data-qa') {
-                    primary = `${tag}[data-qa='${escapeAttr(value)}']`;
+                    primary = `${tag}[data-qa=${q(value)}]`;
                   } else if (key === 'text') {
-                    primary = `${tag}:has-text("${escapeText(value)}")`;
+                    primary = `${tag}:has-text(${q(value)})`;
                   }
                   primaryAttr = key;
                   break;
                 }
                 if (!primary && attrs.id) {
-                  primary = `#${escapeAttr(attrs.id)}`;
+                  primary = `[id=${q(attrs.id)}]`;
                   primaryAttr = 'id';
                 }
                 if (!primary) {
@@ -367,18 +369,18 @@ class LeverApplyAgent:
                   if (!value) continue;
                   let selector = null;
                   if (key === 'id') {
-                    selector = `#${escapeAttr(value)}`;
+                    selector = `[id=${q(value)}]`;
                   } else if (key === 'name') {
-                    const typeSuffix = kind === 'file' && typeAttr ? `[type='${escapeAttr(typeAttr)}']` : '';
-                    selector = `${tag}${typeSuffix}[name='${escapeAttr(value)}']`;
+                    const typeSuffix = kind === 'file' && typeAttr ? `[type=${q(typeAttr)}]` : '';
+                    selector = `${tag}${typeSuffix}[name=${q(value)}]`;
                   } else if (key === 'data-qa') {
-                    selector = `${tag}[data-qa='${escapeAttr(value)}']`;
+                    selector = `${tag}[data-qa=${q(value)}]`;
                   } else if (key === 'aria') {
-                    selector = `${tag}[aria-label='${escapeAttr(value)}']`;
+                    selector = `${tag}[aria-label=${q(value)}]`;
                   } else if (key === 'role') {
-                    selector = `${tag}[role='${escapeAttr(value)}']`;
+                    selector = `${tag}[role=${q(value)}]`;
                   } else if (key === 'text') {
-                    selector = `${tag}:has-text("${escapeText(value)}")`;
+                    selector = `${tag}:has-text(${q(value)})`;
                   } else if (key === 'nth') {
                     selector = attrs.nth;
                   }
@@ -398,7 +400,7 @@ class LeverApplyAgent:
               );
               const resumeMeta = buildSelectorMeta(resumeInput, 'file');
               const resumeTriggers = dedupe([
-                resumeInput && resumeInput.id ? `label[for='${escapeAttr(resumeInput.id)}']` : null,
+                resumeInput && resumeInput.id ? `label[for=${q(resumeInput.id)}]` : null,
                 "button[data-qa='input-resume']",
               ]);
               const resumeSuccessSignals = dedupe([
@@ -414,8 +416,8 @@ class LeverApplyAgent:
                 const el = document.querySelector("input[name='resumeStorageId']");
                 if (!el) return null;
                 const tag = el.tagName.toLowerCase();
-                const id = el.id ? `#${escapeAttr(el.id)}` : '';
-                const name = el.name ? `[name='${escapeAttr(el.name)}']` : '';
+                const id = el.id ? `[id=${q(el.id)}]` : '';
+                const name = el.name ? `[name=${q(el.name)}]` : '';
                 return `${tag}${id}${name}`;
               })();
 
@@ -443,7 +445,7 @@ class LeverApplyAgent:
                   const hidden = document.querySelector("input#selected-location[name='selectedLocation']");
                   if (hidden) {
                     const tagHidden = hidden.tagName.toLowerCase();
-                    const selector = `${tagHidden}${hidden.id ? `#${escapeAttr(hidden.id)}` : ''}${hidden.name ? `[name='${escapeAttr(hidden.name)}']` : ''}`;
+                    const selector = `${tagHidden}${hidden.id ? `[id=${q(hidden.id)}]` : ''}${hidden.name ? `[name=${q(hidden.name)}]` : ''}`;
                     entry.aux = { selectedLocationHidden: selector };
                   }
                 }
@@ -481,18 +483,24 @@ class LeverApplyAgent:
             """
         )
 
+        # Coerce the evaluate result into a Mapping.
+        # Some runtimes will JSON-serialize return values (string), others may
+        # return a plain object by value. Handle both robustly.
         if payload is None:
-            payload = {}
-        elif not isinstance(payload, Mapping):
+            plan: dict[str, object] = {}
+        elif isinstance(payload, Mapping):
+            plan = dict(payload)
+        elif isinstance(payload, str):
             try:
-                payload = json.loads(json.dumps(payload))
+                plan = json.loads(payload)
             except Exception:
-                payload = {}
-
-        try:
-            plan = json.loads(json.dumps(payload))
-        except Exception:
-            plan = {}
+                plan = {}
+        else:
+            try:
+                # Last-resort: round-trip through json to coerce simple types
+                plan = json.loads(json.dumps(payload))
+            except Exception:
+                plan = {}
 
         plan.setdefault("meta", {})
         plan.setdefault("widgets", {})
@@ -2026,35 +2034,145 @@ async def handle_captcha_block(
 
 
 async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> None:
-    """Type location then try to pick a suggestion; fallback to hidden input.
+    """Type location and select a suggestion so the hidden JSON populates.
 
-    Works with Lever's structured location widget that uses #location-input and a
-    hidden #selected-location.
+    Strategy:
+    - Focus and type the requested value with input/keyboard events.
+    - Wait for dropdown to be visible and populated.
+    - Click a suggestion element (preferring text match), or ArrowDown+Enter as fallback.
+    - Leave gate validation to the caller.
     """
     if not value:
         return
     try:
+        # 1) Focus and type value, character-by-character (user-like)
         await page.evaluate(
-            "(sel, val) => { const el = document.querySelector(sel); if (el) { el.focus(); el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }}",
+            r"""
+            (sel, val) => {
+              const el = document.querySelector(sel);
+              if (!el) return false;
+              el.focus();
+              const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+              if (proto && proto.set) proto.set.call(el, ''); else el.value = '';
+              const typeChar = (ch) => {
+                try { el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true })); } catch {}
+                if (proto && proto.set) proto.set.call(el, el.value + ch); else el.value = el.value + ch;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                try { el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true })); } catch {}
+              };
+              for (const ch of String(val)) typeChar(ch);
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            """,
             input_selector,
             value,
         )
-        # Give Lever a moment to render suggestions
-        await asyncio.sleep(1.2)
-        # Try clicking the first suggestion
-        clicked = await page.evaluate(
-            "(containerSel) => {\n              const c = document.querySelector('.dropdown-results');\n              if (!c) return false;\n              const first = c.querySelector('[data-value], li, div');\n              if (first && typeof first.click === 'function') { first.click(); return true; }\n              return false;\n            }",
-            ".dropdown-results",
-        )
-        if not clicked:
-            # Fallback: set hidden selectedLocation value directly
+
+        # Helpers to check dropdown and hidden JSON
+        async def _roots_state():
+            try:
+                return await page.evaluate(
+                    r"""
+                    () => {
+                      const roots = [
+                        document.querySelector('.dropdown-results'),
+                        document.querySelector('ul.dropdown-results'),
+                        document.querySelector('[role="listbox"]'),
+                      ].filter(Boolean);
+                      const counts = roots.map(r => (r ? r.children.length : 0));
+                      const total = counts.reduce((a,b)=>a+b,0);
+                      let visible = false;
+                      const c = document.querySelector('.dropdown-container');
+                      if (c) { try { visible = getComputedStyle(c).display !== 'none'; } catch {} }
+                      return { total, visible };
+                    }
+                    """
+                )
+            except Exception:
+                return {"total": 0, "visible": False}
+
+        async def _hidden_name() -> str:
+            try:
+                raw = await page.evaluate(
+                    "(sel) => { const el = document.querySelector(sel); return el ? (el.value || '') : '' }",
+                    hidden_selector,
+                )
+            except Exception:
+                raw = ""
+            try:
+                data = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+            except Exception:
+                data = {}
+            name = str(data.get("name") or "") if isinstance(data, dict) else ""
+            return name.strip()
+
+        # 2) Wait up to 5s for suggestions or an already-populated hidden value
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            nm = await _hidden_name()
+            if nm:
+                return
+            st = await _roots_state()
+            if (st or {}).get("total", 0) > 0:
+                break
+            await asyncio.sleep(0.2)
+
+        # 3) Keyboard-first selection: ArrowDown + Enter up to 3 attempts
+        for _ in range(3):
             await page.evaluate(
-                "(sel, val) => { const el = document.querySelector(sel); if (el) { el.value = val; el.dispatchEvent(new Event('change', {bubbles:true})); }}",
-                hidden_selector,
-                value,
+                r"""
+                (sel) => {
+                  const el = document.querySelector(sel);
+                  if (!el) return false;
+                  try { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); } catch {}
+                  try { el.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown', bubbles: true })); } catch {}
+                  try { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } catch {}
+                  try { el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true })); } catch {}
+                  return true;
+                }
+                """,
+                input_selector,
             )
+            await asyncio.sleep(0.4)
+            if await _hidden_name():
+                return
+
+        # 4) Click fallback: try to click a visible suggestion under known roots
+        clicked = await page.evaluate(
+            r"""
+            (typed) => {
+              const roots = [
+                document.querySelector('.dropdown-results'),
+                document.querySelector('ul.dropdown-results'),
+                document.querySelector('[role="listbox"]'),
+              ].filter(Boolean);
+              const SEL = '.dropdown-location, [role="option"], .Select-option, li[role="option"], li, [data-value]';
+              let nodes = [];
+              for (const r of roots) nodes.push(...Array.from(r.querySelectorAll(SEL)));
+              if (!nodes.length) return { clicked: false, why: 'no-candidates' };
+              const norm = (s) => String(s || '').trim().toLowerCase();
+              const t = norm(typed);
+              let choice = nodes.find(n => norm(n.textContent) === t)
+                         || nodes.find(n => norm(n.textContent).startsWith(t))
+                         || nodes[0];
+              try {
+                choice.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                choice.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                choice.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                if (typeof choice.click === 'function') choice.click(); else choice.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                return { clicked: true, text: (choice.textContent || '').trim() };
+              } catch (e) {
+                return { clicked: false, why: String(e) };
+              }
+            }
+            """,
+            value,
+        )
+        await asyncio.sleep(0.4)
+        # leave gate validation to caller
     except Exception:
-        # Best effort only
+        # Best effort only; the caller will validate the gate and report details
         pass
 
 
@@ -2331,6 +2449,7 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
 
 
 
