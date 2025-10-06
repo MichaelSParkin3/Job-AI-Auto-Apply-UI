@@ -35,9 +35,8 @@ async def test_location_gate_requires_hidden_name(monkeypatch: pytest.MonkeyPatc
             events.clear()
             payload = json.dumps({"name": "San Francisco, CA"})
             await page.evaluate(
-                "(hidden, payload) => { const el = document.querySelector(hidden); if (el) { el.value = payload; el.dispatchEvent(new Event('change', { bubbles: true })); } }",
-                "#selected-location",
-                payload,
+                "(args) => { const { hidden, payload } = args; const el = document.querySelector(hidden); if (el) { el.value = payload; el.dispatchEvent(new Event('change', { bubbles: true })); } }",
+                {"hidden": "#selected-location", "payload": payload},
             )
 
             ok, state = await lever.validate_location_gate(

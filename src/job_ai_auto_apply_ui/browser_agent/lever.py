@@ -762,6 +762,8 @@ async def _execute_in_browser_impl(
 
         location_input_selector = contact_fields.get("location") or "#location-input"
         location_hidden_selector = contact_fields.get("location_hidden") or "#selected-location"
+        phase_one_issues: list[str] = []
+        location_gate_state: dict[str, object] | None = None
 
         await _set_structured_location(
             page,
@@ -770,21 +772,30 @@ async def _execute_in_browser_impl(
             value=profile.defaults.get("location"),
         )
 
-        if (
+        location_gate_required = (
             isinstance(plan, Mapping)
             and plan.get("meta", {}).get("requiresLocationGate")
             and location_hidden_selector
-        ):
+        )
+        if location_gate_required:
             ok, gate_state = await validate_location_gate(
                 page,
                 input_selector=location_input_selector,
                 hidden_selector=location_hidden_selector,
             )
+            if isinstance(gate_state, Mapping):
+                location_gate_state = {str(key): value for key, value in gate_state.items()}
             if not ok:
-                return Reason(
-                    code="location_gate_blocked",
-                    message="Location must be selected from suggestions before continuing",
-                )
+                phase_one_issues.append("location_gate_missing")
+                try:
+                    log_event(
+                        "form.location_gate.pending",
+                        state=gate_state,
+                        inputSelector=location_input_selector,
+                        hiddenSelector=location_hidden_selector,
+                    )
+                except Exception:
+                    pass
 
         resume_path = str(profile.resolve_resume_path())
         uploaded = await _upload_resume(session, page, resume_widget, resume_path)
@@ -861,6 +872,28 @@ async def _execute_in_browser_impl(
                 )
             if value:
                 await _fill_if_available(page, selector, value)
+
+        phase_one_summary = {
+            "issues": list(phase_one_issues),
+            "locationGateState": location_gate_state,
+        }
+        try:
+            log_event(
+                "apply.phase_one.complete",
+                message="ALL PHASE ONE INPUT DONE",
+                summary=phase_one_summary,
+            )
+        except Exception:
+            pass
+        if mode != "auto":
+            try:
+                print("ALL PHASE ONE INPUT DONE.")
+                if phase_one_issues:
+                    print(f"Phase one warnings: {', '.join(phase_one_issues)}")
+                print("Press Enter to continue to the next phase…")
+                input()
+            except Exception:
+                pass
 
         invalid_selectors = await collect_invalid_field_selectors(page)
 
@@ -1903,8 +1936,10 @@ async def validate_location_gate(
 
     try:
         state = await _evaluate_quiet(
+            page,
             """
-            (inputSel, hiddenSel) => {
+            (args) => {
+              const { inputSel, hiddenSel } = args || {};
               const input = document.querySelector(inputSel);
               const hidden = document.querySelector(hiddenSel);
               const raw = hidden ? hidden.value || '' : '';
@@ -1919,8 +1954,7 @@ async def validate_location_gate(
               };
             }
             """,
-            input_selector,
-            hidden_selector,
+            {"inputSel": input_selector, "hiddenSel": hidden_selector},
         )
     except Exception:
         state = {}
@@ -2048,25 +2082,50 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
         # 1) Focus and type value, character-by-character (user-like)
         await page.evaluate(
             r"""
-            (sel, val) => {
-              const el = document.querySelector(sel);
+            ({ selector, value }) => {
+              const el = document.querySelector(selector);
               if (!el) return false;
               el.focus();
               const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
               if (proto && proto.set) proto.set.call(el, ''); else el.value = '';
-              const typeChar = (ch) => {
-                try { el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true })); } catch {}
-                if (proto && proto.set) proto.set.call(el, el.value + ch); else el.value = el.value + ch;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                try { el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true })); } catch {}
+              const dispatchKey = (type, key, code, keyCode) => {
+                const eventInit = {
+                  key,
+                  code: code || key,
+                  keyCode: typeof keyCode === 'number' ? keyCode : undefined,
+                  which: typeof keyCode === 'number' ? keyCode : undefined,
+                  bubbles: true,
+                };
+                try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
               };
-              for (const ch of String(val)) typeChar(ch);
+              const typeChar = (ch) => {
+                const key = String(ch);
+                let code = key;
+                let keyCode = undefined;
+                if (key.length === 1) {
+                  const upper = key.toUpperCase();
+                  if (/^[A-Z]$/.test(upper)) {
+                    code = `Key${upper}`;
+                    keyCode = upper.charCodeAt(0);
+                  } else if (/^[0-9]$/.test(key)) {
+                    code = `Digit${key}`;
+                    keyCode = key.charCodeAt(0);
+                  } else if (key === ' ') {
+                    code = 'Space';
+                    keyCode = 32;
+                  }
+                }
+                dispatchKey('keydown', key, code, keyCode);
+                if (proto && proto.set) proto.set.call(el, el.value + key); else el.value = el.value + key;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                dispatchKey('keyup', key, code, keyCode);
+              };
+              for (const ch of String(value)) typeChar(ch);
               el.dispatchEvent(new Event('change', { bubbles: true }));
               return true;
             }
             """,
-            input_selector,
-            value,
+            {"selector": input_selector, "value": value},
         )
 
         # Helpers to check dropdown and hidden JSON
@@ -2107,69 +2166,142 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             name = str(data.get("name") or "") if isinstance(data, dict) else ""
             return name.strip()
 
-        # 2) Wait up to 5s for suggestions or an already-populated hidden value
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
+        # 2) Wait at least 5s for suggestions or an already-populated hidden value
+        start = time.monotonic()
+        min_wait = 5.0
+        hard_deadline = start + 10.0
+        suggestions_seen = False
+        try:
+            log_event("form.location_gate.waiting", minSeconds=min_wait)
+        except Exception:
+            pass
+        while True:
             nm = await _hidden_name()
             if nm:
                 return
             st = await _roots_state()
-            if (st or {}).get("total", 0) > 0:
+            total = (st or {}).get("total", 0)
+            visible = (st or {}).get("visible", False)
+            if total and not suggestions_seen:
+                suggestions_seen = True
+                try:
+                    log_event("form.location_gate.suggestions_detected", total=total, visible=visible)
+                except Exception:
+                    pass
+            now = time.monotonic()
+            if now >= start + min_wait and (total > 0 or now >= hard_deadline):
+                break
+            if now >= hard_deadline:
                 break
             await asyncio.sleep(0.2)
 
         # 3) Keyboard-first selection: ArrowDown + Enter up to 3 attempts
-        for _ in range(3):
+        for attempt in range(3):
             await page.evaluate(
                 r"""
-                (sel) => {
-                  const el = document.querySelector(sel);
+                ({ selector }) => {
+                  const el = document.querySelector(selector);
                   if (!el) return false;
-                  try { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); } catch {}
-                  try { el.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown', bubbles: true })); } catch {}
-                  try { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } catch {}
-                  try { el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true })); } catch {}
+                  const dispatchKey = (type, key, code, keyCode) => {
+                    const eventInit = {
+                      key,
+                      code,
+                      keyCode,
+                      which: keyCode,
+                      bubbles: true,
+                    };
+                    try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
+                  };
+                  dispatchKey('keydown', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keyup', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keydown', 'Enter', 'Enter', 13);
+                  dispatchKey('keyup', 'Enter', 'Enter', 13);
                   return true;
                 }
                 """,
-                input_selector,
+                {"selector": input_selector},
             )
             await asyncio.sleep(0.4)
             if await _hidden_name():
+                try:
+                    log_event("form.location_gate.keyboard_selected", attempts=attempt + 1)
+                except Exception:
+                    pass
                 return
 
-        # 4) Click fallback: try to click a visible suggestion under known roots
+        # 4) Click fallback: try to click a visible suggestion anywhere in the menu
         clicked = await page.evaluate(
             r"""
-            (typed) => {
-              const roots = [
-                document.querySelector('.dropdown-results'),
-                document.querySelector('ul.dropdown-results'),
-                document.querySelector('[role="listbox"]'),
-              ].filter(Boolean);
-              const SEL = '.dropdown-location, [role="option"], .Select-option, li[role="option"], li, [data-value]';
-              let nodes = [];
-              for (const r of roots) nodes.push(...Array.from(r.querySelectorAll(SEL)));
+            ({ typed }) => {
+              const SEL = '.dropdown-location, [role="option"], .Select-option, li[role="option"], li, [data-value], .Select-option div';
+              const isVisible = (node) => {
+                if (!node) return false;
+                try {
+                  const style = window.getComputedStyle(node);
+                  if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                } catch {
+                  return false;
+                }
+                const rect = node.getBoundingClientRect();
+                return rect && rect.width > 0 && rect.height > 0;
+              };
+              const nodes = Array.from(document.querySelectorAll(SEL)).filter(isVisible);
               if (!nodes.length) return { clicked: false, why: 'no-candidates' };
               const norm = (s) => String(s || '').trim().toLowerCase();
               const t = norm(typed);
               let choice = nodes.find(n => norm(n.textContent) === t)
                          || nodes.find(n => norm(n.textContent).startsWith(t))
                          || nodes[0];
+              const payload = {
+                text: (choice.textContent || '').trim(),
+                dataset: { ...choice.dataset },
+                tag: choice.tagName,
+                classes: choice.className,
+              };
+              const emitMouse = (type) => {
+                try {
+                  choice.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                } catch {}
+              };
+              const emitPointer = (type) => {
+                try {
+                  if (typeof PointerEvent === 'function') {
+                    choice.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                  }
+                } catch {}
+              };
+              emitPointer('pointerover');
+              emitPointer('pointerdown');
+              emitMouse('mouseover');
+              emitMouse('mousedown');
+              emitPointer('pointerup');
+              emitMouse('mouseup');
               try {
-                choice.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-                choice.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                choice.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                if (typeof choice.click === 'function') choice.click(); else choice.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                return { clicked: true, text: (choice.textContent || '').trim() };
-              } catch (e) {
-                return { clicked: false, why: String(e) };
-              }
+                if (typeof choice.click === 'function') {
+                  choice.click();
+                } else {
+                  choice.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+                }
+              } catch {}
+              return { clicked: true, ...payload };
             }
             """,
-            value,
+            {"typed": value},
         )
+        if isinstance(clicked, Mapping):
+            try:
+                log_event("form.location_gate.click_attempt", result=dict(clicked))
+            except Exception:
+                pass
         await asyncio.sleep(0.4)
+        for _ in range(5):
+            if await _hidden_name():
+                return
+            await asyncio.sleep(0.2)
+        try:
+            log_event("form.location_gate.click_failed", result=clicked)
+        except Exception:
+            pass
         # leave gate validation to caller
     except Exception:
         # Best effort only; the caller will validate the gate and report details
