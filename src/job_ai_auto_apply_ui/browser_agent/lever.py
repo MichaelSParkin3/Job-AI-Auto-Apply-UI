@@ -2319,6 +2319,9 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
                 }
                 """
             )
+            # Ensure dropdown_state is a dict (Playwright may return different types)
+            if not isinstance(dropdown_state, dict):
+                dropdown_state = {}
 
             if dropdown_state.get("total", 0) > 0 and not suggestions_detected:
                 suggestions_detected = True
@@ -2438,6 +2441,9 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             """,
             {"typed": value},
         )
+        # Ensure click_result is a dict (Playwright may return different types)
+        if not isinstance(click_result, dict):
+            click_result = {}
 
         if click_result.get("clicked"):
             log_event("form.location.click_attempted", result=click_result)
