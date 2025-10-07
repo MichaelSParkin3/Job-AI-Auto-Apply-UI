@@ -2191,6 +2191,9 @@ async def _check_location_gate(page, *, hidden_selector: str) -> tuple[bool, dic
             """,
             {"hiddenSel": hidden_selector},
         )
+        # Ensure state is a dict (Playwright may return different types)
+        if not isinstance(state, dict):
+            state = {}
     except Exception:
         state = {}
 
@@ -2277,64 +2280,17 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             {"selector": input_selector, "value": value},
         )
 
-        # Phase 2: Wait adaptively for suggestions (2-5 seconds with early exit)
-        start = time.monotonic()
-        min_wait = 2.0
-        max_wait = 5.0
-        suggestions_detected = False
+        # Phase 2: Simple wait for dropdown suggestions to appear
+        # Check if already valid before waiting
+        is_valid, _ = await _check_location_gate(page, hidden_selector=hidden_selector)
+        if is_valid:
+            log_event("form.location.already_valid")
+            return True
 
-        while time.monotonic() - start < max_wait:
-            # Check if hidden field already has valid data
-            is_valid, _ = await _check_location_gate(page, hidden_selector=hidden_selector)
-            if is_valid:
-                log_event("form.location.already_valid")
-                return True
-
-            # Check if dropdown suggestions are visible
-            dropdown_state = await page.evaluate(
-                """
-                () => {
-                  const containers = [
-                    document.querySelector('.dropdown-results'),
-                    document.querySelector('ul.dropdown-results'),
-                    document.querySelector('[role="listbox"]'),
-                  ].filter(Boolean);
-
-                  let total = 0;
-                  let visible = false;
-
-                  for (const container of containers) {
-                    if (container) {
-                      const style = window.getComputedStyle(container);
-                      const isVis = style.display !== 'none' && style.visibility !== 'hidden';
-                      if (isVis) {
-                        visible = true;
-                        const options = container.querySelectorAll('.dropdown-location, [role="option"], li, [data-value]');
-                        total += options.length;
-                      }
-                    }
-                  }
-
-                  return { total, visible };
-                }
-                """
-            )
-            # Ensure dropdown_state is a dict (Playwright may return different types)
-            if not isinstance(dropdown_state, dict):
-                dropdown_state = {}
-
-            if dropdown_state.get("total", 0) > 0 and not suggestions_detected:
-                suggestions_detected = True
-                log_event("form.location.suggestions_detected", total=dropdown_state["total"])
-
-            # Early exit if we've waited minimum time and have suggestions
-            if time.monotonic() - start >= min_wait and suggestions_detected:
-                break
-
-            await asyncio.sleep(0.2)
-
-        if not suggestions_detected:
-            log_event("form.location.no_suggestions", waited=time.monotonic() - start)
+        # Fixed wait - simpler and more reliable than complex detection
+        wait_seconds = 2.5
+        await asyncio.sleep(wait_seconds)
+        log_event("form.location.waited_for_suggestions", seconds=wait_seconds)
 
         # Phase 3: Try keyboard selection (ArrowDown + Enter) up to 3 times
         for attempt in range(3):
