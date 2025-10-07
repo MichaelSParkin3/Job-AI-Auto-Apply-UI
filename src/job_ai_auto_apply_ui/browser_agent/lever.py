@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -686,12 +687,15 @@ class LeverApplyAgent:
         plan = await self.build_plan_in_browser(page)
 
         # Enable resume widget first: set location to activate disabled upload button variants
-        await _set_structured_location(
+        location_valid = await _set_structured_location(
             page,
             input_selector=plan.contact_fields.get("location") or "#location-input",
             hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
             value=profile.defaults.get("location"),
         )
+        if not location_valid and mode != "auto":
+            log_event("form.location.needs_manual_selection", mode=mode)
+            print("⚠️  Location field needs manual selection from dropdown. Please select a location from the suggestions.")
 
         # Upload resume with robust fallbacks + success detection
         resume_path = str(profile.resolve_resume_path())
@@ -2157,43 +2161,308 @@ async def _set_pronouns(page, pronouns: str | list[str]) -> None:
         pass
 
 
-async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> None:
-    """Type location then try to pick a suggestion; fallback to hidden input.
+async def _check_location_gate(page, *, hidden_selector: str) -> tuple[bool, dict]:
+    """Validate that the hidden location field contains valid JSON with a name.
 
-    Works with Lever's structured location widget that uses #location-input and a
-    hidden #selected-location.
+    Args:
+        page: Playwright page instance.
+        hidden_selector: CSS selector for hidden location field (e.g., '#selected-location').
+
+    Returns:
+        Tuple of (is_valid, state_dict) where state_dict contains parsed JSON and metadata.
     """
-    if not value:
-        return
     try:
-        await page.evaluate(
-            "(sel, val) => { const el = document.querySelector(sel); if (el) { el.focus(); el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }}",
-            input_selector,
-            value,
-        )
-        # Give Lever a moment to render suggestions
-        await asyncio.sleep(1.2)
-        # Try clicking the first suggestion
-        clicked = await page.evaluate(
-            "(containerSel) => {\n              const c = document.querySelector('.dropdown-results');\n              if (!c) return false;\n              const first = c.querySelector('[data-value], li, div');\n              if (first && typeof first.click === 'function') { first.click(); return true; }\n              return false;\n            }",
-            ".dropdown-results",
-        )
-        if not clicked:
-            # Fallback: set hidden selectedLocation value directly
-            await page.evaluate(
-                "(sel, val) => { const el = document.querySelector(sel); if (el) { el.value = val; el.dispatchEvent(new Event('change', {bubbles:true})); }}",
-                hidden_selector,
-                value,
-            )
-        # Ensure hidden field is populated even if suggestion click failed silently
-        await page.evaluate(
-            "(sel, val) => { const hidden = document.querySelector(sel); if (!hidden) return; if (!hidden.value) { hidden.value = val; hidden.dispatchEvent(new Event('change', {bubbles:true})); } }",
-            hidden_selector,
-            value,
+        state = await page.evaluate(
+            """
+            (args) => {
+              const { hiddenSel } = args || {};
+              const hidden = document.querySelector(hiddenSel);
+              const raw = hidden ? hidden.value || '' : '';
+              let parsed = null;
+              try { parsed = raw ? JSON.parse(raw) : null; } catch {}
+              const name = parsed && typeof parsed === 'object' ? (parsed.name || '') : '';
+              return {
+                hasHidden: !!hidden,
+                rawLength: raw.length,
+                parsed: parsed,
+                name: String(name).trim(),
+              };
+            }
+            """,
+            {"hiddenSel": hidden_selector},
         )
     except Exception:
-        # Best effort only
-        pass
+        state = {}
+
+    is_valid = bool(state.get("name"))
+    return (is_valid, state)
+
+
+async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> bool:
+    """Type location with proper keyboard events, wait for suggestions, and select via keyboard or click.
+
+    Implements a multi-phase strategy:
+    1. Type character-by-character with full KeyboardEvent simulation
+    2. Wait adaptively for dropdown suggestions (2-5s)
+    3. Try keyboard selection (ArrowDown + Enter) up to 3 times
+    4. Fall back to clicking visible dropdown items
+    5. Validate hidden field contains valid JSON with name
+
+    Args:
+        page: Playwright page instance.
+        input_selector: CSS selector for visible location input.
+        hidden_selector: CSS selector for hidden location JSON field.
+        value: Location string to type.
+
+    Returns:
+        True if location gate is satisfied (hidden field has valid name), False otherwise.
+    """
+    if not value:
+        return False
+
+    try:
+        # Phase 1: Type with proper keyboard events (character-by-character)
+        await page.evaluate(
+            """
+            (args) => {
+              const { selector, value } = args || {};
+              const el = document.querySelector(selector);
+              if (!el) return false;
+              el.focus();
+              const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+              if (proto && proto.set) proto.set.call(el, ''); else el.value = '';
+
+              const dispatchKey = (type, key, code, keyCode) => {
+                const eventInit = {
+                  key,
+                  code: code || key,
+                  keyCode: typeof keyCode === 'number' ? keyCode : undefined,
+                  which: typeof keyCode === 'number' ? keyCode : undefined,
+                  bubbles: true,
+                };
+                try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
+              };
+
+              const typeChar = (ch) => {
+                const key = String(ch);
+                let code = key;
+                let keyCode = undefined;
+                if (key.length === 1) {
+                  const upper = key.toUpperCase();
+                  if (/^[A-Z]$/.test(upper)) {
+                    code = `Key${upper}`;
+                    keyCode = upper.charCodeAt(0);
+                  } else if (/^[0-9]$/.test(key)) {
+                    code = `Digit${key}`;
+                    keyCode = key.charCodeAt(0);
+                  } else if (key === ' ') {
+                    code = 'Space';
+                    keyCode = 32;
+                  } else if (key === ',') {
+                    code = 'Comma';
+                    keyCode = 188;
+                  }
+                }
+                dispatchKey('keydown', key, code, keyCode);
+                if (proto && proto.set) proto.set.call(el, el.value + key); else el.value = el.value + key;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                dispatchKey('keyup', key, code, keyCode);
+              };
+
+              for (const ch of String(value)) typeChar(ch);
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            """,
+            {"selector": input_selector, "value": value},
+        )
+
+        # Phase 2: Wait adaptively for suggestions (2-5 seconds with early exit)
+        start = time.monotonic()
+        min_wait = 2.0
+        max_wait = 5.0
+        suggestions_detected = False
+
+        while time.monotonic() - start < max_wait:
+            # Check if hidden field already has valid data
+            is_valid, _ = await _check_location_gate(page, hidden_selector=hidden_selector)
+            if is_valid:
+                log_event("form.location.already_valid")
+                return True
+
+            # Check if dropdown suggestions are visible
+            dropdown_state = await page.evaluate(
+                """
+                () => {
+                  const containers = [
+                    document.querySelector('.dropdown-results'),
+                    document.querySelector('ul.dropdown-results'),
+                    document.querySelector('[role="listbox"]'),
+                  ].filter(Boolean);
+
+                  let total = 0;
+                  let visible = false;
+
+                  for (const container of containers) {
+                    if (container) {
+                      const style = window.getComputedStyle(container);
+                      const isVis = style.display !== 'none' && style.visibility !== 'hidden';
+                      if (isVis) {
+                        visible = true;
+                        const options = container.querySelectorAll('.dropdown-location, [role="option"], li, [data-value]');
+                        total += options.length;
+                      }
+                    }
+                  }
+
+                  return { total, visible };
+                }
+                """
+            )
+
+            if dropdown_state.get("total", 0) > 0 and not suggestions_detected:
+                suggestions_detected = True
+                log_event("form.location.suggestions_detected", total=dropdown_state["total"])
+
+            # Early exit if we've waited minimum time and have suggestions
+            if time.monotonic() - start >= min_wait and suggestions_detected:
+                break
+
+            await asyncio.sleep(0.2)
+
+        if not suggestions_detected:
+            log_event("form.location.no_suggestions", waited=time.monotonic() - start)
+
+        # Phase 3: Try keyboard selection (ArrowDown + Enter) up to 3 times
+        for attempt in range(3):
+            await page.evaluate(
+                """
+                (args) => {
+                  const { selector } = args || {};
+                  const el = document.querySelector(selector);
+                  if (!el) return false;
+
+                  const dispatchKey = (type, key, code, keyCode) => {
+                    const eventInit = {
+                      key,
+                      code,
+                      keyCode,
+                      which: keyCode,
+                      bubbles: true,
+                    };
+                    try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
+                  };
+
+                  dispatchKey('keydown', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keyup', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keydown', 'Enter', 'Enter', 13);
+                  dispatchKey('keyup', 'Enter', 'Enter', 13);
+                  return true;
+                }
+                """,
+                {"selector": input_selector},
+            )
+            await asyncio.sleep(0.4)
+
+            is_valid, state = await _check_location_gate(page, hidden_selector=hidden_selector)
+            if is_valid:
+                log_event("form.location.keyboard_selected", attempt=attempt + 1, name=state.get("name"))
+                return True
+
+        # Phase 4: Click fallback - find and click visible dropdown items
+        click_result = await page.evaluate(
+            """
+            (args) => {
+              const { typed } = args || {};
+              const SEL = '.dropdown-location, [role="option"], .Select-option, li[role="option"], li, [data-value], .Select-option div';
+
+              const isVisible = (node) => {
+                if (!node) return false;
+                try {
+                  const style = window.getComputedStyle(node);
+                  if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                } catch {
+                  return false;
+                }
+                const rect = node.getBoundingClientRect();
+                return rect && rect.width > 0 && rect.height > 0;
+              };
+
+              const nodes = Array.from(document.querySelectorAll(SEL)).filter(isVisible);
+              if (!nodes.length) return { clicked: false, reason: 'no-visible-candidates' };
+
+              const norm = (s) => String(s || '').trim().toLowerCase();
+              const t = norm(typed);
+              let choice = nodes.find(n => norm(n.textContent) === t)
+                         || nodes.find(n => norm(n.textContent).startsWith(t))
+                         || nodes[0];
+
+              const payload = {
+                text: (choice.textContent || '').trim(),
+                tag: choice.tagName,
+                classes: choice.className,
+              };
+
+              // Emit full event sequence for maximum compatibility
+              const emitMouse = (type) => {
+                try {
+                  choice.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                } catch {}
+              };
+
+              const emitPointer = (type) => {
+                try {
+                  if (typeof PointerEvent === 'function') {
+                    choice.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                  }
+                } catch {}
+              };
+
+              emitPointer('pointerover');
+              emitPointer('pointerdown');
+              emitMouse('mouseover');
+              emitMouse('mousedown');
+              emitPointer('pointerup');
+              emitMouse('mouseup');
+
+              try {
+                if (typeof choice.click === 'function') {
+                  choice.click();
+                } else {
+                  choice.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+                }
+              } catch {}
+
+              return { clicked: true, ...payload };
+            }
+            """,
+            {"typed": value},
+        )
+
+        if click_result.get("clicked"):
+            log_event("form.location.click_attempted", result=click_result)
+            # Wait up to 1 second after clicking, checking every 0.2s
+            for _ in range(5):
+                await asyncio.sleep(0.2)
+                is_valid, state = await _check_location_gate(page, hidden_selector=hidden_selector)
+                if is_valid:
+                    log_event("form.location.click_succeeded", name=state.get("name"))
+                    return True
+        else:
+            log_event("form.location.click_failed", reason=click_result.get("reason"))
+
+        # Phase 5: Final validation
+        is_valid, final_state = await _check_location_gate(page, hidden_selector=hidden_selector)
+        if is_valid:
+            log_event("form.location.validated", name=final_state.get("name"))
+            return True
+        else:
+            log_event("form.location.validation_failed", state=final_state)
+            return False
+
+    except Exception as exc:
+        log_event("form.location.error", error=str(exc))
+        return False
 
 
 async def _click(page, selector: str) -> None:
