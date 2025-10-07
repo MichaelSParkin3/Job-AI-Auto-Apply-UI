@@ -116,9 +116,9 @@
       "url": "https://jobs.lever.co/binance/e4c6380b-2ccb-4485-830a-2180b44ed232/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career",
       "company": "binance",
       "title": "Binance - Senior QA Engineer (Frontend/App)",
-      "status": "in_progress",
+      "status": "failed",
       "discovered_at": "2025-10-03T11:14:40.944925+00:00",
-      "last_updated_at": "2025-10-03T11:14:51.549880+00:00",
+      "last_updated_at": "2025-10-06T22:17:43.383037+00:00",
       "hash": "84f76ac91e9908a202bcfa2bfd7d7eb8290fe7f540606de603401ae2577bfe23",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -144,16 +144,19 @@
         "closed": false,
         "extracted_at": "2025-10-03T11:14:40.944889+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "resume_upload_not_confirmed",
+        "message": "Resume upload not detected after autofill; manual review required."
+      }
     },
     {
       "id": "0199a9c8028281e0121c7efa6695",
       "url": "https://jobs.lever.co/includedhealth/e97382c7-153c-4c6a-90aa-17b9f0f9e4f4",
       "company": "includedhealth",
       "title": "Senior Software Engineer, Developer Platform",
-      "status": "new",
+      "status": "in_progress",
       "discovered_at": "2025-10-03T11:14:41.410113+00:00",
-      "last_updated_at": "2025-10-03T11:14:41.410113+00:00",
+      "last_updated_at": "2025-10-06T22:17:43.385009+00:00",
       "hash": "d063b1b280a6bded193f49107ed6ebbe06f35c1c61d20fccd1a41a11c71be9f5",
       "artifacts": {
         "dom_snapshot_path": null,

@@ -7,8 +7,9 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 from xml.etree import ElementTree as ET
 
 from browser_use.browser.session import BrowserSession
@@ -23,12 +24,28 @@ from ..telemetry import log_event
 
 @dataclass(slots=True)
 class DynamicQuestion:
-    """Long-form question extracted from Lever dynamic cards."""
+    """Long-form or structured question extracted from Lever dynamic cards."""
 
     prompt: str
     required: bool
-    answer_selector: str
     cache_key: str
+    answer_selector: str | None = None
+    field_name: str | None = None
+    field_type: str = "textarea"
+    options: dict[str, str] = field(default_factory=dict)
+    option_pairs: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class EeoField:
+    """EEO survey field (select/radio) with normalized options."""
+
+    name: str
+    label: str
+    field_type: Literal["select", "radio"]
+    selector: str | None
+    options: dict[str, str] = field(default_factory=dict)
+    option_pairs: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -39,6 +56,7 @@ class LeverFormPlan:
     contact_fields: dict[str, str]
     link_fields: dict[str, str]
     dynamic_questions: list[DynamicQuestion] = field(default_factory=list)
+    eeo_fields: list[EeoField] = field(default_factory=list)
     submit_button: str = "button#btn-submit"
     captcha_selector: str | None = "div#h-captcha"
 
@@ -160,7 +178,10 @@ def analyze_form(html: str) -> LeverFormPlan:
     contact_fields: dict[str, str] = {}
     link_fields: dict[str, str] = {}
     template_specs: list[tuple[str, list[dict[str, object]]]] = []
-    answer_inputs: dict[str, str] = {}
+    answer_nodes: dict[str, tuple[str, dict[str, str | None]]] = {}
+    choice_values: dict[str, set[str]] = {}
+    eeo_fields: list[EeoField] = []
+    eeo_radio_groups: dict[str, dict[str, object]] = {}
     submit_selector: str | None = None
     captcha_selector: str | None = None
 
@@ -194,10 +215,63 @@ def analyze_form(html: str) -> LeverFormPlan:
                     continue
                 fields = payload.get("fields", [])
                 template_specs.append((group_prefix, fields))
+
+            if name and "[field" in name:
+                answer_nodes.setdefault(name, (tag, attrs.copy()))
+                input_type = (attrs.get("type") or "").lower()
+                if input_type in {"radio", "checkbox"}:
+                    choice_values.setdefault(name, set()).add(attrs.get("value") or "")
+            input_type = (attrs.get("type") or "").lower()
+            if name and name.startswith("eeo[") and input_type == "radio":
+                group = eeo_radio_groups.setdefault(
+                    name,
+                    {
+                        "name": name,
+                        "label": name,
+                        "selector": _selector_for(tag, attrs),
+                        "options": [],
+                    },
+                )
+                if group.get("selector") is None:
+                    group["selector"] = _selector_for(tag, attrs)
+                value = (attrs.get("value") or "").strip()
+                display = (attrs.get("aria-label") or value).strip()
+                group["options"].append((value, display))
         elif tag == "textarea":
             name = attrs.get("name")
             if name:
-                answer_inputs[name] = _selector_for(tag, attrs)
+                answer_nodes.setdefault(name, (tag, attrs.copy()))
+        elif tag == "select":
+            name = attrs.get("name")
+            if name and name.startswith("eeo["):
+                selector = _selector_for(tag, attrs)
+                label_text = attrs.get("aria-label") or attrs.get("data-label") or name
+                option_pairs: list[tuple[str, str]] = []
+                options_map: dict[str, str] = {}
+                for child in list(node):
+                    if not hasattr(child, "tag"):
+                        continue
+                    if str(child.tag).lower() != "option":
+                        continue
+                    value = (child.attrib.get("value") or "").strip()
+                    text = (child.text or "").strip()
+                    if not value and not text:
+                        continue
+                    option_pairs.append((value, text))
+                    for key in (text, value):
+                        normalized = _normalize_choice_key(key)
+                        if normalized:
+                            options_map[normalized] = value or text
+                eeo_fields.append(
+                    EeoField(
+                        name=name,
+                        label=label_text,
+                        field_type="select",
+                        selector=selector,
+                        options=options_map,
+                        option_pairs=option_pairs,
+                    )
+                )
         elif tag == "button" and attrs.get("id") == "btn-submit":
             submit_selector = _selector_for(tag, attrs)
         elif tag == "div" and attrs.get("id") == "h-captcha":
@@ -214,23 +288,87 @@ def analyze_form(html: str) -> LeverFormPlan:
                 continue
             required = bool(field_spec.get("required", False))
             answer_name = f"{group_prefix}[field{index}]"
-            answer_selector = answer_inputs.get(answer_name)
-            if not answer_selector:
-                continue
-            dynamic_questions.append(
-                DynamicQuestion(
-                    prompt=prompt,
-                    required=required,
-                    answer_selector=answer_selector,
-                    cache_key=_normalize_question_key(prompt),
+            node_info = answer_nodes.get(answer_name)
+            answer_selector = None
+            node_tag = None
+            if node_info:
+                node_tag, node_attrs = node_info
+                answer_selector = _selector_for(node_tag, node_attrs)
+            field_type = str(field_spec.get("type", "")).strip().lower()
+            if not field_type:
+                field_type = "textarea" if node_tag == "textarea" else "text"
+            elif field_type in {"long_text", "paragraph"}:
+                field_type = "textarea"
+            elif field_type in {"short_text"}:
+                field_type = "text"
+            if field_type in {"multiple-choice", "multiple_choice", "select"}:
+                options_map: dict[str, str] = {}
+                option_pairs: list[tuple[str, str]] = []
+                values_seen = choice_values.get(answer_name) or set()
+                for option in field_spec.get("options", []) or []:
+                    opt_text = str(option.get("text", "")).strip()
+                    opt_id = str(option.get("optionId", "")).strip()
+                    target = _resolve_option_value(opt_text, opt_id, values_seen)
+                    value_choice = target or opt_id or opt_text
+                    if not value_choice and not opt_text:
+                        continue
+                    option_pairs.append((value_choice, opt_text))
+                    key_candidates = {opt_text, opt_id, value_choice}
+                    if target:
+                        key_candidates.add(target)
+                    for key in key_candidates:
+                        normalized = _normalize_choice_key(key)
+                        if normalized:
+                            options_map[normalized] = value_choice
+                dynamic_questions.append(
+                    DynamicQuestion(
+                        prompt=prompt,
+                        required=required,
+                        cache_key=_normalize_question_key(prompt),
+                        answer_selector=answer_selector,
+                        field_name=answer_name,
+                        field_type="multiple_choice",
+                        options=options_map,
+                        option_pairs=option_pairs,
+                    )
                 )
+            else:
+                dynamic_questions.append(
+                    DynamicQuestion(
+                        prompt=prompt,
+                        required=required,
+                        cache_key=_normalize_question_key(prompt),
+                        answer_selector=answer_selector,
+                        field_name=answer_name,
+                        field_type="textarea" if (node_tag == "textarea" or field_type == "textarea") else "text",
+                    )
+                )
+
+    for group in eeo_radio_groups.values():
+        option_pairs = list(group.get("options", []))
+        options_map: dict[str, str] = {}
+        for value, text in option_pairs:
+            for key in (text, value):
+                normalized = _normalize_choice_key(key)
+                if normalized:
+                    options_map[normalized] = value or text
+        eeo_fields.append(
+            EeoField(
+                name=str(group.get("name")),
+                label=str(group.get("label") or group.get("name")),
+                field_type="radio",
+                selector=(str(group.get("selector")) if group.get("selector") else None),
+                options=options_map,
+                option_pairs=option_pairs,
             )
+        )
 
     return LeverFormPlan(
         resume_input=resume_selector,
         contact_fields=contact_fields,
         link_fields=link_fields,
         dynamic_questions=dynamic_questions,
+        eeo_fields=eeo_fields,
         submit_button=submit_selector or "button#btn-submit",
         captcha_selector=captcha_selector,
     )
@@ -303,16 +441,94 @@ class LeverApplyAgent:
                 let fields = [];
                 try { fields = JSON.parse(tpl.value || '{}').fields || []; } catch {/*ignore*/}
                 fields.forEach((f, idx) => {
+                  if (!f || !f.text) return;
                   const answerName = `${prefix}[field${idx}]`;
-                  const answerEl = q(`textarea[name='${answerName}']`);
-                  if (answerEl && f && f.text) {
-                    questions.push({
-                      prompt: String(f.text || '').trim(),
-                      required: !!f.required,
-                      answerSelector: pickSelector(answerEl, 'textarea')
-                    });
+                  const textareaEl = q(`textarea[name='${answerName}']`);
+                  const inputEl = q(`input[name='${answerName}']`);
+                  const optionEls = qa(`input[name='${answerName}']`);
+                  let answerEl = textareaEl || inputEl;
+                  let fieldType = (f.type || '').toString().toLowerCase();
+                  if (!fieldType && textareaEl) {
+                    fieldType = 'textarea';
+                  } else if (!fieldType && inputEl) {
+                    fieldType = 'text';
                   }
+                  if (fieldType === 'long_text' || fieldType === 'paragraph') {
+                    fieldType = 'textarea';
+                  } else if (fieldType === 'short_text') {
+                    fieldType = 'text';
+                  }
+                  let options = [];
+                  const optionTypes = optionEls.map((el) => (el.getAttribute('type') || '').toLowerCase());
+                  const hasChoiceInputs = optionTypes.some((t) => t === 'radio' || t === 'checkbox');
+                  if (hasChoiceInputs) {
+                    fieldType = 'multiple_choice';
+                    options = optionEls.map((el) => {
+                      const label = el.closest('label');
+                      const text = label ? label.innerText.trim() : (el.getAttribute('aria-label') || el.value || '').trim();
+                      return {
+                        value: el.value || '',
+                        text,
+                      };
+                    });
+                    if (!answerEl && optionEls.length) {
+                      answerEl = optionEls[0];
+                    }
+                  } else if (!fieldType) {
+                    fieldType = textareaEl ? 'textarea' : 'text';
+                  }
+                  const answerSelector = answerEl ? pickSelector(answerEl, (answerEl.tagName === 'TEXTAREA') ? 'textarea' : 'input') : null;
+                  questions.push({
+                    prompt: String(f.text || '').trim(),
+                    required: !!f.required,
+                    answerSelector,
+                    fieldName: answerName,
+                    fieldType,
+                    options,
+                  });
                 });
+              });
+
+              const eeoFields = [];
+              qa("select[name^='eeo[']").forEach((el) => {
+                const labelContainer = el.closest('.application-question')?.querySelector('.application-label') || el.closest('label')?.querySelector('.application-label');
+                const labelText = labelContainer ? labelContainer.textContent.trim() : el.getAttribute('aria-label') || el.name;
+                const opts = Array.from(el.querySelectorAll('option'))
+                  .map((opt) => ({ value: opt.value || '', text: (opt.textContent || '').trim() }))
+                  .filter((opt) => opt.value || opt.text);
+                eeoFields.push({
+                  name: el.name,
+                  label: labelText,
+                  fieldType: 'select',
+                  selector: pickSelector(el, 'select'),
+                  options: opts,
+                });
+              });
+              const radioGroups = new Map();
+              qa("input[type='radio'][name^='eeo[']").forEach((inputEl) => {
+                const name = inputEl.name;
+                if (!radioGroups.has(name)) {
+                  const fieldLabel = inputEl.closest('.application-question')?.querySelector('.application-label');
+                  const labelText = fieldLabel ? fieldLabel.textContent.trim() : name;
+                  radioGroups.set(name, {
+                    name,
+                    label: labelText,
+                    fieldType: 'radio',
+                    selector: pickSelector(inputEl, 'input'),
+                    options: [],
+                  });
+                }
+                const group = radioGroups.get(name);
+                if (!group.selector) {
+                  group.selector = pickSelector(inputEl, 'input');
+                }
+                const lbl = inputEl.closest('label');
+                const text = lbl ? lbl.innerText.trim() : (inputEl.getAttribute('aria-label') || inputEl.value || '');
+                if (!text && !inputEl.value) return;
+                group.options.push({ value: inputEl.value || text, text });
+              });
+              radioGroups.forEach((group) => {
+                eeoFields.push(group);
               });
 
               const submitEl = q('button#btn-submit');
@@ -323,6 +539,7 @@ class LeverApplyAgent:
                 contactFields: contact,
                 linkFields: links,
                 dynamicQuestions: questions,
+                eeoFields: eeoFields,
                 submitButton: pickSelector(submitEl, 'button') || 'button#btn-submit',
                 captchaSelector: captchaEl ? pickSelector(captchaEl, 'div') : null,
               });
@@ -346,12 +563,72 @@ class LeverApplyAgent:
             prompt = str(q.get("prompt", "")).strip()
             if not prompt:
                 continue
+            answer_selector = q.get("answerSelector")
+            field_name = q.get("fieldName")
+            field_type = str(q.get("fieldType", "")).strip().lower()
+            if field_type in {"long_text", "paragraph"}:
+                field_type = "textarea"
+            elif field_type in {"multiple-choice"}:
+                field_type = "multiple_choice"
+            elif field_type == "short_text":
+                field_type = "text"
+            elif not field_type:
+                field_type = "textarea" if (isinstance(answer_selector, str) and "textarea" in answer_selector) else "text"
+            options_map: dict[str, str] = {}
+            option_pairs: list[tuple[str, str]] = []
+            for opt in q.get("options", []) or []:
+                opt_text = str(opt.get("text", "")).strip()
+                opt_value = str(opt.get("value", "")).strip()
+                if not opt_text and not opt_value:
+                    continue
+                option_pairs.append((opt_value or opt_text, opt_text))
+                for key in (opt_text, opt_value):
+                    normalized = _normalize_choice_key(key)
+                    if normalized:
+                        options_map[normalized] = opt_value or opt_text
             dynamic_questions.append(
                 DynamicQuestion(
                     prompt=prompt,
                     required=bool(q.get("required", False)),
-                    answer_selector=str(q.get("answerSelector")),
                     cache_key=_normalize_question_key(prompt),
+                    answer_selector=str(answer_selector) if answer_selector else None,
+                    field_name=str(field_name) if field_name else None,
+                    field_type=field_type,
+                    options=options_map,
+                    option_pairs=option_pairs,
+                )
+            )
+        eeo_fields_raw = data.get("eeoFields") or []
+        eeo_fields: list[EeoField] = []
+        for entry in eeo_fields_raw:
+            name = str(entry.get("name") or "").strip()
+            if not name:
+                continue
+            field_type = str(entry.get("fieldType", "select")).strip().lower()
+            if field_type == "multiple-choice":
+                field_type = "radio"
+            label = str(entry.get("label") or name).strip()
+            selector = entry.get("selector")
+            options_map: dict[str, str] = {}
+            option_pairs: list[tuple[str, str]] = []
+            for opt in entry.get("options", []) or []:
+                opt_text = str(opt.get("text", "")).strip()
+                opt_value = str(opt.get("value", "")).strip()
+                if not opt_text and not opt_value:
+                    continue
+                option_pairs.append((opt_value or opt_text, opt_text))
+                for key in (opt_text, opt_value):
+                    normalized = _normalize_choice_key(key)
+                    if normalized:
+                        options_map[normalized] = opt_value or opt_text
+            eeo_fields.append(
+                EeoField(
+                    name=name,
+                    label=label,
+                    field_type="radio" if field_type == "radio" else "select",
+                    selector=str(selector) if selector else None,
+                    options=options_map,
+                    option_pairs=option_pairs,
                 )
             )
         return LeverFormPlan(
@@ -359,6 +636,7 @@ class LeverApplyAgent:
             contact_fields={str(k): str(v) for k, v in contact_fields.items()},
             link_fields={str(k): str(v) for k, v in link_fields.items()},
             dynamic_questions=dynamic_questions,
+            eeo_fields=eeo_fields,
             submit_button=str(data.get("submitButton", "button#btn-submit")),
             captcha_selector=(str(data.get("captchaSelector")) if data.get("captchaSelector") else None),
         )
@@ -427,13 +705,16 @@ class LeverApplyAgent:
 
         if not uploaded and mode != "auto":
             print(
-                "Resume upload not detected. Please attach manually in the browser, then press Enter…"
+                "Resume upload not detected yet; continuing to fill the form. Attach manually now if you prefer."
             )
             try:
-                input()
+                await asyncio.sleep(1.0)
             except Exception:
                 pass
-            uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
+            try:
+                uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=5.0)
+            except Exception:
+                pass
 
         if not uploaded:
             try:
@@ -442,8 +723,12 @@ class LeverApplyAgent:
             except Exception:
                 pass
 
-        if not uploaded:
-            return Reason(code="resume_upload_failed", message="Resume not attached")
+        resume_detection_failed = not uploaded
+        if resume_detection_failed:
+            try:
+                log_event("resume_upload.review_required", mode=mode)
+            except Exception:
+                pass
 
         # Fill contact fields from profile defaults (with sensible fallbacks)
         await _fill_if_available(
@@ -493,7 +778,7 @@ class LeverApplyAgent:
             if value:
                 await _fill_if_available(page, selector, value)
 
-        # Dynamic questions via LLM (long-form textareas)
+        # Dynamic questions (text inputs, radios, and long-form textareas)
         if plan.dynamic_questions:
             try:
                 client = OpenRouterClient.from_settings()
@@ -501,8 +786,28 @@ class LeverApplyAgent:
                 client = None
             prompt_builder = PromptBuilder(profile=profile)
             for q in plan.dynamic_questions:
-                answer: str | None = None
-                if client:
+                field_type = (q.field_type or "textarea").lower()
+                if field_type == "multiple_choice":
+                    desired = _default_choice_answer(profile, q)
+                    value = None
+                    if desired:
+                        value = q.options.get(_normalize_choice_key(desired))
+                        if value is None:
+                            normalized = _normalize_yes_no_value(desired)
+                            if normalized:
+                                value = q.options.get(_normalize_choice_key(normalized))
+                    if value is not None and q.field_name:
+                        await _select_choice_option(page, q.field_name, value)
+                    continue
+                if field_type == "text":
+                    text_answer = _default_text_answer(profile, q)
+                    if text_answer and q.answer_selector:
+                        await _fill_if_available(page, q.answer_selector, text_answer)
+                    continue
+
+                # Treat remaining questions as long-form text areas
+                answer: str | None = _default_text_answer(profile, q)
+                if not answer and client:
                     plan_msg = prompt_builder.build_question_prompt(
                         question=Question(id=q.cache_key, text=q.prompt, required=q.required),
                         job=item.details or JobDetails(),
@@ -514,8 +819,12 @@ class LeverApplyAgent:
                         answer = None
                 if not answer and q.required:
                     answer = profile.prompts.get("fallback_answer") or profile.prompts.get("default_long_form")
-                if answer:
+                if answer and q.answer_selector:
                     await _fill_textarea(page, q.answer_selector, answer)
+
+        if plan.eeo_fields:
+            await _fill_eeo_fields(page, plan.eeo_fields, profile)
+            await _fill_disability_signature(page, profile)
 
         # Cover letter (textarea[name='comments'] or #additional-information) via LLM
         try:
@@ -591,6 +900,26 @@ class LeverApplyAgent:
             )
         except Exception:
             pass
+
+        if resume_detection_failed:
+            review_message = (
+                "TRIED FILLING ALL INPUTS - resume upload could not be confirmed. "
+                "Inspect the browser, make any manual adjustments, then press Enter to finish."
+            )
+            if mode != "auto":
+                pause_reason = await _supervised_pause(prompt=review_message)
+                if pause_reason is not None:
+                    return pause_reason
+            else:
+                print(review_message)
+                try:
+                    await asyncio.sleep(5.0)
+                except Exception:
+                    pass
+            return Reason(
+                code="resume_upload_not_confirmed",
+                message="Resume upload not detected after autofill; manual review required.",
+            )
 
         # Supervised pause before submit (robust to non-interactive stdin)
         if mode != "auto":
@@ -1856,6 +2185,12 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
                 hidden_selector,
                 value,
             )
+        # Ensure hidden field is populated even if suggestion click failed silently
+        await page.evaluate(
+            "(sel, val) => { const hidden = document.querySelector(sel); if (!hidden) return; if (!hidden.value) { hidden.value = val; hidden.dispatchEvent(new Event('change', {bubbles:true})); } }",
+            hidden_selector,
+            value,
+        )
     except Exception:
         # Best effort only
         pass
@@ -2091,7 +2426,11 @@ async def _apply_llm_assist(page, *, profile: Profile, job: JobDetails | None, i
             continue
 
 
-async def _supervised_pause(timeout_seconds: int | None = None) -> Reason | None:
+async def _supervised_pause(
+    timeout_seconds: int | None = None,
+    *,
+    prompt: str | None = None,
+) -> Reason | None:
     """Pause for human review; be robust to non-interactive stdin.
 
     Returns a Reason if the user aborts (Ctrl+C), otherwise None.
@@ -2102,7 +2441,8 @@ async def _supervised_pause(timeout_seconds: int | None = None) -> Reason | None
             timeout_seconds = int(os.getenv("AUTO_APPLY_SUPERVISED_TIMEOUT", "15"))
         except Exception:
             timeout_seconds = 15
-    print("Review filled form in the browser. Press Enter to submit, or wait to auto-continue...")
+    message = prompt or "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
+    print(message)
     try:
         input()
         return None
@@ -2136,7 +2476,242 @@ def _normalize_question_key(text: str) -> str:
     return " ".join(cleaned.split())
 
 
+def _normalize_choice_key(text: str | None) -> str:
+    if not text:
+        return ""
+    return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()
 
+
+def _resolve_option_value(option_text: str, option_id: str, candidates: set[str]) -> str | None:
+    normalized_candidates = {c.lower(): c for c in candidates if c}
+    if option_text:
+        lowered = option_text.lower()
+        if lowered in normalized_candidates:
+            return normalized_candidates[lowered]
+    if option_id:
+        lowered_id = option_id.lower()
+        if lowered_id in normalized_candidates:
+            return normalized_candidates[lowered_id]
+    if option_text:
+        return option_text
+    if option_id:
+        return option_id
+    return None
+
+
+def _eeo_opt_out_value(field: EeoField) -> str | None:
+    for value, text in field.option_pairs:
+        combined = f"{value} {text}".lower()
+        if "decline" in combined or "do not" in combined or "prefer not" in combined:
+            return value or text
+    return None
+
+
+def _normalize_yes_no_value(raw: object | None) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return "Yes" if raw else "No"
+    value = str(raw).strip()
+    if not value:
+        return None
+    lowered = value.lower()
+    yes_tokens = (
+        "yes",
+        "y",
+        "true",
+        "1",
+        "authorized to work",
+        "authorized",
+        "eligible to work",
+        "us citizen",
+        "u.s. citizen",
+        "citizen",
+        "permanent resident",
+        "green card",
+    )
+    no_tokens = (
+        "no",
+        "n",
+        "false",
+        "0",
+        "not at this time",
+        "no sponsorship",
+        "do not require",
+        "do not need",
+        "never",
+        "none",
+        "not authorized",
+    )
+    if any(token in lowered for token in yes_tokens):
+        return "Yes"
+    if any(token in lowered for token in no_tokens):
+        return "No"
+    return value
+
+
+def _default_text_answer(profile: Profile, question: DynamicQuestion) -> str | None:
+    defaults = profile.defaults
+    prompt_lower = question.prompt.lower()
+    if "zip" in prompt_lower and "code" in prompt_lower:
+        return defaults.get("zip_code") or defaults.get("postal_code")
+    if "postal" in prompt_lower and "code" in prompt_lower:
+        return defaults.get("postal_code") or defaults.get("zip_code")
+    if "salary" in prompt_lower and ("expect" in prompt_lower or "desired" in prompt_lower):
+        return defaults.get("salary_expectation")
+    if "linkedin" in prompt_lower:
+        return defaults.get("linkedin_url") or defaults.get("linkedin")
+    if "github" in prompt_lower:
+        return defaults.get("github_url") or defaults.get("github")
+    if "portfolio" in prompt_lower or "website" in prompt_lower:
+        return defaults.get("portfolio_url") or defaults.get("website")
+    return None
+
+
+def _default_choice_answer(profile: Profile, question: DynamicQuestion) -> str | None:
+    defaults = profile.defaults
+    prompt_lower = question.prompt.lower()
+    if "legally authorized" in prompt_lower or "authorized to work" in prompt_lower:
+        raw = defaults.get("work_authorized") or defaults.get("work_authorization")
+        normalized = _normalize_yes_no_value(raw)
+        if normalized:
+            return normalized
+    if "require sponsorship" in prompt_lower or "sponsorship" in prompt_lower or "visa status" in prompt_lower:
+        raw = (
+            defaults.get("requires_visa_sponsorship")
+            or defaults.get("needs_visa_sponsorship")
+            or defaults.get("visa_sponsorship")
+            or defaults.get("sponsorship_required")
+        )
+        normalized = _normalize_yes_no_value(raw)
+        if normalized:
+            return normalized
+    if "previously worked" in prompt_lower or "worked for" in prompt_lower or "former employee" in prompt_lower:
+        raw = (
+            defaults.get("worked_at_company_before")
+            or defaults.get("previously_employed_at_company")
+            or defaults.get("previously_employed")
+        )
+        normalized = _normalize_yes_no_value(raw)
+        if normalized:
+            return normalized
+    return None
+
+
+def _default_eeo_answer(profile: Profile, field: EeoField) -> str | None:
+    defaults = profile.defaults
+    name_lower = field.name.lower()
+    label_lower = field.label.lower()
+
+    def pick(*keys: str) -> str | None:
+        for key in keys:
+            if key in defaults and defaults[key] is not None:
+                val = defaults[key]
+                if isinstance(val, (list, tuple)):
+                    if val:
+                        return str(val[0])
+                else:
+                    return str(val)
+        return None
+
+    if "gender" in name_lower or "gender" in label_lower:
+        return pick("eeo_gender", "gender", "gender_identity")
+    if "race" in name_lower or "ethnicity" in name_lower or "race" in label_lower:
+        return pick("eeo_race", "race_ethnicity", "race")
+    if "veteran" in name_lower or "veteran" in label_lower:
+        return pick("eeo_veteran_status", "veteran_status", "veteran")
+    if "disability" in name_lower or "disability" in label_lower:
+        return pick("eeo_disability_status", "disability_status", "disability")
+    if "origin" in name_lower or "origin" in label_lower:
+        return pick("eeo_ethnicity", "ethnicity")
+    return pick("eeo_default_response")
+
+
+async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> None:
+    for field in fields:
+        desired = _default_eeo_answer(profile, field)
+        if not desired:
+            desired = _eeo_opt_out_value(field)
+        value = None
+        if desired:
+            value = field.options.get(_normalize_choice_key(desired)) or desired
+        if value is None and field.option_pairs:
+            # fallback to the first non-empty option
+            for candidate, _display in field.option_pairs:
+                if candidate:
+                    value = candidate
+                    break
+        if value is None:
+            continue
+        if field.field_type == "select":
+            await _set_select_value(page, field.selector, value)
+        else:
+            await _select_choice_option(page, field.name, value)
+
+
+async def _select_choice_option(page, field_name: str | None, value: str | None) -> None:
+    if not field_name or not value:
+        return
+    try:
+        await page.evaluate(
+            """
+            (name, desired) => {
+              const lowerDesired = String(desired || '').toLowerCase();
+              const group = document.getElementsByName(name);
+              let matched = false;
+              for (const el of group) {
+                if (!el) continue;
+                const attrVal = String(el.value || '').toLowerCase();
+                const label = el.closest('label');
+                const labelText = label ? label.innerText.trim().toLowerCase() : '';
+                if (attrVal === lowerDesired || (labelText && labelText === lowerDesired)) {
+                  if (typeof el.click === 'function') {
+                    el.click();
+                  } else {
+                    el.checked = true;
+                  }
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  matched = true;
+                }
+              }
+              return matched;
+            }
+            """,
+            field_name,
+            value,
+        )
+    except Exception:
+        pass
+
+
+async def _set_select_value(page, selector: str | None, desired: str | None) -> None:
+    if not selector or desired is None:
+        return
+    try:
+        await page.evaluate(
+            """
+            (sel, desired) => {
+              const el = document.querySelector(sel);
+              if (!el) return false;
+              const norm = (v) => String(v || '').trim().toLowerCase();
+              const desiredLower = norm(desired);
+              for (const opt of Array.from(el.options)) {
+                if (norm(opt.value) === desiredLower || norm(opt.textContent) === desiredLower) {
+                  el.value = opt.value;
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  return true;
+                }
+              }
+              el.value = desired;
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            """,
+            selector,
+            desired,
+        )
+    except Exception:
+        pass
 
 
 

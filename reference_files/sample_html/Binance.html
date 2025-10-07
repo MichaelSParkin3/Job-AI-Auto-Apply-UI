@@ -1,0 +1,47 @@
+auto-apply apply --profile michael_scott_parkin_iii --use-llm-locator --debug-resume-widget --resume-wait-timeout-seconds 25
+{"profile": "michael_scott_parkin_iii", "mode": "supervised", "event": "apply.start", "level": "info", "timestamp": "2025-10-06T21:52:14.516086Z"}
+{"provider": "openrouter", "model": "deepseek/deepseek-v3.2-exp", "event": "apply.llm_config", "level": "info", "timestamp": "2025-10-06T21:52:14.516373Z"}
+Started apply session for 'Michael Scott Parkin III' in supervised mode.
+{"profile": "michael_scott_parkin_iii", "count": 10, "event": "apply.pending", "level": "info", "timestamp": "2025-10-06T21:52:16.470980Z"}
+{"step": "apply", "item": "0199a9c800b05a911828d710d5da", "event": "item.start", "level": "info", "timestamp": "2025-10-06T21:52:16.471208Z"}
+Processing job 0199a9c800b05a911828d710d5da...
+{"locale": "en-US", "timezone": "America/Chicago", "window_size": {"width": 1366, "height": 850}, "disable_default_extensions": true, "allowed_domains": ["google.*", "jobs.lever.co"], "event": "browser.stealth_config", "level": "info", "timestamp": "2025-10-06T21:52:16.473043Z"}
+HTTP Request: GET http://localhost:63954/json/version "HTTP/1.1 200 OK"
+Connecting to ws://localhost:63954/devtools/browser/28ec2c6b-f511-4748-9959-2aa942e0b505    
+{"url": "https://jobs.lever.co/binance/e4c6380b-2ccb-4485-830a-2180b44ed232/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career", "event": "apply.navigate.start", "level": "info", "timestamp": "2025-10-06T21:52:20.928612Z"}
+⚠️ Using glob patterns in allowed_domains. Notte: Patterns like "*.example.com" will match both subdomains AND the main domain.
+DEBUG: Evaluating JavaScript: "(() => window.location && window.location.href || '')()"     
+DEBUG: Evaluating JavaScript: "(() => window.location && window.location.href || '')()"     
+{"method": "page.goto", "href": "https://jobs.lever.co/binance/e4c6380b-2ccb-4485-830a-2180b44ed232/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career", "event": "apply.navigate.ok", "level": "info", "timestamp": "2025-10-06T21:52:22.191237Z"}       
+{"reason": "post_navigate", "event": "apply.page_focus.changed", "level": "info", "timestamp": "2025-10-06T21:52:22.191937Z"}
+{"selectors": ["form#application-form", "#application"], "timeoutSeconds": 20.0, "event": "form.wait.start", "level": "info", "timestamp": "2025-10-06T21:52:22.193763Z"}
+{"selector": "form#application-form", "event": "form.wait.found", "level": "info", "timestamp": "2025-10-06T21:52:22.835460Z"}
+DEBUG: Evaluating JavaScript: '(() => {\n              const pickSelector = (el, tag=\'input\') => {\n                if (!el) return null;\n                if (el.id) return `#${el.id}`;\n                if (el.name) return `${tag}[name=\'${el.name}\']`;\n                if (el.getAttribute(\'data-qa\')) return `${tag}[data-qa=\'${el.getAttribute(\'data-qa\')}\']`;\n                const cls = el.className && String(el.className).split(/\\s+/)[0];\n                if (cls) return `${tag}.${cls}`;\n                return tag;\n              };\n\n              const q = (sel) => document.querySelector(sel);\n              const qa = (sel) => Array.from(document.querySelectorAll(sel));\n\n              const resumeEl = q("input#resume-upload-input[name=\'resume\']") || q("input[name=\'resume\']");\n              const contact = {};\n              const nameEl = q("input[data-qa=\'name-input\'][name=\'name\']") || q("input[name=\'name\']");\n            
+  if (nameEl) contact.name = pickSelector(nameEl);\n              const emailEl = q("input[data-qa=\'email-input\'][name=\'email\']") || q("input[name=\'email\']");\n              if (emailEl) contact.email = pickSelector(emailEl);\n              const phoneEl = q("input[data-qa=\'phone-input\'][name=\'phone\']") || q("input[name=\'phone\']");\n              if (phoneEl) contact.phone = pickSelector(phoneEl);\n              const locEl = q("input#location-input.location-input") || q("input#location-input");\n              if (locEl) contact.location = pickSelector(locEl);\n              const locHidden = q("input#selected-location");\n              if (locHidden) contact.location_hidden = pickSelector(locHidden);\n\n          
+    const links = {};\n              qa("input[name^=\'urls[\']").forEach((el) => {\n                const sel = pickSelector(el);\n                if (sel && el.name) links[el.name] = sel;\n              });\n\n              const templates = qa("input[name$=\'[baseTemplate]\']");\n              const questions = [];\n              templates.forEach((tpl) => {\n                const name = tpl.name;\n         
+       const prefix = name.replace(/\\[baseTemplate\\]$/, \'\');\n                let fields = [];\n                try { fields = JSON.parse(tpl.value || \'{}\').fields || []; } catch {/*ignore*/}\n                fields.forEach((f, idx) => {\n                  const answerName = `${prefix}[field${idx}]`;\n             
+     const answerEl = q(`textarea[name=\'${answerName}\']`);\n                  if (answerEl && f && f.text) {\n                    questions.push({\n                      prompt: String(f.text || \'\').trim(),\n                  
+    required: !!f.required,\n                 
+     answerSelector: pickSelector(answerEl, \'textarea\')\n                    });\n                  }\n                });\n            
+  });\n\n              const submitEl = q(\'button#btn-submit\');\n              const captchaEl = q(\'div#h-captcha\');\n\n              
+return JSON.stringify({\n                resumeInput: pickSelector(resumeEl),\n             
+   contactFields: contact,\n                linkFields: links,\n                dynamicQuestions: questions,\n                submitButton: pickSelector(submitEl, \'button\') || \'button#btn-submit\',\n                captchaSelector: captchaEl ? pickSelector(captchaEl, \'div\') : null,\n              });\n            })()'
+DEBUG: Evaluating JavaScript: '((sel, val) => { const el = document.querySelector(sel); if (el) { el.focus(); el.value = val; el.dispatchEvent(new Event(\'input\', {bubbles:true})); }})("#location-input", "Hollister, CA")'        
+DEBUG: Evaluating JavaScript: '((containerSel) => {\n              const c = document.querySelector(\'.dropdown-results\');\n             
+ if (!c) return false;\n              const first = c.querySelector(\'[data-value], li, div\');\n              if (first && typeof first.click === \'function\') { first.click(); return true; }\n              return false;\n            })(".dropdown-results")'
+{"selector": "#resume-upload-input", "capabilities": {"has_locator": false, "has_set_input_files": false, "has_frame_locator": false, "has_expect_file_chooser": false, "has_event_bus": true}, "event": "resume_upload.start", "level": "info", "timestamp": "2025-10-06T21:52:24.052847Z"}
+{"method": "click_anchor_then_retry", "event": "resume_upload.attempt", "level": "info", "timestamp": "2025-10-06T21:52:24.053091Z"}      
+DEBUG: Evaluating JavaScript: "(() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); })()"        
+DEBUG: Evaluating JavaScript: '(() => {\n                  const el = document.querySelector(\'input#resume-upload-input[name="resume"]\')\n                          || document.querySelector(\'input[name="resume"]\')\n           
+               || document.querySelector(\'input[type="file"]\');\n                  if (!el) return null;\n                  if (el.id) return `#${el.id}`;\n                  if (el.name) return `input[name=\'${el.name}\']`;\n                  return \'input[type="file"]\';\n                })()'
+{"flag": true, "event": "resume_upload.llm_locator.start", "level": "info", "timestamp": "2025-10-06T21:52:24.466120Z"}
+{"css_selector": null, "backend_node_id": null, "event": "resume_upload.llm_locator.result", "level": "info", "timestamp": "2025-10-06T21:52:24.467918Z"}
+{"selector": "#resume-upload-input", "event": "resume_upload.cdp.start", "level": "info", "timestamp": "2025-10-06T21:52:24.468064Z"}     
+{"selector": "#resume-upload-input", "event": "resume_upload.cdp.typed.start", "level": "info", "timestamp": "2025-10-06T21:52:24.468220Z"}
+{"event": "resume_upload.cdp.typed.success", "level": "info", "timestamp": "2025-10-06T21:52:24.474583Z"}
+DEBUG: Evaluating JavaScript: '((sel) => {\n              const el = document.querySelector(sel);\n              if (!el) return false;\n              try { el.dispatchEvent(new Event(\'input\', { bubbles: true })); } catch {}\n              try { el.dispatchEvent(new Event(\'change\', { bubbles: true })); } catch {}\n              return true;\n            })("#resume-upload-input")'
+{"event": "resume_upload.eventbus.start", "level": "info", "timestamp": "2025-10-06T21:52:49.551342Z"}
+{"scanned": 0, "matched": 0, "event": "resume_upload.eventbus.candidates_scanned", "level": "info", "timestamp": "2025-10-06T21:52:49.552185Z"}
+{"snapshot": {}, "event": "resume_upload.postmortem", "level": "info", "timestamp": "2025-10-06T21:52:49.552404Z"}
+{"selector": "#resume-upload-input", "event": "resume_upload.failed_all_branches", "level": "info", "timestamp": "2025-10-06T21:52:49.552580Z"}
+Resume upload not detected. Please attach manually in the browser, then press Enter…        
