@@ -2714,6 +2714,46 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
         pass
 
 
+async def _fill_disability_signature(page, profile: Profile) -> None:
+    """Fill disability signature section if visible.
+
+    Some Lever forms conditionally show a signature section when the user
+    fills out the disability status field. This function checks for visibility
+    and fills the name and date fields.
+
+    Args:
+        page: Playwright page instance.
+        profile: User profile with name and defaults.
+    """
+    try:
+        # Check if signature section is visible
+        section_visible = await page.evaluate(
+            """
+            () => {
+              const section = document.querySelector('#disabilitySignatureSection');
+              if (!section) return false;
+              const style = window.getComputedStyle(section);
+              return style.display !== 'none' && style.visibility !== 'hidden';
+            }
+            """
+        )
+        if not section_visible:
+            return
+
+        # Fill signature name field
+        name_value = profile.defaults.get("name") or profile.name
+        if name_value:
+            await _fill_if_available(page, "input[name='eeo[disabilitySignature]']", name_value)
+
+        # Fill signature date field with current date in MM/DD/YYYY format
+        current_date = datetime.now().strftime("%m/%d/%Y")
+        await _fill_if_available(page, "input[name='eeo[disabilitySignatureDate]']", current_date)
+
+        log_event("eeo.disability_signature.filled", name=bool(name_value), date=current_date)
+    except Exception as exc:
+        log_event("eeo.disability_signature.failed", error=str(exc))
+
+
 
 
 
