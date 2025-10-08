@@ -919,7 +919,7 @@ class LeverApplyAgent:
                     desired = _default_choice_answer(profile, q)
                     if not desired and client:
                         # Build prompt with options for LLM to choose from
-                        options_text = "\n".join([f"- {opt['text']}" for opt in q.option_pairs]) if q.option_pairs else ""
+                        options_text = "\n".join([f"- {opt[1]}" for opt in q.option_pairs]) if q.option_pairs else ""
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(
                                 id=q.cache_key,

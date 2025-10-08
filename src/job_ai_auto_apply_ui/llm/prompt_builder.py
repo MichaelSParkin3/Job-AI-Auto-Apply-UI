@@ -81,8 +81,13 @@ class PromptBuilder:
             )
 
         system_content = (
-            "You are a helpful assistant drafting concise, professional responses "
-            "for job application forms."
+            "You are filling out a job application form on behalf of a candidate. "
+            "Your goal is to provide suitable, professional answers that allow the "
+            "application to proceed. Answer each question thoughtfully based on the "
+            "profile information provided. For location/geography questions, use the "
+            "profile's location. For yes/no or multiple choice questions, select the "
+            "most appropriate option. Keep responses concise (2-3 sentences unless "
+            "more detail is clearly needed)."
         )
         if self.provider:
             system_content += f" Target provider: {self.provider}."
@@ -94,7 +99,10 @@ class PromptBuilder:
         if extra_context:
             user_sections.extend(extra_context)
         if question.required:
-            user_sections.append("This question is required; provide a confident answer.")
+            user_sections.append(
+                "This question is required. Provide an appropriate answer that allows "
+                "the application to proceed. Do not decline or explain why you cannot answer."
+            )
 
         user_content = "\n\n".join(section for section in user_sections if section)
         return PromptPlan(
