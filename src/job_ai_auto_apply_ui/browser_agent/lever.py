@@ -686,18 +686,8 @@ class LeverApplyAgent:
 
         plan = await self.build_plan_in_browser(page)
 
-        # Enable resume widget first: set location to activate disabled upload button variants
-        location_valid = await _set_structured_location(
-            page,
-            input_selector=plan.contact_fields.get("location") or "#location-input",
-            hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
-            value=profile.defaults.get("location"),
-        )
-        if not location_valid and mode != "auto":
-            log_event("form.location.needs_manual_selection", mode=mode)
-            print("⚠️  Location field needs manual selection from dropdown. Please select a location from the suggestions.")
-
-        # Upload resume with robust fallbacks + success detection
+        # Upload resume FIRST to prevent form resets from clearing fields filled earlier
+        # (Lever's resume processing can trigger JavaScript that resets form state)
         resume_path = str(profile.resolve_resume_path())
         uploaded = await _upload_resume(session, page, plan.resume_input, resume_path)
         if not uploaded:
@@ -709,7 +699,7 @@ class LeverApplyAgent:
 
         if not uploaded and mode != "auto":
             print(
-                "Resume upload not detected yet; continuing to fill the form. Attach manually now if you prefer."
+                "Resume upload not detected. Please attach manually in the browser, then press Enter…"
             )
             try:
                 await asyncio.sleep(1.0)
@@ -749,7 +739,17 @@ class LeverApplyAgent:
             plan.contact_fields.get("org") or "input[data-qa='org-input'][name='org']",
             profile.defaults.get("current_company") or profile.defaults.get("company"),
         )
-        # Structured location already handled above to enable resume upload
+
+        # Fill location field AFTER resume upload to avoid being cleared by form resets
+        location_valid = await _set_structured_location(
+            page,
+            input_selector=plan.contact_fields.get("location") or "#location-input",
+            hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
+            value=profile.defaults.get("location"),
+        )
+        if not location_valid and mode != "auto":
+            log_event("form.location.needs_manual_selection", mode=mode)
+            print("⚠️  Location field needs manual selection from dropdown. Please select a location from the suggestions.")
 
         # Pronouns (optional checkboxes). Supports single string or comma-separated list.
         pronouns_raw = profile.defaults.get("pronouns")
@@ -2191,7 +2191,13 @@ async def _check_location_gate(page, *, hidden_selector: str) -> tuple[bool, dic
             """,
             {"hiddenSel": hidden_selector},
         )
-        # Ensure state is a dict (Playwright may return different types)
+        # Ensure state is a dict (Playwright may return different types, including JSON strings)
+        if isinstance(state, str):
+            try:
+                import json
+                state = json.loads(state)
+            except Exception:
+                state = {}
         if not isinstance(state, dict):
             state = {}
     except Exception:
@@ -2288,12 +2294,36 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             return True
 
         # Fixed wait - simpler and more reliable than complex detection
-        wait_seconds = 2.5
+        wait_seconds = 7.0
         await asyncio.sleep(wait_seconds)
         log_event("form.location.waited_for_suggestions", seconds=wait_seconds)
 
         # Phase 3: Try keyboard selection (ArrowDown + Enter) up to 3 times
         for attempt in range(3):
+            # Check BEFORE sending keyboard events - avoid clearing already-valid values
+            is_valid, state = await _check_location_gate(page, hidden_selector=hidden_selector)
+            if is_valid:
+                log_event("form.location.keyboard_selected", attempt=attempt + 1, name=state.get("name"))
+                return True
+
+            # Log attempt start with dropdown state
+            dropdown_info = await page.evaluate(
+                """
+                () => {
+                  const dropdown = document.querySelector('.dropdown-container, .dropdown-results');
+                  const options = document.querySelectorAll('.dropdown-location, [role="option"], .Select-option, li[role="option"]');
+                  const hidden = document.querySelector('#selected-location');
+                  return {
+                    dropdownVisible: dropdown ? window.getComputedStyle(dropdown).display !== 'none' : false,
+                    optionCount: options.length,
+                    hiddenValue: hidden ? hidden.value : null,
+                  };
+                }
+                """
+            )
+            log_event("form.location.keyboard_attempt.start", attempt=attempt + 1, dropdown=dropdown_info)
+
+            # Only send keyboard events if not yet valid
             await page.evaluate(
                 """
                 (args) => {
@@ -2323,10 +2353,9 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             )
             await asyncio.sleep(0.4)
 
-            is_valid, state = await _check_location_gate(page, hidden_selector=hidden_selector)
-            if is_valid:
-                log_event("form.location.keyboard_selected", attempt=attempt + 1, name=state.get("name"))
-                return True
+            # Log state after keyboard events
+            post_state = await _check_location_gate(page, hidden_selector=hidden_selector)
+            log_event("form.location.keyboard_attempt.end", attempt=attempt + 1, valid=post_state[0], state=post_state[1])
 
         # Phase 4: Click fallback - find and click visible dropdown items
         click_result = await page.evaluate(
