@@ -642,6 +642,153 @@ class LeverApplyAgent:
                 eeoFields.push(group);
               });
 
+              // FINAL PASS: Universal catch-all for any remaining form fields
+              // This ensures we capture fields like opportunityLocationId that don't match specific patterns
+              const formEl = q('form#application-form') || q('form');
+              if (formEl) {
+                const seenNames = new Set();
+
+                // Track already-captured field names to avoid duplicates
+                questions.forEach(q => q.fieldName && seenNames.add(q.fieldName));
+                // Contact fields: track by extracting 'name' attribute from each selector
+                Object.values(contact).forEach(sel => {
+                  const match = sel && sel.match(/name=['"]([^'"]+)['"]/);
+                  if (match) seenNames.add(match[1]);
+                });
+                // Also track the contact object keys themselves (name, email, phone, location, org, etc.)
+                Object.keys(contact).forEach(fieldKey => {
+                  seenNames.add(fieldKey);
+                  // Also add common variations
+                  if (fieldKey === 'org') seenNames.add('organization');
+                });
+                Object.keys(links).forEach(name => seenNames.add(name));
+                eeoFields.forEach(f => seenNames.add(f.name));
+
+                // Helper to extract label text for any field
+                const extractLabel = (el) => {
+                  const questionContainer = el.closest('.application-question');
+                  if (questionContainer) {
+                    const labelEl = questionContainer.querySelector('.application-label .text') ||
+                                    questionContainer.querySelector('.application-label');
+                    if (labelEl) return labelEl.textContent.trim();
+                  }
+                  const label = el.closest('label');
+                  if (label) return label.textContent.trim();
+                  return el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name || '';
+                };
+
+                // Scan all select dropdowns in the form
+                const allSelects = qa('form select[name]');
+                allSelects.forEach(selectEl => {
+                  if (seenNames.has(selectEl.name)) return;
+                  if (!selectEl.name) return;
+
+                  const prompt = extractLabel(selectEl);
+                  const required = selectEl.hasAttribute('required');
+                  const opts = Array.from(selectEl.querySelectorAll('option'))
+                    .filter((opt) => opt.value) // Skip empty "Select..." options
+                    .map((opt) => ({
+                      value: opt.value || '',
+                      text: (opt.textContent || '').trim()
+                    }));
+
+                  if (opts.length > 0 && prompt) {
+                    questions.push({
+                      prompt,
+                      required,
+                      answerSelector: pickSelector(selectEl, 'select'),
+                      fieldName: selectEl.name,
+                      fieldType: 'select',
+                      options: opts,
+                    });
+                    seenNames.add(selectEl.name);
+                  }
+                });
+
+                // Scan all text/email/tel inputs in the form
+                const allInputs = qa('form input[name][type="text"], form input[name][type="email"], form input[name][type="tel"], form input[name]:not([type])');
+                allInputs.forEach(inputEl => {
+                  if (seenNames.has(inputEl.name)) return;
+                  if (!inputEl.name) return;
+                  if (inputEl.type === 'hidden' || inputEl.type === 'file') return;
+
+                  const prompt = extractLabel(inputEl);
+                  const required = inputEl.hasAttribute('required');
+
+                  if (prompt) {
+                    questions.push({
+                      prompt,
+                      required,
+                      answerSelector: pickSelector(inputEl, 'input'),
+                      fieldName: inputEl.name,
+                      fieldType: 'text',
+                      options: [],
+                    });
+                    seenNames.add(inputEl.name);
+                  }
+                });
+
+                // Scan all textareas in the form
+                const allTextareas = qa('form textarea[name]');
+                allTextareas.forEach(textareaEl => {
+                  if (seenNames.has(textareaEl.name)) return;
+                  if (!textareaEl.name) return;
+
+                  const prompt = extractLabel(textareaEl);
+                  const required = textareaEl.hasAttribute('required');
+
+                  if (prompt) {
+                    questions.push({
+                      prompt,
+                      required,
+                      answerSelector: pickSelector(textareaEl, 'textarea'),
+                      fieldName: textareaEl.name,
+                      fieldType: 'textarea',
+                      options: [],
+                    });
+                    seenNames.add(textareaEl.name);
+                  }
+                });
+
+                // Scan all radio button groups in the form
+                const catchAllRadioGroups = new Map();
+                qa('form input[type="radio"][name]').forEach(radioEl => {
+                  if (seenNames.has(radioEl.name)) return;
+                  if (!radioEl.name) return;
+
+                  if (!catchAllRadioGroups.has(radioEl.name)) {
+                    const prompt = extractLabel(radioEl);
+                    const required = radioEl.hasAttribute('required');
+                    catchAllRadioGroups.set(radioEl.name, {
+                      prompt,
+                      required,
+                      answerSelector: null,
+                      fieldName: radioEl.name,
+                      fieldType: 'multiple_choice',
+                      options: [],
+                    });
+                  }
+                  const group = catchAllRadioGroups.get(radioEl.name);
+                  if (!group.answerSelector) {
+                    group.answerSelector = pickSelector(radioEl, 'input');
+                  }
+                  const lbl = radioEl.closest('label');
+                  const text = lbl ? lbl.innerText.trim() : (radioEl.getAttribute('aria-label') || radioEl.value || '');
+                  if (text || radioEl.value) {
+                    group.options.push({
+                      value: radioEl.value || text,
+                      text,
+                    });
+                  }
+                });
+                catchAllRadioGroups.forEach((group) => {
+                  if (group.prompt && group.options.length > 0) {
+                    questions.push(group);
+                    seenNames.add(group.fieldName);
+                  }
+                });
+              }
+
               const submitEl = q('button#btn-submit');
               const captchaEl = q('div#h-captcha');
 
@@ -904,13 +1051,13 @@ class LeverApplyAgent:
                 if field_type == "multiple_choice":
                     desired = _default_choice_answer(profile, q)
                     # LLM fallback if no profile match found
-                    if not desired and client:
+                    if not desired and client and q.option_pairs:
                         # Build prompt with options for LLM to choose from
                         options_text = "\n".join([f"- {opt[1]}" for opt in q.option_pairs]) if q.option_pairs else ""
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(
                                 id=q.cache_key,
-                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}",
+                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}\n\nRespond with ONLY the exact text of one option above.",
                                 required=q.required
                             ),
                             job=item.details or JobDetails(),
@@ -927,6 +1074,16 @@ class LeverApplyAgent:
                             normalized = _normalize_yes_no_value(desired)
                             if normalized:
                                 value = q.options.get(_normalize_choice_key(normalized))
+                        # Fuzzy match for yes/no answers: if profile says "No" and option contains "no", match it
+                        if value is None and normalized:
+                            norm_lower = normalized.lower()
+                            for opt_key, opt_value in q.options.items():
+                                if norm_lower == "yes" and ("yes" in opt_key.lower() or "required" in opt_key.lower()):
+                                    value = opt_value
+                                    break
+                                elif norm_lower == "no" and ("no" in opt_key.lower() or "not" in opt_key.lower() or "don't" in opt_key.lower()):
+                                    value = opt_value
+                                    break
                     if value is not None and q.field_name:
                         await _select_choice_option(page, q.field_name, value)
                     continue
@@ -940,7 +1097,7 @@ class LeverApplyAgent:
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(
                                 id=q.cache_key,
-                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}",
+                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}\n\nRespond with ONLY the exact text of one option above.",
                                 required=q.required
                             ),
                             job=item.details or JobDetails(),

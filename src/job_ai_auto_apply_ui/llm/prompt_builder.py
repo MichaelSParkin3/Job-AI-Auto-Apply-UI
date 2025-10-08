@@ -85,8 +85,11 @@ class PromptBuilder:
             "Your goal is to provide suitable, professional answers that allow the "
             "application to proceed. Answer each question thoughtfully based on the "
             "profile information provided. For location/geography questions, use the "
-            "profile's location. For yes/no or multiple choice questions, select the "
-            "most appropriate option. Keep responses concise (2-3 sentences unless "
+            "profile's location. "
+            "IMPORTANT: For multiple choice or select dropdown questions with a list of options, "
+            "you MUST respond with ONLY the exact text of ONE option from the provided list. "
+            "Do not add explanations, elaborations, or additional context—just the option text itself. "
+            "For open-ended text questions, keep responses concise (2-3 sentences unless "
             "more detail is clearly needed)."
         )
         if self.provider:
