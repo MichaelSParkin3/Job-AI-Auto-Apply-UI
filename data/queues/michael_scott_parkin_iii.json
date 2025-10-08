@@ -116,7 +116,7 @@
       "url": "https://jobs.lever.co/binance/e4c6380b-2ccb-4485-830a-2180b44ed232/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career",
       "company": "binance",
       "title": "Binance - Senior QA Engineer (Frontend/App)",
-      "status": "failed",
+      "status": "new",
       "discovered_at": "2025-10-03T11:14:40.944925+00:00",
       "last_updated_at": "2025-10-06T22:17:43.383037+00:00",
       "hash": "84f76ac91e9908a202bcfa2bfd7d7eb8290fe7f540606de603401ae2577bfe23",
@@ -144,19 +144,16 @@
         "closed": false,
         "extracted_at": "2025-10-03T11:14:40.944889+00:00"
       },
-      "reason": {
-        "code": "resume_upload_not_confirmed",
-        "message": "Resume upload not detected after autofill; manual review required."
-      }
+      "reason": null
     },
     {
       "id": "0199a9c8028281e0121c7efa6695",
       "url": "https://jobs.lever.co/includedhealth/e97382c7-153c-4c6a-90aa-17b9f0f9e4f4",
       "company": "includedhealth",
       "title": "Senior Software Engineer, Developer Platform",
-      "status": "in_progress",
+      "status": "new",
       "discovered_at": "2025-10-03T11:14:41.410113+00:00",
-      "last_updated_at": "2025-10-06T22:17:43.385009+00:00",
+      "last_updated_at": "2025-10-08T16:52:50.346290+00:00",
       "hash": "d063b1b280a6bded193f49107ed6ebbe06f35c1c61d20fccd1a41a11c71be9f5",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -191,7 +188,7 @@
       "title": "[Job -  24974] Senior React Developer, Brazil",
       "status": "new",
       "discovered_at": "2025-10-03T11:14:42.140374+00:00",
-      "last_updated_at": "2025-10-03T11:14:42.140374+00:00",
+      "last_updated_at": "2025-10-08T17:26:06.647725+00:00",
       "hash": "b623d43732a5dc7dcddbc0fd32afe18027ba156a1ac5f5f651682ed733facb17",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -208,8 +205,8 @@
         "department": "Gamma – Prod_Gamma /",
         "posting_date": null,
         "compensation": null,
-        "posting_excerpt": "We are tech transformation specialists, uniting human expertise with AI to create scalable tech solutions.\nWith over 7.400 CI&Ters around the world, we’ve built partnerships with more than 1,000 clients during our 30 years of history. Artificial Intelligence is our reality.\n\n\nCI&T is looking for individuals located in Brazil to work as Frontend Developers and engage in a global project in the B2B sector.\n\n\nResponsibilities:\nDevelop complete solutions in a multidisciplinary team environment\nDevelop interfaces and functionalities in React Native and Redux\nEnsure code quality through unit testing\nCollaborate on system integration and process management\n\n\nRequirements for this challenge:\nFrontend development with React Native and Redux\nExperience in unit testing (JUnit for backend and Jest for frontend)\nKnowledge of relational databases (MySQL, PostgreSQL) and NoSQL (Cassandra)\nBasic knowledge of DDD, design patterns (Builders and Factory), Maven, Git, package management, and custom hooks\nFamiliarity with Azure DevOps and agile methodologies (Agile Safe)\nFluent English and communication skills\n\n\nDifferentials:\nExperience in publishing apps in stores\nBackend developer experience with Java, Spring Boot and Microservices\nExperience with CI/CD pipelines\nKnowledge in messaging systems (Kafka, RabbitMQ, etc.)",
-        "posting_text": "We are tech transformation specialists, uniting human expertise with AI to create scalable tech solutions.\nWith over 7.400 CI&Ters around the world, we’ve built partnerships with more than 1,000 clients during our 30 years of history. Artificial Intelligence is our reality.\n\n\nCI&T is looking for individuals located in Brazil to work as Frontend Developers and engage in a global project in the B2B sector.\n\n\nResponsibilities:\nDevelop complete solutions in a multidisciplinary team environment\nDevelop interfaces and functionalities in React Native and Redux\nEnsure code quality through unit testing\nCollaborate on system integration and process management\n\n\nRequirements for this challenge:\nFrontend development with React Native and Redux\nExperience in unit testing (JUnit for backend and Jest for frontend)\nKnowledge of relational databases (MySQL, PostgreSQL) and NoSQL (Cassandra)\nBasic knowledge of DDD, design patterns (Builders and Factory), Maven, Git, package management, and custom hooks\nFamiliarity with Azure DevOps and agile methodologies (Agile Safe)\nFluent English and communication skills\n\n\nDifferentials:\nExperience in publishing apps in stores\nBackend developer experience with Java, Spring Boot and Microservices\nExperience with CI/CD pipelines\nKnowledge in messaging systems (Kafka, RabbitMQ, etc.)",
+        "posting_excerpt": "We are tech transformation specialists, uniting human expertise with AI to create scalable tech solutions.\nWith over 7.400 CI&Ters around the world, we've built partnerships with more than 1,000 clients during our 30 years of history. Artificial Intelligence is our reality.\n\n\nCI&T is looking for individuals located in Brazil to work as Frontend Developers and engage in a global project in the B2B sector.\n\n\nResponsibilities:\nDevelop complete solutions in a multidisciplinary team environment\nDevelop interfaces and functionalities in React Native and Redux\nEnsure code quality through unit testing\nCollaborate on system integration and process management\n\n\nRequirements for this challenge:\nFrontend development with React Native and Redux\nExperience in unit testing (JUnit for backend and Jest for frontend)\nKnowledge of relational databases (MySQL, PostgreSQL) and NoSQL (Cassandra)\nBasic knowledge of DDD, design patterns (Builders and Factory), Maven, Git, package management, and custom hooks\nFamiliarity with Azure DevOps and agile methodologies (Agile Safe)\nFluent English and communication skills\n\n\nDifferentials:\nExperience in publishing apps in stores\nBackend developer experience with Java, Spring Boot and Microservices\nExperience with CI/CD pipelines\nKnowledge in messaging systems (Kafka, RabbitMQ, etc.)",
+        "posting_text": "We are tech transformation specialists, uniting human expertise with AI to create scalable tech solutions.\nWith over 7.400 CI&Ters around the world, we've built partnerships with more than 1,000 clients during our 30 years of history. Artificial Intelligence is our reality.\n\n\nCI&T is looking for individuals located in Brazil to work as Frontend Developers and engage in a global project in the B2B sector.\n\n\nResponsibilities:\nDevelop complete solutions in a multidisciplinary team environment\nDevelop interfaces and functionalities in React Native and Redux\nEnsure code quality through unit testing\nCollaborate on system integration and process management\n\n\nRequirements for this challenge:\nFrontend development with React Native and Redux\nExperience in unit testing (JUnit for backend and Jest for frontend)\nKnowledge of relational databases (MySQL, PostgreSQL) and NoSQL (Cassandra)\nBasic knowledge of DDD, design patterns (Builders and Factory), Maven, Git, package management, and custom hooks\nFamiliarity with Azure DevOps and agile methodologies (Agile Safe)\nFluent English and communication skills\n\n\nDifferentials:\nExperience in publishing apps in stores\nBackend developer experience with Java, Spring Boot and Microservices\nExperience with CI/CD pipelines\nKnowledge in messaging systems (Kafka, RabbitMQ, etc.)",
         "tech_tags": [],
         "source_query": "site:jobs.lever.co (\"Senior Front End Developer\" OR \"Senior Frontend Engineer\" OR \"Principal Frontend Engineer\" OR \"Staff Frontend Engineer\" OR \"Senior\" OR \"Staff\")",
         "source_rank": 3,
@@ -226,7 +223,7 @@
       "title": "Washmen - Senior Software Engineer",
       "status": "new",
       "discovered_at": "2025-10-03T11:14:42.806646+00:00",
-      "last_updated_at": "2025-10-03T11:14:42.806646+00:00",
+      "last_updated_at": "2025-10-08T17:45:41.035274+00:00",
       "hash": "4b9a0d46012bb861b814964e7c71d34d5ec311e190ff4827dead699dff45458b",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -259,9 +256,9 @@
       "url": "https://jobs.lever.co/ethenalabs/20c83119-f9b1-4405-a815-a17501b6e7c8/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career",
       "company": "ethenalabs",
       "title": "Ethena Labs - Senior/Staff DeFi Engineer",
-      "status": "new",
+      "status": "in_progress",
       "discovered_at": "2025-10-03T11:14:43.576500+00:00",
-      "last_updated_at": "2025-10-03T11:14:43.576500+00:00",
+      "last_updated_at": "2025-10-08T17:45:41.037549+00:00",
       "hash": "344ee46f2ce2bb2375254d90490e9358de7548800e1433d8e936f637ad9301b3",
       "artifacts": {
         "dom_snapshot_path": null,
