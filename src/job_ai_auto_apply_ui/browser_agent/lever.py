@@ -955,6 +955,17 @@ class LeverApplyAgent:
                     continue
                 if field_type == "text":
                     text_answer = _default_text_answer(profile, q)
+                    # LLM fallback if no profile match found
+                    if not text_answer and client:
+                        plan_msg = prompt_builder.build_question_prompt(
+                            question=Question(id=q.cache_key, text=q.prompt, required=q.required),
+                            job=item.details or JobDetails(),
+                            extra_context=None,
+                        )
+                        try:
+                            text_answer = client.complete(plan_msg.messages)
+                        except Exception:
+                            text_answer = None
                     if text_answer and q.answer_selector:
                         await _fill_if_available(page, q.answer_selector, text_answer)
                     continue
