@@ -1056,8 +1056,8 @@ class LeverApplyAgent:
         # After validation and AI assist, show review message if resume wasn't confirmed
         if resume_detection_failed:
             review_message = (
-                "TRIED FILLING ALL INPUTS - resume upload could not be confirmed. "
-                "Inspect the browser, make any manual adjustments, then press Enter to finish."
+                "⚠️  Resume upload could not be confirmed automatically. "
+                "Please verify the resume is attached, then press Enter to submit."
             )
             if mode != "auto":
                 pause_reason = await _supervised_pause(prompt=review_message)
@@ -1069,10 +1069,6 @@ class LeverApplyAgent:
                     await asyncio.sleep(5.0)
                 except Exception:
                     pass
-            return Reason(
-                code="resume_upload_not_confirmed",
-                message="Resume upload not detected after autofill; manual review required.",
-            )
 
         # Supervised pause before submit (robust to non-interactive stdin)
         if mode != "auto":
