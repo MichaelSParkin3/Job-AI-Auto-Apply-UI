@@ -797,6 +797,60 @@ class LeverApplyAgent:
                     seenNames.add(group.fieldName);
                   }
                 });
+
+                // Scan all standalone checkboxes in the form
+                // Important: handle consent/agreement checkboxes that are often required
+                const allCheckboxes = qa('form input[type="checkbox"][name]');
+                allCheckboxes.forEach(checkboxEl => {
+                  if (seenNames.has(checkboxEl.name)) return;
+                  if (!checkboxEl.name) return;
+
+                  const prompt = extractLabel(checkboxEl);
+                  const required = checkboxEl.hasAttribute('required');
+
+                  if (prompt) {
+                    // Check if this is a consent/agreement checkbox
+                    const promptLower = prompt.toLowerCase();
+                    const nameLower = checkboxEl.name.toLowerCase();
+                    const isConsent = nameLower.includes('consent')
+                                      || nameLower.includes('agree')
+                                      || promptLower.includes('agree')
+                                      || promptLower.includes('concordo')
+                                      || promptLower.includes('aceito')
+                                      || promptLower.includes('privacy')
+                                      || promptLower.includes('terms');
+
+                    if (required && isConsent) {
+                      // Auto-check required consent boxes (GDPR, privacy policy, terms of service)
+                      // These are typically mandatory for form submission
+                      try {
+                        checkboxEl.checked = true;
+                        checkboxEl.dispatchEvent(new Event('change', { bubbles: true }));
+                      } catch (e) {
+                        // If auto-check fails, add to questions for manual handling
+                        questions.push({
+                          prompt,
+                          required,
+                          answerSelector: pickSelector(checkboxEl, 'input'),
+                          fieldName: checkboxEl.name,
+                          fieldType: 'checkbox',
+                          options: [],
+                        });
+                      }
+                    } else {
+                      // Optional checkboxes or non-consent checkboxes: add to questions
+                      questions.push({
+                        prompt,
+                        required,
+                        answerSelector: pickSelector(checkboxEl, 'input'),
+                        fieldName: checkboxEl.name,
+                        fieldType: 'checkbox',
+                        options: [],
+                      });
+                    }
+                    seenNames.add(checkboxEl.name);
+                  }
+                });
               }
 
               const submitEl = q('button#btn-submit');
@@ -1135,6 +1189,24 @@ class LeverApplyAgent:
                             text_answer = None
                     if text_answer and q.answer_selector:
                         await _fill_if_available(page, q.answer_selector, text_answer)
+                    continue
+                if field_type == "checkbox":
+                    # Handle checkbox fields (consent, agreements, optional preferences)
+                    # Most required consents are auto-checked in JavaScript, but handle any that slip through
+                    if q.answer_selector:
+                        try:
+                            # Check the checkbox
+                            await page.evaluate(
+                                f"""(sel) => {{
+                                    const el = document.querySelector(sel);
+                                    if (el && !el.checked) {{
+                                        el.checked = true;
+                                        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                    }}
+                                }}('{q.answer_selector}')"""
+                            )
+                        except Exception:
+                            pass
                     continue
 
                 # Treat remaining questions as long-form text areas
