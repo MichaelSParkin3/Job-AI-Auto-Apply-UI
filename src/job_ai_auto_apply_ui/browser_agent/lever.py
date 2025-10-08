@@ -664,6 +664,16 @@ class LeverApplyAgent:
                 Object.keys(links).forEach(name => seenNames.add(name));
                 eeoFields.forEach(f => seenNames.add(f.name));
 
+                // IMPORTANT: Reserve cover letter fields for dedicated handler (runs later in Python)
+                // This prevents universal scanner from filling them with generic answers
+                const coverLetterEl = q('textarea[name="comments"]') || q('#additional-information');
+                if (coverLetterEl) {
+                  if (coverLetterEl.name) seenNames.add(coverLetterEl.name);
+                  if (coverLetterEl.id) seenNames.add(coverLetterEl.id);
+                  seenNames.add('comments');
+                  seenNames.add('additional-information');
+                }
+
                 // Helper to extract label text for any field
                 const extractLabel = (el) => {
                   const questionContainer = el.closest('.application-question');
