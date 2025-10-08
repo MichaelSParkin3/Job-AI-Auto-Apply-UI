@@ -490,6 +490,116 @@ class LeverApplyAgent:
                 });
               });
 
+              // Second pass: capture standalone custom card fields from rendered HTML
+              // These appear in data-qa="additional-cards" sections and aren't in baseTemplate JSON
+              const cardContainer = q('[data-qa="additional-cards"]');
+              if (cardContainer) {
+                // Find all select and input elements within card sections
+                const cardSelects = qa('[data-qa="additional-cards"] select[name^="cards["]');
+                const cardInputs = qa('[data-qa="additional-cards"] input[name^="cards["][type="text"], [data-qa="additional-cards"] input[name^="cards["][type="email"], [data-qa="additional-cards"] input[name^="cards["][type="tel"]');
+                const cardTextareas = qa('[data-qa="additional-cards"] textarea[name^="cards["]');
+                const cardRadios = qa('[data-qa="additional-cards"] input[name^="cards["][type="radio"]');
+
+                // Process select dropdowns
+                cardSelects.forEach((selectEl) => {
+                  const name = selectEl.name;
+                  if (!name) return;
+                  // Extract label from the question container
+                  const questionContainer = selectEl.closest('.application-question');
+                  const labelEl = questionContainer?.querySelector('.application-label .text');
+                  const prompt = labelEl ? labelEl.textContent.trim() : name;
+                  const required = selectEl.hasAttribute('required');
+                  const opts = Array.from(selectEl.querySelectorAll('option'))
+                    .filter((opt) => opt.value) // Skip empty "Select..." options
+                    .map((opt) => ({
+                      value: opt.value || '',
+                      text: (opt.textContent || '').trim()
+                    }));
+                  if (opts.length > 0) {
+                    questions.push({
+                      prompt,
+                      required,
+                      answerSelector: pickSelector(selectEl, 'select'),
+                      fieldName: name,
+                      fieldType: 'select',
+                      options: opts,
+                    });
+                  }
+                });
+
+                // Process text inputs
+                cardInputs.forEach((inputEl) => {
+                  const name = inputEl.name;
+                  if (!name) return;
+                  const questionContainer = inputEl.closest('.application-question');
+                  const labelEl = questionContainer?.querySelector('.application-label .text');
+                  const prompt = labelEl ? labelEl.textContent.trim() : name;
+                  const required = inputEl.hasAttribute('required');
+                  questions.push({
+                    prompt,
+                    required,
+                    answerSelector: pickSelector(inputEl, 'input'),
+                    fieldName: name,
+                    fieldType: 'text',
+                    options: [],
+                  });
+                });
+
+                // Process textareas
+                cardTextareas.forEach((textareaEl) => {
+                  const name = textareaEl.name;
+                  if (!name) return;
+                  const questionContainer = textareaEl.closest('.application-question');
+                  const labelEl = questionContainer?.querySelector('.application-label .text');
+                  const prompt = labelEl ? labelEl.textContent.trim() : name;
+                  const required = textareaEl.hasAttribute('required');
+                  questions.push({
+                    prompt,
+                    required,
+                    answerSelector: pickSelector(textareaEl, 'textarea'),
+                    fieldName: name,
+                    fieldType: 'textarea',
+                    options: [],
+                  });
+                });
+
+                // Process radio button groups
+                const radioGroupMap = new Map();
+                cardRadios.forEach((radioEl) => {
+                  const name = radioEl.name;
+                  if (!name) return;
+                  if (!radioGroupMap.has(name)) {
+                    const questionContainer = radioEl.closest('.application-question');
+                    const labelEl = questionContainer?.querySelector('.application-label .text');
+                    const prompt = labelEl ? labelEl.textContent.trim() : name;
+                    const required = radioEl.hasAttribute('required');
+                    radioGroupMap.set(name, {
+                      prompt,
+                      required,
+                      answerSelector: null,
+                      fieldName: name,
+                      fieldType: 'multiple_choice',
+                      options: [],
+                    });
+                  }
+                  const group = radioGroupMap.get(name);
+                  if (!group.answerSelector) {
+                    group.answerSelector = pickSelector(radioEl, 'input');
+                  }
+                  const lbl = radioEl.closest('label');
+                  const text = lbl ? lbl.innerText.trim() : (radioEl.getAttribute('aria-label') || radioEl.value || '');
+                  if (text || radioEl.value) {
+                    group.options.push({
+                      value: radioEl.value || text,
+                      text,
+                    });
+                  }
+                });
+                radioGroupMap.forEach((group) => {
+                  questions.push(group);
+                });
+              }
+
               const eeoFields = [];
               qa("select[name^='eeo[']").forEach((el) => {
                 const labelContainer = el.closest('.application-question')?.querySelector('.application-label') || el.closest('label')?.querySelector('.application-label');
@@ -782,7 +892,7 @@ class LeverApplyAgent:
             if value:
                 await _fill_if_available(page, selector, value)
 
-        # Dynamic questions (text inputs, radios, and long-form textareas)
+        # Dynamic questions (text inputs, selects, radios, and long-form textareas)
         if plan.dynamic_questions:
             try:
                 client = OpenRouterClient.from_settings()
@@ -802,6 +912,29 @@ class LeverApplyAgent:
                                 value = q.options.get(_normalize_choice_key(normalized))
                     if value is not None and q.field_name:
                         await _select_choice_option(page, q.field_name, value)
+                    continue
+                if field_type == "select":
+                    # Handle select dropdowns (common in custom Lever cards)
+                    # Try to match from profile defaults first, then use LLM if needed
+                    desired = _default_choice_answer(profile, q)
+                    if not desired and client:
+                        # Build prompt with options for LLM to choose from
+                        options_text = "\n".join([f"- {opt['text']}" for opt in q.option_pairs]) if q.option_pairs else ""
+                        plan_msg = prompt_builder.build_question_prompt(
+                            question=Question(
+                                id=q.cache_key,
+                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}",
+                                required=q.required
+                            ),
+                            job=item.details or JobDetails(),
+                            extra_context=None,
+                        )
+                        try:
+                            desired = client.complete(plan_msg.messages)
+                        except Exception:
+                            desired = None
+                    if desired and q.answer_selector:
+                        await _set_select_value(page, q.answer_selector, desired)
                     continue
                 if field_type == "text":
                     text_answer = _default_text_answer(profile, q)
