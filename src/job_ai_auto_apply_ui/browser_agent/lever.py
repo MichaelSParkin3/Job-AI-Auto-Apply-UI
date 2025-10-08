@@ -905,6 +905,22 @@ class LeverApplyAgent:
         except Exception:
             pass
 
+        # Validate before submit
+        if not await _form_check_validity(page):
+            invalid_fields = await _collect_invalid_fields(page)
+            if mode != "auto":
+                await _form_report_validity(page)
+                # Let the user fix in supervised mode
+                pause_reason = await _supervised_pause()
+                if pause_reason is not None:
+                    return pause_reason
+            else:
+                # LLM assist then re-validate
+                await _apply_llm_assist(page, profile=profile, job=item.details, invalid_fields=invalid_fields)
+            if not await _form_check_validity(page):
+                return Reason(code="validation_failed", message="Form still invalid after autofill")
+
+        # After validation and AI assist, show review message if resume wasn't confirmed
         if resume_detection_failed:
             review_message = (
                 "TRIED FILLING ALL INPUTS - resume upload could not be confirmed. "
@@ -930,21 +946,6 @@ class LeverApplyAgent:
             pause_reason = await _supervised_pause()
             if pause_reason is not None:
                 return pause_reason
-
-        # Validate before submit
-        if not await _form_check_validity(page):
-            invalid_fields = await _collect_invalid_fields(page)
-            if mode != "auto":
-                await _form_report_validity(page)
-                # Let the user fix in supervised mode
-                pause_reason = await _supervised_pause()
-                if pause_reason is not None:
-                    return pause_reason
-            else:
-                # LLM assist then re-validate
-                await _apply_llm_assist(page, profile=profile, job=item.details, invalid_fields=invalid_fields)
-            if not await _form_check_validity(page):
-                return Reason(code="validation_failed", message="Form still invalid after autofill")
 
         # Submit and capture confirmation
         await _click(page, plan.submit_button)
@@ -2924,7 +2925,9 @@ async def _select_choice_option(page, field_name: str | None, value: str | None)
                 const attrVal = String(el.value || '').toLowerCase();
                 const label = el.closest('label');
                 const labelText = label ? label.innerText.trim().toLowerCase() : '';
-                if (attrVal === lowerDesired || (labelText && labelText === lowerDesired)) {
+                // Try exact match first, then partial match (startsWith)
+                if (attrVal === lowerDesired || (labelText && labelText === lowerDesired) ||
+                    attrVal.startsWith(lowerDesired) || (labelText && labelText.startsWith(lowerDesired))) {
                   if (typeof el.click === 'function') {
                     el.click();
                   } else {
@@ -2956,7 +2959,11 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
               const norm = (v) => String(v || '').trim().toLowerCase();
               const desiredLower = norm(desired);
               for (const opt of Array.from(el.options)) {
-                if (norm(opt.value) === desiredLower || norm(opt.textContent) === desiredLower) {
+                const optVal = norm(opt.value);
+                const optText = norm(opt.textContent);
+                // Try exact match first, then partial match (startsWith)
+                if (optVal === desiredLower || optText === desiredLower ||
+                    optVal.startsWith(desiredLower) || optText.startsWith(desiredLower)) {
                   el.value = opt.value;
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                   return true;
