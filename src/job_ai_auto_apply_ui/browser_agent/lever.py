@@ -903,6 +903,23 @@ class LeverApplyAgent:
                 field_type = (q.field_type or "textarea").lower()
                 if field_type == "multiple_choice":
                     desired = _default_choice_answer(profile, q)
+                    # LLM fallback if no profile match found
+                    if not desired and client:
+                        # Build prompt with options for LLM to choose from
+                        options_text = "\n".join([f"- {opt[1]}" for opt in q.option_pairs]) if q.option_pairs else ""
+                        plan_msg = prompt_builder.build_question_prompt(
+                            question=Question(
+                                id=q.cache_key,
+                                text=f"{q.prompt}\n\nAvailable options:\n{options_text}",
+                                required=q.required
+                            ),
+                            job=item.details or JobDetails(),
+                            extra_context=None,
+                        )
+                        try:
+                            desired = client.complete(plan_msg.messages)
+                        except Exception:
+                            desired = None
                     value = None
                     if desired:
                         value = q.options.get(_normalize_choice_key(desired))
