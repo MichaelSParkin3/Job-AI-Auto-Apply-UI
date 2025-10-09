@@ -2053,7 +2053,7 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
     return False
 
 
-async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0) -> bool:
+async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0) -> bool:
     """Wait until the resume input reflects an attached file or Lever shows success.
 
     Signals considered success:
@@ -2090,6 +2090,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
     while asyncio.get_event_loop().time() < deadline:
         try:
             state = await _evaluate_quiet(
+                page,
                 """
                 (sel) => {
                   const el = document.querySelector(sel);
@@ -2135,6 +2136,14 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                     log_event("resume_upload.detect.poll_returned_none", selector=selector)
                 except Exception:
                     pass
+            # Debug logging to diagnose type issues
+            try:
+                log_event("resume_upload.detect.state_debug",
+                         state_type=type(state).__name__,
+                         state_repr=repr(state)[:200],
+                         selector=selector)
+            except Exception:
+                pass
             if state and state.get("ok"):
                 # Short settle: ensure state remains OK briefly and no failure banners appear
                 try:
@@ -2144,6 +2153,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                 while asyncio.get_event_loop().time() < settle_end:
                     try:
                         s2 = await _evaluate_quiet(
+                            page,
                             """
                             (sel) => {
                               const el = document.querySelector(sel);
