@@ -116,16 +116,16 @@
       "url": "https://jobs.lever.co/binance/e4c6380b-2ccb-4485-830a-2180b44ed232/apply?source=web3.career&lever-origin=applied&lever-source%5B%5D=web3.career",
       "company": "binance",
       "title": "Binance - Senior QA Engineer (Frontend/App)",
-      "status": "new",
+      "status": "submitted",
       "discovered_at": "2025-10-03T11:14:40.944925+00:00",
-      "last_updated_at": "2025-10-06T22:17:43.383037+00:00",
+      "last_updated_at": "2025-10-08T22:20:19.653212+00:00",
       "hash": "84f76ac91e9908a202bcfa2bfd7d7eb8290fe7f540606de603401ae2577bfe23",
       "artifacts": {
         "dom_snapshot_path": null,
         "screenshot_path": null,
         "video_path": null,
         "har_path": null,
-        "confirmation_text": null,
+        "confirmation_text": "submitted",
         "confirmation_id": null
       },
       "details": {
@@ -151,16 +151,16 @@
       "url": "https://jobs.lever.co/includedhealth/e97382c7-153c-4c6a-90aa-17b9f0f9e4f4",
       "company": "includedhealth",
       "title": "Senior Software Engineer, Developer Platform",
-      "status": "new",
+      "status": "submitted",
       "discovered_at": "2025-10-03T11:14:41.410113+00:00",
-      "last_updated_at": "2025-10-08T16:52:50.346290+00:00",
+      "last_updated_at": "2025-10-08T22:42:57.396878+00:00",
       "hash": "d063b1b280a6bded193f49107ed6ebbe06f35c1c61d20fccd1a41a11c71be9f5",
       "artifacts": {
         "dom_snapshot_path": null,
         "screenshot_path": null,
         "video_path": null,
         "har_path": null,
-        "confirmation_text": null,
+        "confirmation_text": "submitted",
         "confirmation_id": null
       },
       "details": {
@@ -186,16 +186,16 @@
       "url": "https://jobs.lever.co/ciandt/50d2e8ac-2886-489f-b66a-c44ac049fa3a",
       "company": "ciandt",
       "title": "[Job -  24974] Senior React Developer, Brazil",
-      "status": "new",
+      "status": "submitted",
       "discovered_at": "2025-10-03T11:14:42.140374+00:00",
-      "last_updated_at": "2025-10-08T17:26:06.647725+00:00",
+      "last_updated_at": "2025-10-08T23:25:41.522883+00:00",
       "hash": "b623d43732a5dc7dcddbc0fd32afe18027ba156a1ac5f5f651682ed733facb17",
       "artifacts": {
         "dom_snapshot_path": null,
         "screenshot_path": null,
         "video_path": null,
         "har_path": null,
-        "confirmation_text": null,
+        "confirmation_text": "submitted",
         "confirmation_id": null
       },
       "details": {
@@ -221,9 +221,9 @@
       "url": "https://jobs.lever.co/Washmen/ccfcbda5-826d-40d1-ab45-2f0cf01e4850/apply",
       "company": "Washmen",
       "title": "Washmen - Senior Software Engineer",
-      "status": "new",
+      "status": "failed",
       "discovered_at": "2025-10-03T11:14:42.806646+00:00",
-      "last_updated_at": "2025-10-08T17:45:41.035274+00:00",
+      "last_updated_at": "2025-10-08T23:26:08.108394+00:00",
       "hash": "4b9a0d46012bb861b814964e7c71d34d5ec311e190ff4827dead699dff45458b",
       "artifacts": {
         "dom_snapshot_path": null,
@@ -249,7 +249,10 @@
         "closed": false,
         "extracted_at": "2025-10-03T11:14:42.806619+00:00"
       },
-      "reason": null
+      "reason": {
+        "code": "runtime_error",
+        "message": "Expected elements did not render in time"
+      }
     },
     {
       "id": "0199a9c80af8897ce9c78a69b944",
