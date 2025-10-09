@@ -64,8 +64,8 @@ flowchart TD
 6. **Form Detection & Planning**:
    - Waits for `form#application-form` or `#application`.
    - Records hCaptcha visibility state (`_hcaptcha_state`).
-   - `build_plan_in_browser` walks sanitized DOM to capture selectors: resume input, contact fields, links, dynamic question metadata, submit button, captcha selector.
-   - Location gating: `_set_structured_location` populates structured location fields before enabling the upload button.
+   - `build_plan_in_browser` walks sanitized DOM to emit the deterministic Step 1 plan: resume widget triggers/signals, selector precedence + alternates for fields, submit metadata, CAPTCHA selector, and a `requiresLocationGate` flag.
+   - Location gating: `_set_structured_location` populates structured location fields before enabling the upload button and logs precedence-resolved selectors.
 7. **Resume Upload Pipeline** (`_upload_resume`): multi-branch strategy with structured telemetry.
 
 ```mermaid
@@ -111,6 +111,7 @@ flowchart LR
 
 10. **Submission & Post-Checks**:
     - `_click` submit button, pause briefly, re-check hCaptcha blocking status.
+    - Visible CAPTCHA after submit triggers `_capture_review_artifacts` via `handle_captcha_block`, which serializes DOM + screenshot artifacts and returns `captcha_blocked` telemetry.
     - If form persists, runs another validity check; failure returns a `Reason`.
     - Extracts confirmation text (limited to 500 chars) and returns `Artifacts`.
     - Queue is updated (`mark_submitted` or `mark_failed`) with structured log events like `queue.submitted`, `queue.failed`, `apply.complete`.

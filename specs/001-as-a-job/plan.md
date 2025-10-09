@@ -119,6 +119,8 @@ Follow these steps in order; each step cites the spec or reference to consult wh
 - Purpose: Headful session; resume upload; contact+links; dynamic cards; submit; hCaptcha detection and persistence on block.
 - References: reference_files/patterns-google-lever.md → Form selectors; spec.md → FR-004, FR-011, FR-012, FR-026, FR-027, FR-030.
 - Operational notes: browser-user-0.7.X-changes.md → hooks/event bus; browser-use-testing-tips.md → allowed_domains, artifacts.
+- Deterministic Step1 plan (`build_plan_in_browser`) drives selector precedence, resume widget signals, and location gate checks.
+- Post-submit CAPTCHA visibility must trigger telemetry + artifact capture before returning `captcha_blocked` to the queue.
 
 6) Prompt builder (`src/job_ai_auto_apply_ui/llm/prompt_builder.py`)
 - Purpose: Build JSON answers for long-form questions from Profile + JobDetails + posting_excerpt; respect AnswerCache rules.

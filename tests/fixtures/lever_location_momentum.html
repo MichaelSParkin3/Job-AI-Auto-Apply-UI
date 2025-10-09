@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lever Location Momentum Fixture</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .dropdown-container { display: none; position: relative; z-index: 10; }
+      .dropdown-results { background: #2d2d2d; color: #e5e5e5; border-radius: 4px; }
+      .dropdown-location { padding: 6px 10px; cursor: pointer; }
+      .dropdown-location:hover { background: #3a3a3a; }
+    </style>
+  </head>
+  <body>
+    <div class="application-field">
+      <label for="location-input">Current location</label>
+      <input class="location-input" data-qa="location-input" id="location-input" type="text" maxlength="100" name="location" />
+      <input id="selected-location" type="hidden" name="selectedLocation" />
+      <div class="momentum-body flex flex-column items-start width-full height-auto bg-gray-800 text-gray-200 rounded dropdown-container">
+        <div class="dropdown-results width-full cursor-pointer">
+          <div class="break-word dropdown-location width-full py1 px2" id="location-0">Alda, Valle de Arana, Araba/Álava, País Vasco, ESP</div>
+          <div class="break-word dropdown-location width-full py1 px2" id="location-1">Alda, NE, USA</div>
+          <div class="break-word dropdown-location width-full py1 px2" id="location-2">Alda, IL, USA</div>
+        </div>
+        <div class="dropdown-no-results width-full break-word py1 px2 pointer-events-none" style="display: none;">No location found. Try entering a different location</div>
+        <div class="dropdown-loading-results width-full break-word height-full py1 px2 pointer-events-none" style="display: none;">
+          <div class="theme-inverse items-center">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const input = document.getElementById('location-input');
+        const hidden = document.getElementById('selected-location');
+        const container = document.querySelector('.dropdown-container');
+        const results = document.querySelector('.dropdown-results');
+        const items = Array.from(results ? results.children : []);
+
+        function show() { if (container) container.style.display = 'flex'; }
+        function hide() { if (container) container.style.display = 'none'; }
+
+        if (input) {
+          input.addEventListener('focus', show);
+          input.addEventListener('input', show);
+          // basic keyboard support: ArrowDown cycles, Enter selects
+          let idx = -1;
+          input.addEventListener('keydown', (e) => {
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') {
+              show();
+              idx = Math.min(idx + 1, items.length - 1);
+              e.preventDefault();
+            } else if (e.key === 'Enter') {
+              if (idx >= 0) { items[idx].click(); }
+              e.preventDefault();
+            }
+          });
+        }
+
+        items.forEach((el) => {
+          el.addEventListener('click', () => {
+            const name = (el.textContent || '').trim();
+            if (input) {
+              input.value = name;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            if (hidden) {
+              hidden.value = JSON.stringify({ name, id: el.id || 'loc-0' });
+              hidden.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            hide();
+          });
+        });
+      })();
+    </script>
+  </body>
+  </html>
+

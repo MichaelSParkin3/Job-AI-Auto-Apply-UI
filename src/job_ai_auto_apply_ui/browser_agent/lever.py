@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import Awaitable, Final
 from xml.etree import ElementTree as ET
 
 from browser_use.browser.session import BrowserSession
@@ -258,116 +259,459 @@ class LeverApplyAgent:
         """Return a Lever form plan from cached HTML analysis."""
         return self._planner(html)
 
-    async def build_plan_in_browser(self, page) -> LeverFormPlan:
-        """Inspect the live DOM and return a plan without HTML parsing brittlety."""
+
+    async def build_plan_in_browser(self, page) -> dict[str, object]:
+        """Inspect the live DOM and return a Step1-compliant deterministic plan."""
+
         payload = await page.evaluate(
             """
             () => {
-              const pickSelector = (el, tag='input') => {
-                if (!el) return null;
-                if (el.id) return `#${el.id}`;
-                if (el.name) return `${tag}[name='${el.name}']`;
-                if (el.getAttribute('data-qa')) return `${tag}[data-qa='${el.getAttribute('data-qa')}']`;
-                const cls = el.className && String(el.className).split(/\\s+/)[0];
-                if (cls) return `${tag}.${cls}`;
-                return tag;
+              const toArray = (value) => Array.from(value || []);
+              const dedupe = (items) => Array.from(new Set((items || []).filter(Boolean)));
+              // Safer escaping helpers that avoid brittle quoting
+              const q = (v) => JSON.stringify(String(v));
+              
+
+const labelText = (el) => {
+                if (!el) return "";
+                const id = el.id || "";
+                if (id) {
+                  const direct = document.querySelector(`label[for=${q(id)}]`);
+                  if (direct && direct.textContent) {
+                    return direct.textContent.trim();
+                  }
+                }
+                const closest = el.closest('.application-question');
+                if (closest) {
+                  const textNode = closest.querySelector('.application-label .text, .application-label');
+                  if (textNode && textNode.textContent) {
+                    return textNode.textContent.trim();
+                  }
+                }
+                const aria = el.getAttribute('aria-label');
+                if (aria) return aria.trim();
+                return '';
+              };
+              const computeNth = (el) => {
+                if (!el || !el.parentElement) return null;
+                const tag = el.tagName.toLowerCase();
+                let index = 1;
+                let prev = el.previousElementSibling;
+                while (prev) {
+                  if (prev.tagName.toLowerCase() === tag) {
+                    index += 1;
+                  }
+                  prev = prev.previousElementSibling;
+                }
+                return `${tag}:nth-of-type(${index})`;
+              };
+              const buildSelectorMeta = (el, kind) => {
+                const defaults = {
+                  primary: null,
+                  alternates: [],
+                  precedence:
+                    kind === 'file'
+                      ? ['id', 'data-qa', 'name', 'role', 'text', 'nth']
+                      : kind === 'button'
+                      ? ['id', 'data-qa', 'text', 'name', 'nth']
+                      : ['name', 'id', 'data-qa', 'aria', 'text', 'nth'],
+                };
+                if (!el) return defaults;
+                const tag = el.tagName.toLowerCase();
+                const typeAttr = (el.getAttribute('type') || '').toLowerCase();
+                const attrs = {
+                  id: el.id || '',
+                  name: el.getAttribute('name') || '',
+                  'data-qa': el.getAttribute('data-qa') || '',
+                  aria: el.getAttribute('aria-label') || labelText(el) || '',
+                  role: el.getAttribute('role') || '',
+                  text: labelText(el) || '',
+                  nth: computeNth(el) || '',
+                };
+                const primaryOrder =
+                  kind === 'file'
+                    ? ['id', 'name', 'data-qa']
+                    : kind === 'button'
+                    ? ['id', 'data-qa', 'text', 'name']
+                    : ['name', 'data-qa', 'id'];
+                let primary = null;
+                let primaryAttr = null;
+                for (const key of primaryOrder) {
+                  const value = attrs[key];
+                  if (!value) continue;
+                  if (key === 'id') {
+                    primary = `[id=${q(value)}]`;
+                  } else if (key === 'name') {
+                    const typeSuffix = kind === 'file' && typeAttr ? `[type=${q(typeAttr)}]` : '';
+                    primary = `${tag}${typeSuffix}[name=${q(value)}]`;
+                    if (kind !== 'file' && attrs['data-qa']) {
+                      primary += `[data-qa=${q(attrs['data-qa'])}]`;
+                  }
+                  } else if (key === 'data-qa') {
+                    primary = `${tag}[data-qa=${q(value)}]`;
+                  } else if (key === 'text') {
+                    primary = `${tag}:has-text(${q(value)})`;
+                  }
+                  primaryAttr = key;
+                  break;
+                }
+                if (!primary && attrs.id) {
+                  primary = `[id=${q(attrs.id)}]`;
+                  primaryAttr = 'id';
+                }
+                if (!primary) {
+                  primary = tag;
+                }
+                const alternates = [];
+                for (const key of defaults.precedence) {
+                  if (key === primaryAttr) continue;
+                  const value = attrs[key];
+                  if (!value) continue;
+                  let selector = null;
+                  if (key === 'id') {
+                    selector = `[id=${q(value)}]`;
+                  } else if (key === 'name') {
+                    const typeSuffix = kind === 'file' && typeAttr ? `[type=${q(typeAttr)}]` : '';
+                    selector = `${tag}${typeSuffix}[name=${q(value)}]`;
+                  } else if (key === 'data-qa') {
+                    selector = `${tag}[data-qa=${q(value)}]`;
+                  } else if (key === 'aria') {
+                    selector = `${tag}[aria-label=${q(value)}]`;
+                  } else if (key === 'role') {
+                    selector = `${tag}[role=${q(value)}]`;
+                  } else if (key === 'text') {
+                    selector = `${tag}:has-text(${q(value)})`;
+                  } else if (key === 'nth') {
+                    selector = attrs.nth;
+                  }
+                  if (selector) {
+                    alternates.push(selector);
+                  }
+                }
+                return {
+                  primary,
+                  alternates: dedupe(alternates),
+                  precedence: defaults.precedence,
+                };
               };
 
-              const q = (sel) => document.querySelector(sel);
-              const qa = (sel) => Array.from(document.querySelectorAll(sel));
+              const resumeInput = document.querySelector(
+                "input#resume-upload-input, input[data-qa='input-resume'], input[type='file'][name='resume']"
+              );
+              const resumeMeta = buildSelectorMeta(resumeInput, 'file');
+              const resumeTriggers = dedupe([
+                resumeInput && resumeInput.id ? `label[for=${q(resumeInput.id)}]` : null,
+                "button[data-qa='input-resume']",
+              ]);
+              const resumeSuccessSignals = dedupe([
+                '.resume-upload-success',
+                '.application-upload-success',
+                '.filename:not(.hidden)',
+              ]);
+              const resumeFailureSignals = dedupe([
+                '.resume-upload-failure',
+                '.resume-upload-oversize',
+              ]);
+              const resumeStorage = (() => {
+                const el = document.querySelector("input[name='resumeStorageId']");
+                if (!el) return null;
+                const tag = el.tagName.toLowerCase();
+                const id = el.id ? `[id=${q(el.id)}]` : '';
+                const name = el.name ? `[name=${q(el.name)}]` : '';
+                return `${tag}${id}${name}`;
+              })();
 
-              const resumeEl = q("input#resume-upload-input[name='resume']") || q("input[name='resume']");
-              const contact = {};
-              const nameEl = q("input[data-qa='name-input'][name='name']") || q("input[name='name']");
-              if (nameEl) contact.name = pickSelector(nameEl);
-              const emailEl = q("input[data-qa='email-input'][name='email']") || q("input[name='email']");
-              if (emailEl) contact.email = pickSelector(emailEl);
-              const phoneEl = q("input[data-qa='phone-input'][name='phone']") || q("input[name='phone']");
-              if (phoneEl) contact.phone = pickSelector(phoneEl);
-              const locEl = q("input#location-input.location-input") || q("input#location-input");
-              if (locEl) contact.location = pickSelector(locEl);
-              const locHidden = q("input#selected-location");
-              if (locHidden) contact.location_hidden = pickSelector(locHidden);
-
-              const links = {};
-              qa("input[name^='urls[']").forEach((el) => {
-                const sel = pickSelector(el);
-                if (sel && el.name) links[el.name] = sel;
-              });
-
-              const templates = qa("input[name$='[baseTemplate]']");
-              const questions = [];
-              templates.forEach((tpl) => {
-                const name = tpl.name;
-                const prefix = name.replace(/\\[baseTemplate\\]$/, '');
-                let fields = [];
-                try { fields = JSON.parse(tpl.value || '{}').fields || []; } catch {/*ignore*/}
-                fields.forEach((f, idx) => {
-                  const answerName = `${prefix}[field${idx}]`;
-                  const answerEl = q(`textarea[name='${answerName}']`);
-                  if (answerEl && f && f.text) {
-                    questions.push({
-                      prompt: String(f.text || '').trim(),
-                      required: !!f.required,
-                      answerSelector: pickSelector(answerEl, 'textarea')
-                    });
+              const fields = [];
+              const pushField = (el) => {
+                if (!el) return;
+                const tag = el.tagName.toLowerCase();
+                const typeAttr = (el.getAttribute('type') || tag).toLowerCase();
+                if (typeAttr === 'hidden') return;
+                const selectorMeta = buildSelectorMeta(el, tag === 'button' ? 'button' : tag === 'textarea' ? 'textarea' : 'input');
+                const name = el.getAttribute('name') || el.id || '';
+                const entry = {
+                  name,
+                  label: labelText(el),
+                  type: typeAttr,
+                  required: !!el.required,
+                  selectorMeta,
+                };
+                const pattern = el.getAttribute('pattern');
+                if (pattern) entry.pattern = pattern;
+                if (typeAttr === 'textarea') {
+                  entry.longForm = { prompt: labelText(el), required: !!el.required };
+                }
+                if (name === 'location') {
+                  const hidden = document.querySelector("input#selected-location[name='selectedLocation']");
+                  if (hidden) {
+                    const tagHidden = hidden.tagName.toLowerCase();
+                    const selector = `${tagHidden}${hidden.id ? `[id=${q(hidden.id)}]` : ''}${hidden.name ? `[name=${q(hidden.name)}]` : ''}`;
+                    entry.aux = { selectedLocationHidden: selector };
                   }
-                });
-              });
+                }
+                fields.push(entry);
+              };
 
-              const submitEl = q('button#btn-submit');
-              const captchaEl = q('div#h-captcha');
+              toArray(document.querySelectorAll("form#application-form input, form#application-form textarea, form#application-form select"))
+                .forEach(pushField);
 
-              return JSON.stringify({
-                resumeInput: pickSelector(resumeEl),
-                contactFields: contact,
-                linkFields: links,
-                dynamicQuestions: questions,
-                submitButton: pickSelector(submitEl, 'button') || 'button#btn-submit',
-                captchaSelector: captchaEl ? pickSelector(captchaEl, 'div') : null,
-              });
+              const submitButton = document.querySelector('form#application-form button[type="submit"], button#btn-submit');
+
+              return {
+                meta: {
+                  formRoot: 'form#application-form, #application',
+                  captchaSelector: '.h-captcha, .g-recaptcha',
+                  requiresLocationGate: !!document.querySelector("input#selected-location[name='selectedLocation']"),
+                  eeoRoot: '.eeo-survey, #eeo-survey',
+                },
+                widgets: {
+                  resume: {
+                    input: resumeMeta,
+                    triggers: resumeTriggers,
+                    successSignals: resumeSuccessSignals,
+                    failureSignals: resumeFailureSignals,
+                    storageField: resumeStorage,
+                  },
+                },
+                fields,
+                submit: {
+                  selector: buildSelectorMeta(submitButton, 'button'),
+                  triggers: dedupe(['button[type="submit"]']),
+                },
+              };
             }
             """
         )
-        if isinstance(payload, str):
-            try:
-                data = json.loads(payload)
-            except Exception:
-                data = {}
-        else:
-            data = payload or {}
 
-        resume_input = data.get("resumeInput") or "input[name='resume']"
-        contact_fields = data.get("contactFields") or {}
-        link_fields = data.get("linkFields") or {}
-        questions_raw = data.get("dynamicQuestions") or []
-        dynamic_questions: list[DynamicQuestion] = []
-        for q in questions_raw:
-            prompt = str(q.get("prompt", "")).strip()
-            if not prompt:
-                continue
-            dynamic_questions.append(
-                DynamicQuestion(
-                    prompt=prompt,
-                    required=bool(q.get("required", False)),
-                    answer_selector=str(q.get("answerSelector")),
-                    cache_key=_normalize_question_key(prompt),
-                )
-            )
-        return LeverFormPlan(
-            resume_input=resume_input,
-            contact_fields={str(k): str(v) for k, v in contact_fields.items()},
-            link_fields={str(k): str(v) for k, v in link_fields.items()},
-            dynamic_questions=dynamic_questions,
-            submit_button=str(data.get("submitButton", "button#btn-submit")),
-            captcha_selector=(str(data.get("captchaSelector")) if data.get("captchaSelector") else None),
-        )
+        # Coerce the evaluate result into a Mapping.
+        # Some runtimes will JSON-serialize return values (string), others may
+        # return a plain object by value. Handle both robustly.
+        if payload is None:
+            plan: dict[str, object] = {}
+        elif isinstance(payload, Mapping):
+            plan = dict(payload)
+        elif isinstance(payload, str):
+            try:
+                plan = json.loads(payload)
+            except Exception:
+                plan = {}
+        else:
+            try:
+                # Last-resort: round-trip through json to coerce simple types
+                plan = json.loads(json.dumps(payload))
+            except Exception:
+                plan = {}
+
+        plan.setdefault("meta", {})
+        plan.setdefault("widgets", {})
+        plan.setdefault("fields", [])
+        plan.setdefault("submit", {})
+        return plan
+
+    async def _capture_review_artifacts(self, page, *, prefix: str) -> dict[str, str]:
+        """Persist DOM and screenshot artifacts when manual review is required."""
+
+        artifacts_dir = self._options.artifacts_dir
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        suffix = f"{timestamp}-{time.time_ns() % 1_000_000:06d}"
+        base_path = artifacts_dir / f"{prefix}-{suffix}"
+        captured: dict[str, str] = {}
+
+        try:
+            html = await page.content()
+        except Exception:
+            html = None
+        if isinstance(html, str) and html.strip():
+            dom_path = base_path.with_suffix(".html")
+            try:
+                dom_path.write_text(html, encoding="utf-8")
+                captured["dom_snapshot_path"] = str(dom_path)
+            except Exception:
+                pass
+
+        screenshot_path = base_path.with_suffix(".png")
+        if hasattr(page, "screenshot"):
+            try:
+                await page.screenshot(path=str(screenshot_path))
+                captured["screenshot_path"] = str(screenshot_path)
+            except Exception:
+                if screenshot_path.exists():
+                    try:
+                        screenshot_path.unlink()
+                    except Exception:
+                        pass
+
+        if captured:
+            try:
+                log_event("captcha.capture.artifacts", prefix=prefix, artifacts=captured)
+            except Exception:
+                pass
+
+        return captured
 
     async def execute_in_browser(
         self,
         *,
         session: BrowserSession,
         profile: Profile,
+        item: ApplicationItem,
+        mode: str,
+    ) -> Artifacts | Reason:
+        """Delegate to the module-level implementation for backward compatibility."""
+
+        return await _execute_in_browser_impl(
+            self,
+            session=session,
+            profile=profile,
+            item=item,
+            mode=mode,
+        )
+
+
+def _selector_meta_from_selector(selector: str | None) -> dict[str, object]:
+    base_precedence = ["name", "id", "data-qa", "aria", "text", "nth"]
+    if not selector:
+        return {"primary": None, "alternates": [], "precedence": base_precedence}
+    return {"primary": selector, "alternates": [], "precedence": base_precedence}
+
+
+def _resolve_selector(meta: Mapping[str, object] | object) -> str | None:
+    if isinstance(meta, Mapping):
+        candidate = meta.get("primary")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    if isinstance(meta, str) and meta.strip():
+        return meta.strip()
+    return None
+
+
+def _selector_candidates(meta: Mapping[str, object] | object) -> list[str]:
+    primary = _resolve_selector(meta)
+    alternates: list[str] = []
+    if isinstance(meta, Mapping):
+        raw_alts = meta.get("alternates")
+        if isinstance(raw_alts, Iterable) and not isinstance(raw_alts, (str, bytes)):
+            alternates = [str(val) for val in raw_alts if isinstance(val, str) and val.strip()]
+    candidates = [primary] if primary else []
+    candidates.extend(alternates)
+    seen: list[str] = []
+    for value in candidates:
+        if value and value not in seen:
+            seen.append(value)
+    return seen
+
+
+def _plan_field_maps(plan: Mapping[str, object]) -> tuple[dict[str, str], dict[str, str], list[DynamicQuestion]]:
+    contact_fields: dict[str, str] = {}
+    link_fields: dict[str, str] = {}
+    dynamic_questions: list[DynamicQuestion] = []
+    fields = plan.get("fields") if isinstance(plan, Mapping) else None
+    if isinstance(fields, Iterable) and not isinstance(fields, (str, bytes)):
+        for field in fields:
+            if not isinstance(field, Mapping):
+                continue
+            name = str(field.get("name") or "").strip()
+            selector = _resolve_selector(field.get("selectorMeta"))
+            if not selector:
+                continue
+            field_type = str(field.get("type") or "").lower()
+            if name in {"name", "email", "phone", "location"}:
+                contact_fields[name] = selector
+                aux = field.get("aux")
+                if isinstance(aux, Mapping):
+                    hidden = aux.get("selectedLocationHidden")
+                    if isinstance(hidden, str) and hidden.strip():
+                        contact_fields["location_hidden"] = hidden.strip()
+            if name.startswith("urls["):
+                link_fields[name] = selector
+            long_form = field.get("longForm") if isinstance(field.get("longForm"), Mapping) else None
+            label = str(field.get("label") or name)
+            if long_form is not None or field_type == "textarea":
+                prompt = str((long_form or {}).get("prompt") or label or name)
+                required = bool((long_form or {}).get("required") or field.get("required"))
+                dynamic_questions.append(
+                    DynamicQuestion(
+                        prompt=prompt,
+                        required=required,
+                        answer_selector=selector,
+                        cache_key=_normalize_question_key(prompt),
+                    )
+                )
+    return contact_fields, link_fields, dynamic_questions
+
+
+def _coerce_step1_plan(plan: object) -> dict[str, object]:
+    if isinstance(plan, Mapping):
+        return plan  # Already Step1 structured
+    if isinstance(plan, LeverFormPlan):
+        contact_hidden = plan.contact_fields.get("location_hidden")
+        fields: list[dict[str, object]] = []
+        for name, selector in plan.contact_fields.items():
+            if name == "location_hidden":
+                continue
+            meta = _selector_meta_from_selector(selector)
+            entry: dict[str, object] = {
+                "name": name,
+                "label": name.replace("_", " ").title(),
+                "type": "input",
+                "required": name in {"name", "email"},
+                "selectorMeta": meta,
+            }
+            if name == "location" and contact_hidden:
+                entry["aux"] = {"selectedLocationHidden": contact_hidden}
+            fields.append(entry)
+        for name, selector in plan.link_fields.items():
+            fields.append(
+                {
+                    "name": name,
+                    "label": name,
+                    "type": "input",
+                    "required": False,
+                    "selectorMeta": _selector_meta_from_selector(selector),
+                }
+            )
+        for question in plan.dynamic_questions:
+            fields.append(
+                {
+                    "name": question.cache_key,
+                    "label": question.prompt,
+                    "type": "textarea",
+                    "required": question.required,
+                    "selectorMeta": _selector_meta_from_selector(question.answer_selector),
+                    "longForm": {"prompt": question.prompt, "required": question.required},
+                }
+            )
+        resume_meta = _selector_meta_from_selector(plan.resume_input)
+        resume_meta["precedence"] = ["id", "data-qa", "name", "role", "text", "nth"]
+        submit_meta = _selector_meta_from_selector(plan.submit_button)
+        submit_meta["precedence"] = ["id", "data-qa", "text", "name", "nth"]
+        return {
+            "meta": {
+                "formRoot": "form#application-form, #application",
+                "captchaSelector": plan.captcha_selector or ".h-captcha, .g-recaptcha",
+                "requiresLocationGate": bool(contact_hidden),
+                "eeoRoot": ".eeo-survey, #eeo-survey",
+            },
+            "widgets": {
+                "resume": {
+                    "input": resume_meta,
+                    "triggers": [],
+                    "successSignals": [],
+                    "failureSignals": [],
+                    "storageField": None,
+                }
+            },
+            "fields": fields,
+            "submit": {"selector": submit_meta},
+        }
+    return {"meta": {}, "widgets": {}, "fields": [], "submit": {}}
+
+async def _execute_in_browser_impl(
+    self,
+    *,
+    session: BrowserSession,
+    profile: Profile,
         item: ApplicationItem,
         mode: str,
     ) -> Artifacts | Reason:
@@ -405,22 +749,59 @@ class LeverApplyAgent:
         except Exception:
             pass
 
-        plan = await self.build_plan_in_browser(page)
+        raw_plan = await self.build_plan_in_browser(page)
+        plan = _coerce_step1_plan(raw_plan)
+        resume_widget = plan.get("widgets", {}).get("resume", {}) if isinstance(plan, Mapping) else {}
+        resume_input_meta = resume_widget.get("input") if isinstance(resume_widget, Mapping) else {}
+        submit_meta = plan.get("submit", {}).get("selector", {}) if isinstance(plan, Mapping) else {}
+        submit_selector = _resolve_selector(submit_meta) or "button#btn-submit"
 
-        # Enable resume widget first: set location to activate disabled upload button variants
+        contact_fields, link_fields, dynamic_questions = (
+            _plan_field_maps(plan if isinstance(plan, Mapping) else {})
+        )
+
+        location_input_selector = contact_fields.get("location") or "#location-input"
+        location_hidden_selector = contact_fields.get("location_hidden") or "#selected-location"
+        phase_one_issues: list[str] = []
+        location_gate_state: dict[str, object] | None = None
+
         await _set_structured_location(
             page,
-            input_selector=plan.contact_fields.get("location") or "#location-input",
-            hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
+            input_selector=location_input_selector,
+            hidden_selector=location_hidden_selector,
             value=profile.defaults.get("location"),
         )
 
-        # Upload resume with robust fallbacks + success detection
+        location_gate_required = (
+            isinstance(plan, Mapping)
+            and plan.get("meta", {}).get("requiresLocationGate")
+            and location_hidden_selector
+        )
+        if location_gate_required:
+            ok, gate_state = await validate_location_gate(
+                page,
+                input_selector=location_input_selector,
+                hidden_selector=location_hidden_selector,
+            )
+            if isinstance(gate_state, Mapping):
+                location_gate_state = {str(key): value for key, value in gate_state.items()}
+            if not ok:
+                phase_one_issues.append("location_gate_missing")
+                try:
+                    log_event(
+                        "form.location_gate.pending",
+                        state=gate_state,
+                        inputSelector=location_input_selector,
+                        hiddenSelector=location_hidden_selector,
+                    )
+                except Exception:
+                    pass
+
         resume_path = str(profile.resolve_resume_path())
-        uploaded = await _upload_resume(session, page, plan.resume_input, resume_path)
+        uploaded = await _upload_resume(session, page, resume_widget, resume_path)
         if not uploaded:
             try:
-                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):
+                if await _wait_for_resume_upload(page, resume_widget, timeout=1.0):
                     uploaded = True
             except Exception:
                 pass
@@ -433,11 +814,11 @@ class LeverApplyAgent:
                 input()
             except Exception:
                 pass
-            uploaded = await _wait_for_resume_upload(page, plan.resume_input, timeout=10.0)
+            uploaded = await _wait_for_resume_upload(page, resume_widget, timeout=10.0)
 
         if not uploaded:
             try:
-                if await _wait_for_resume_upload(page, plan.resume_input, timeout=1.0):
+                if await _wait_for_resume_upload(page, resume_widget, timeout=1.0):
                     uploaded = True
             except Exception:
                 pass
@@ -445,19 +826,18 @@ class LeverApplyAgent:
         if not uploaded:
             return Reason(code="resume_upload_failed", message="Resume not attached")
 
-        # Fill contact fields from profile defaults (with sensible fallbacks)
         await _fill_if_available(
             page,
-            plan.contact_fields.get("name"),
+            contact_fields.get("name"),
             profile.defaults.get("name") or profile.name,
         )
-        await _fill_if_available(page, plan.contact_fields.get("email"), profile.defaults.get("email"))
-        await _fill_if_available(page, plan.contact_fields.get("phone"), profile.defaults.get("phone"))
+        await _fill_if_available(page, contact_fields.get("email"), profile.defaults.get("email"))
+        await _fill_if_available(page, contact_fields.get("phone"), profile.defaults.get("phone"))
         # Current company/org
         await _fill_if_available(
             page,
             # detect common selector directly if planner didn't capture it
-            plan.contact_fields.get("org") or "input[data-qa='org-input'][name='org']",
+            contact_fields.get("org") or "input[data-qa='org-input'][name='org']",
             profile.defaults.get("current_company") or profile.defaults.get("company"),
         )
         # Structured location already handled above to enable resume upload
@@ -468,7 +848,7 @@ class LeverApplyAgent:
             await _set_pronouns(page, pronouns_raw)
 
         # Fill link fields if defaults contain recognizable keys
-        for field_name, selector in plan.link_fields.items():
+        for field_name, selector in link_fields.items():
             key_lower = field_name.lower()
             value = None
             if "linkedin" in key_lower:
@@ -493,14 +873,38 @@ class LeverApplyAgent:
             if value:
                 await _fill_if_available(page, selector, value)
 
-        # Dynamic questions via LLM (long-form textareas)
-        if plan.dynamic_questions:
+        phase_one_summary = {
+            "issues": list(phase_one_issues),
+            "locationGateState": location_gate_state,
+        }
+        try:
+            log_event(
+                "apply.phase_one.complete",
+                message="ALL PHASE ONE INPUT DONE",
+                summary=phase_one_summary,
+            )
+        except Exception:
+            pass
+        if mode != "auto":
+            try:
+                print("ALL PHASE ONE INPUT DONE.")
+                if phase_one_issues:
+                    print(f"Phase one warnings: {', '.join(phase_one_issues)}")
+                print("Press Enter to continue to the next phase…")
+                input()
+            except Exception:
+                pass
+
+        invalid_selectors = await collect_invalid_field_selectors(page)
+
+        questions_to_fill = dynamic_questions
+        if questions_to_fill:
             try:
                 client = OpenRouterClient.from_settings()
             except OpenRouterError:
                 client = None
             prompt_builder = PromptBuilder(profile=profile)
-            for q in plan.dynamic_questions:
+            for q in questions_to_fill:
                 answer: str | None = None
                 if client:
                     plan_msg = prompt_builder.build_question_prompt(
@@ -614,15 +1018,18 @@ class LeverApplyAgent:
                 return Reason(code="validation_failed", message="Form still invalid after autofill")
 
         # Submit and capture confirmation
-        await _click(page, plan.submit_button)
+        await _click(page, submit_selector)
         await asyncio.sleep(2.0)
         # hCaptcha check after click
         # Detect blocking captcha only after submit attempt, using visibility/overlay heuristics
         try:
             cstate = await _hcaptcha_state(page)
             if cstate.get("blocking"):
-                log_event("captcha.blocking_visible", details=cstate)
-                return Reason(code="captcha_blocked", message="hCaptcha visible and blocking submission")
+                return await handle_captcha_block(
+                    page,
+                    state=cstate,
+                    capture_callback=self._capture_review_artifacts,
+                )
         except Exception:
             pass
 
@@ -941,527 +1348,218 @@ async def _get_cdp_sender(page, session: BrowserSession | None):
                 if callable(fn):
                     return fn
     return None
-async def _upload_resume(session: BrowserSession | None, page, selector: str, path: str) -> bool:
-    """Attach a resume file using best available mechanism and wait for success.
 
-    Strategy (in order):
-    1) Playwright locator.set_input_files if available
-    2) Playwright page.set_input_files if available
-    3) File chooser flow: click the visible button and set files on chooser
-    After attempting, wait for UI signals that upload succeeded.
-    """
-    # Ensure input exists in DOM
-    backend_id = None  # may be populated by LLM locator for CDP fallback
+async def _upload_resume(
+    session: BrowserSession | None,
+    page,
+    widget_plan: Mapping[str, object] | object,
+    path: str,
+) -> bool:
+    """Attach a resume file using deterministic selectors and signals."""
+
+    input_meta = widget_plan.get("input") if isinstance(widget_plan, Mapping) else {}
+    selectors = _selector_candidates(input_meta)
+    if not selectors:
+        if isinstance(widget_plan, Mapping):
+            fallback = widget_plan.get("selector")
+            if fallback:
+                selectors.extend(_selector_candidates(fallback))
+    selectors = [selector for selector in selectors if selector]
+    if not selectors:
+        selectors = ["input[type='file'][name='resume']", "#resume-upload-input"]
+
+    success_signals = []
+    failure_signals = []
+    storage_selector = None
+    if isinstance(widget_plan, Mapping):
+        success_signals = [
+            str(sel)
+            for sel in widget_plan.get("successSignals", [])
+            if isinstance(sel, str) and sel
+        ]
+        failure_signals = [
+            str(sel)
+            for sel in widget_plan.get("failureSignals", [])
+            if isinstance(sel, str) and sel
+        ]
+        storage_selector = widget_plan.get("storageField")
+        if isinstance(storage_selector, str) and not storage_selector:
+            storage_selector = None
+
     try:
-        await page.get_elements_by_css_selector(selector)
-    except Exception:
-        return False
-    # Capabilities snapshot for diagnostics
-    try:
-        caps = {
-            "has_locator": bool(getattr(page, "locator", None)),
-            "has_set_input_files": bool(getattr(page, "set_input_files", None)),
-            "has_frame_locator": bool(getattr(page, "frame_locator", None)),
-            "has_expect_file_chooser": bool(getattr(page, "expect_file_chooser", None)),
-            "has_event_bus": bool(getattr(session, "event_bus", None)) if session is not None else False,
-        }
-        log_event("resume_upload.start", selector=selector, capabilities=caps)
+        log_event(
+            "resume_upload.start",
+            selectors=selectors,
+            successSignals=success_signals,
+            failureSignals=failure_signals,
+        )
     except Exception:
         pass
 
-    # 1) Locator-based API (works even if input is hidden)
-    try:
-        if hasattr(page, "locator"):
-            try:
-                log_event("resume_upload.attempt", method="locator", selector=selector)
-            except Exception:
-                pass
-            await page.locator(selector).set_input_files(path)
-            ok = await _wait_for_resume_upload(page, selector)
-            if ok:
+    for selector in selectors:
+        try:
+            if hasattr(page, "locator"):
                 try:
-                    log_event("resume_upload.success", method="locator")
+                    log_event("resume_upload.attempt", method="locator", selector=selector)
                 except Exception:
                     pass
-                return True
-    except Exception:
-        pass
-
-    # 2) Page-level API
-    try:
-        if hasattr(page, "set_input_files"):
-            try:
-                log_event("resume_upload.attempt", method="page", selector=selector)
-            except Exception:
-                pass
-            await page.set_input_files(selector, path)
-            ok = await _wait_for_resume_upload(page, selector)
-            if ok:
-                try:
-                    log_event("resume_upload.success", method="page")
-                except Exception:
-                    pass
-                return True
-    except Exception:
-        pass
-
-
-    # 2b) Frame-scoped attempt (Playwright only)
-    try:
-        if hasattr(page, "frame_locator") and hasattr(page, "locator"):
-            # Try a handful of iframes
-            for i in range(0, 20):
-                try:
+                await page.locator(selector).set_input_files(path)
+                if await _wait_for_resume_upload(
+                    page,
+                    widget_plan,
+                    selector=selector,
+                    timeout=5.0,
+                ):
                     try:
-                        log_event("resume_upload.attempt", method="frame_locator", index=i)
-                    except Exception:
-                        pass
-                    frame_loc = page.frame_locator("iframe").nth(i)
-                    # Best-effort: ensure the input is present before setting files
-                    try:
-                        exists = await frame_loc.locator(selector).count()
-                        if hasattr(exists, "__await__"):
-                            exists = await exists
-                        if not exists:
-                            continue
-                    except Exception:
-                        pass
-                    loc = frame_loc.locator(selector)
-                    await loc.set_input_files(path)
-                    ok = await _wait_for_resume_upload(page, selector)
-                    if ok:
-                        try:
-                            log_event("resume_upload.success", method="frame_locator", index=i)
-                        except Exception:
-                            pass
-                        return True
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    # 3) File chooser flow if supported (click visible button => chooser)
-    try:
-        # Some wrappers expose expect_file_chooser or wait_for_event('filechooser')
-        if hasattr(page, "expect_file_chooser"):
-            try:
-                log_event("resume_upload.attempt", method="file_chooser")
-            except Exception:
-                pass
-            async with page.expect_file_chooser() as fc_info:
-                await page.evaluate("(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }", selector)
-            fc = await fc_info
-            await fc.set_files(path)
-            ok = await _wait_for_resume_upload(page, selector)
-            if ok:
-                try:
-                    log_event("resume_upload.success", method="file_chooser")
-                except Exception:
-                    pass
-                return True
-    except Exception:
-        pass
-
-    # 4) Optional: try clicking the anchor to reveal/recreate input, then set again
-    try:
-        try:
-            log_event("resume_upload.attempt", method="click_anchor_then_retry")
-        except Exception:
-            pass
-        await page.evaluate("() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }")
-        # Give the page a brief moment to render/recreate the input
-        try:
-            await asyncio.sleep(0.4)
-        except Exception:
-            pass
-        # Refresh the selector in case the input was re-mounted
-        try:
-            new_selector = await page.evaluate(
-                """
-                () => {
-                  const el = document.querySelector('input#resume-upload-input[name="resume"]')
-                          || document.querySelector('input[name="resume"]')
-                          || document.querySelector('input[type="file"]');
-                  if (!el) return null;
-                  if (el.id) return `#${el.id}`;
-                  if (el.name) return `input[name='${el.name}']`;
-                  return 'input[type="file"]';
-                }
-                """
-            )
-            if isinstance(new_selector, str) and new_selector:
-                selector = new_selector
-        except Exception:
-            pass
-        if hasattr(page, "locator"):
-            await page.locator(selector).set_input_files(path)
-            ok = await _wait_for_resume_upload(page, selector)
-            if ok:
-                try:
-                    log_event("resume_upload.success", method="click_anchor_then_retry")
-                except Exception:
-                    pass
-                return True
-    except Exception:
-        pass
-
-    # 5) LLM-locator fallback (optional)
-    try:
-        import os
-        use_llm = os.getenv("AUTO_APPLY_USE_LLM_LOCATOR", "0").strip() not in ("", "0", "false", "False")
-    except Exception:
-        use_llm = False
-    if use_llm:
-        try:
-            try:
-                log_event("resume_upload.llm_locator.start", flag=True)
-            except Exception:
-                pass
-            if hasattr(page, "must_get_element_by_prompt"):
-                # Try to pass an explicit LLM if available; otherwise rely on defaults
-                element = None
-                try:
-                    import os as _os
-                    llm_obj = None
-                    if _os.getenv("GOOGLE_API_KEY"):
-                        try:
-                            from browser_use.llm.google import (
-                                ChatGoogle as _BUGemini,  # type: ignore
-                            )
-                            llm_obj = _BUGemini()
-                        except Exception:
-                            llm_obj = None
-                    if llm_obj is None and (_os.getenv("OPENROUTER_API_KEY") or _os.getenv("OPENAI_API_KEY")):
-                        try:
-                            if _os.getenv("OPENROUTER_API_KEY") and not _os.getenv("OPENAI_API_KEY"):
-                                _os.environ["OPENAI_API_KEY"] = _os.getenv("OPENROUTER_API_KEY") or ""
-                                if not _os.getenv("OPENAI_BASE_URL") and not _os.getenv("OPENAI_API_BASE"):
-                                    _os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
-                            from browser_use.llm.openai import ChatOpenAI as _BUChat
-                            llm_obj = _BUChat()
-                        except Exception:
-                            llm_obj = None
-                    if llm_obj is not None:
-                        # Pass model from env if available to improve accuracy (OpenRouter/Google)
-                        try:
-                            import os as _os
-                            model_name = _os.getenv("LLM_MODEL")
-                            if model_name and hasattr(llm_obj, "model"):
-                                try:
-                                    llm_obj.model = model_name  # best-effort; some clients accept assignment
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-                        element = await page.must_get_element_by_prompt(
-                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
-                            llm=llm_obj,
-                        )
-                    else:
-                        element = await page.must_get_element_by_prompt(
-                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
-                        )
-                except Exception:
-                    element = None
-            else:
-                try:
-                    log_event("resume_upload.llm_locator.unavailable", reason="page_method_missing")
-                except Exception:
-                    pass
-                element = None
-            if element is None:
-                # Retry with a couple of prompt variants to increase recall
-                try:
-                    alt_prompts = [
-                        "the file upload control (input[type=\\\"file\\\"]) used to attach a resume/CV inside the application form",
-                        "the resume/CV chooser input element in the application form",
-                    ]
-                    for ptxt in alt_prompts:
-                        try:
-                            if llm_obj is not None and hasattr(page, "must_get_element_by_prompt"):
-                                element = await page.must_get_element_by_prompt(ptxt, llm=llm_obj)
-                            elif hasattr(page, "must_get_element_by_prompt"):
-                                element = await page.must_get_element_by_prompt(ptxt)
-                            if element is not None:
-                                break
-                        except Exception:
-                            element = None
-                except Exception:
-                    element = None
-            if element is not None:
-                new_selector = None
-                try:
-                    new_selector = getattr(element, "css_selector", None)
-                except Exception:
-                    new_selector = None
-                try:
-                    backend_id = getattr(element, "backend_node_id", None)
-                except Exception:
-                    backend_id = None
-                try:
-                    log_event("resume_upload.llm_locator.result", css_selector=new_selector, backend_node_id=backend_id)
-                except Exception:
-                    pass
-                if isinstance(new_selector, str) and new_selector:
-                    try:
-                        if hasattr(page, "locator"):
-                            await page.locator(new_selector).set_input_files(path)
-                            ok = await _wait_for_resume_upload(page, new_selector)
-                            if ok:
-                                try:
-                                    log_event("resume_upload.success", method="llm_selector")
-                                except Exception:
-                                    pass
-                                return True
-                    except Exception:
-                        pass
-                    try:
-                        if hasattr(page, "set_input_files"):
-                            await page.set_input_files(new_selector, path)
-                            ok = await _wait_for_resume_upload(page, new_selector)
-                            if ok:
-                                try:
-                                    log_event("resume_upload.success", method="llm_selector_page")
-                                except Exception:
-                                    pass
-                                return True
-                    except Exception:
-                        pass
-                try:
-                    if hasattr(page, "expect_file_chooser"):
-                        async with page.expect_file_chooser() as fc_info:
-                            try:
-                                await page.evaluate(
-                                    "(sel) => { const el = document.querySelector(sel); if (el) el.click(); }",
-                                    new_selector or selector,
-                                )
-                            except Exception:
-                                await page.evaluate(
-                                    "() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }",
-                                )
-                        fc = await fc_info
-                        await fc.set_files(path)
-                        ok = await _wait_for_resume_upload(page, new_selector or selector)
-                        if ok:
-                            try:
-                                log_event("resume_upload.success", method="llm_file_chooser")
-                            except Exception:
-                                pass
-                            return True
-                except Exception:
-                    pass
-            else:
-                try:
-                    log_event("resume_upload.llm_locator.result", css_selector=None, backend_node_id=None)
-                except Exception:
-                    pass
-        except Exception as _e:
-            try:
-                log_event("resume_upload.llm_locator.error", error=str(_e))
-            except Exception:
-                pass
-
-    # 6) CDP fallback (best-effort)
-    try:
-        try:
-            log_event("resume_upload.cdp.start", selector=selector)
-        except Exception:
-            pass
-        if await _cdp_set_file_input_files(page, selector, path, backend_node_id=backend_id, session=session):
-            # Nudge UI listeners in case the widget needs explicit events
-            try:
-                await _dispatch_file_input_events(page, selector)
-            except Exception:
-                pass
-            ok = await _wait_for_resume_upload(page, selector)
-            if ok:
-                try:
-                    log_event("resume_upload.success", method="cdp")
-                except Exception:
-                    pass
-                return True
-    except Exception as e:
-        try:
-            log_event("resume_upload.cdp.error", error=str(e))
-        except Exception:
-            pass
-
-    # 7) Event-bus upload fallback (browser-use CDP sessions)
-    try:
-        if session is not None:
-            try:
-                log_event("resume_upload.eventbus.start")
-            except Exception:
-                pass
-            ok = await _eventbus_upload_resume(session, selector, path)
-            if ok:
-                done = await _wait_for_resume_upload(page, selector)
-                if done:
-                    try:
-                        log_event("resume_upload.success", method="event_bus")
+                        log_event("resume_upload.success", method="locator")
                     except Exception:
                         pass
                     return True
-    except Exception as e:
-        try:
-            log_event("resume_upload.eventbus.error", error=str(e))
         except Exception:
             pass
-    
-    # No branch succeeded; emit compact postmortem for diagnostics
+        try:
+            if hasattr(page, "set_input_files"):
+                try:
+                    log_event("resume_upload.attempt", method="page", selector=selector)
+                except Exception:
+                    pass
+                await page.set_input_files(selector, path)
+                if await _wait_for_resume_upload(
+                    page,
+                    widget_plan,
+                    selector=selector,
+                    timeout=5.0,
+                ):
+                    try:
+                        log_event("resume_upload.success", method="page")
+                    except Exception:
+                        pass
+                    return True
+        except Exception:
+            pass
+
+    triggers = []
+    if isinstance(widget_plan, Mapping):
+        raw_triggers = widget_plan.get("triggers")
+        if isinstance(raw_triggers, Iterable) and not isinstance(raw_triggers, (str, bytes)):
+            triggers = [str(sel) for sel in raw_triggers if isinstance(sel, str) and sel]
+    for trigger in triggers:
+        try:
+            await _click(page, trigger)
+            await asyncio.sleep(0.3)
+        except Exception:
+            continue
+        for selector in selectors:
+            try:
+                if hasattr(page, "locator"):
+                    await page.locator(selector).set_input_files(path)
+                elif hasattr(page, "set_input_files"):
+                    await page.set_input_files(selector, path)
+                if await _wait_for_resume_upload(page, widget_plan, selector=selector, timeout=5.0):
+                    try:
+                        log_event("resume_upload.success", method="trigger", selector=selector)
+                    except Exception:
+                        pass
+                    return True
+            except Exception:
+                continue
+
     try:
-        await _log_resume_postmortem(page, selector)
-    except Exception:
-        pass
-    try:
-        log_event("resume_upload.failed_all_branches", selector=selector)
+        log_event(
+            "resume_upload.failed",
+            selectors=selectors,
+            successSignals=success_signals,
+            failureSignals=failure_signals,
+        )
     except Exception:
         pass
     return False
 
 
-async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0) -> bool:
-    """Wait until the resume input reflects an attached file or Lever shows success.
+async def _wait_for_resume_upload(
+    page,
+    widget_plan: Mapping[str, object] | object,
+    *,
+    selector: str | None = None,
+    timeout: float = 25.0,
+) -> bool:
+    """Wait until resume upload signals indicate success while watching for failures."""
 
-    Signals considered success:
-    - input.files.length > 0
-    - hidden input resumeStorageId populated
-    - .resume-upload-success or .application-upload-success visible OR span.filename has text
-    Failure signals (return False early):
-    - .resume-upload-failure visible
-    - .resume-upload-oversize visible
-    """
-    # Allow environment override
     try:
         import os
+
         env_to = float(os.getenv("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", "0") or 0)
         if env_to > 0:
             timeout = env_to
     except Exception:
         pass
+
+    selectors = []
+    if selector:
+        selectors.append(selector)
+    if isinstance(widget_plan, Mapping):
+        selectors.extend(_selector_candidates(widget_plan.get("input", {})))
+    seen: list[str] = []
+    for value in selectors:
+        if value and value not in seen:
+            seen.append(value)
+    selectors = seen or ["input#resume-upload-input", "input[type='file'][name='resume']"]
+
+    success_signals: list[str] = []
+    failure_signals: list[str] = []
+    storage_selector: str | None = None
+    if isinstance(widget_plan, Mapping):
+        raw_success = widget_plan.get("successSignals")
+        if isinstance(raw_success, Iterable) and not isinstance(raw_success, (str, bytes)):
+            success_signals = [str(sel) for sel in raw_success if isinstance(sel, str) and sel]
+        raw_failure = widget_plan.get("failureSignals")
+        if isinstance(raw_failure, Iterable) and not isinstance(raw_failure, (str, bytes)):
+            failure_signals = [str(sel) for sel in raw_failure if isinstance(sel, str) and sel]
+        storage_selector = widget_plan.get("storageField") if isinstance(widget_plan.get("storageField"), str) else None
+
     deadline = asyncio.get_event_loop().time() + max(1.0, timeout)
     while asyncio.get_event_loop().time() < deadline:
         try:
             state = await _evaluate_quiet(
                 """
-                (sel) => {
-                  const el = document.querySelector(sel);
-                  const files = el && el.files ? el.files.length : 0;
-                  const ok1 = files && files > 0;
-                  const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
-                  const visible = (n) => { if (!n) return false; const st = window.getComputedStyle(n); return st && st.display !== 'none' && st.visibility !== 'hidden'; };
-                  const ok3 = (() => {
-                    const s1 = document.querySelector('.resume-upload-success');
-                    const s2 = document.querySelector('.application-upload-success');
-                    return visible(s1) || visible(s2);
-                  })();
-                  const ok4 = (() => {
-                    const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
-                    const nameSpan = container ? container.querySelector('span.filename') : null;
-                    const text = nameSpan && nameSpan.textContent ? nameSpan.textContent.trim() : '';
-                    return !!text;
-                  })();
-                  const fail1 = (() => {
-                    const f = document.querySelector('.resume-upload-failure');
-                    if (!f) return false;
-                    const style = window.getComputedStyle(f);
+                (selectors, successSelectors, failureSelectors, storageSelector) => {
+                  const anyVisible = (list) => list.some((sel) => {
+                    if (!sel) return false;
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
                     return style && style.display !== 'none' && style.visibility !== 'hidden';
+                  });
+                  const hasFiles = selectors.some((sel) => {
+                    const el = document.querySelector(sel);
+                    return !!(el && el.files && el.files.length > 0);
+                  });
+                  const storageEl = storageSelector ? document.querySelector(storageSelector) : null;
+                  const storageOk = !!(storageEl && storageEl.value && String(storageEl.value).length > 0);
+                  const success = anyVisible(successSelectors);
+                  const failure = anyVisible(failureSelectors);
+                  const filenameOk = (() => {
+                    const el = selectors.length ? document.querySelector(selectors[0]) : null;
+                    const container = el ? el.closest('.application-question') : document.querySelector('.application-question.resume');
+                    const span = container ? container.querySelector('span.filename') : null;
+                    return span && span.textContent && span.textContent.trim();
                   })();
-                  const fail2 = (() => {
-                    const o = document.querySelector('.resume-upload-oversize');
-                    if (!o) return false;
-                    const style = window.getComputedStyle(o);
-                    return style && style.display !== 'none' && style.visibility !== 'hidden';
-                  })();
-                  return { ok: (ok1 || ok2 || ok3 || ok4), fail: (fail1 || fail2), files };
+                  return { ok: Boolean(hasFiles || storageOk || success || filenameOk), fail: Boolean(failure) };
                 }
                 """,
-                selector,
+                selectors,
+                success_signals,
+                failure_signals,
+                storage_selector,
             )
             if state and state.get("ok"):
-                # Short settle: ensure state remains OK briefly and no failure banners appear
-                try:
-                    settle_end = asyncio.get_event_loop().time() + 1.0
-                except Exception:
-                    settle_end = 0
-                while asyncio.get_event_loop().time() < settle_end:
-                    try:
-                        s2 = await _evaluate_quiet(
-                            """
-                            (sel) => {
-                              const el = document.querySelector(sel);
-                              const files = el && el.files ? el.files.length : 0;
-                              const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
-                              const fail = (() => {
-                                const f = document.querySelector('.resume-upload-failure');
-                                const o = document.querySelector('.resume-upload-oversize');
-                                const v = (n) => { if (!n) return false; const s = window.getComputedStyle(n); return s.display !== 'none' && s.visibility !== 'hidden'; };
-                                return v(f) || v(o);
-                              })();
-                              return { ok: (files>0 || ok2) && !fail, fail };
-                            }
-                            """,
-                            selector,
-                        )
-                        if s2 and s2.get("fail"):
-                            return False
-                        if s2 and s2.get("ok"):
-                            pass
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.15)
                 return True
             if state and state.get("fail"):
                 return False
         except Exception:
             pass
-        await asyncio.sleep(0.3)
-    # Final diagnostic snapshot (optional)
-    try:
-        import os
-        debug = os.getenv("AUTO_APPLY_DEBUG_RESUME_WIDGET", "0").strip() not in ("", "0", "false", "False")
-    except Exception:
-        debug = False
-    if debug:
-        try:
-            snapshot = await _evaluate_quiet(
-                """
-                (sel) => {
-                  const el = document.querySelector(sel);
-                  const files = el && el.files ? el.files.length : 0;
-                  const storage = document.querySelector('input[name=\"resumeStorageId\"]');
-                  const storageVal = storage ? (storage.value || '') : '';
-                  const success = document.querySelector('.resume-upload-success') || document.querySelector('.application-upload-success');
-                  const fail = document.querySelector('.resume-upload-failure');
-                  const oversize = document.querySelector('.resume-upload-oversize');
-                  const styleStr = (n) => {
-                    if (!n) return "";
-                    try { const s = window.getComputedStyle(n); return (s.display||"") + "|" + (s.visibility||""); } catch { return ""; }
-                  };
-                  const container = el ? el.closest('.application-question.resume') : document.querySelector('.application-question.resume');
-                  const filename = (() => {
-                    const nameSpan = container ? container.querySelector('span.filename') : null;
-                    return nameSpan && nameSpan.textContent ? nameSpan.textContent.trim() : '';
-                  })();
-                  const outer = container ? container.outerHTML : (el ? el.outerHTML : '');
-                  return {
-                    files,
-                    storage_id_len: storageVal.length,
-                    success_style: styleStr(success),
-                    failure_style: styleStr(fail),
-                    oversize_style: styleStr(oversize),
-                    filename,
-                    outer_truncated: outer ? outer.slice(0, 4000) : '',
-                  };
-                }
-                """,
-                selector,
-            )
-            try:
-                log_event("resume_upload_snapshot", snapshot)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        await asyncio.sleep(0.35)
+
     return False
 
 
@@ -1828,36 +1926,385 @@ async def _set_pronouns(page, pronouns: str | list[str]) -> None:
         pass
 
 
-async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> None:
-    """Type location then try to pick a suggestion; fallback to hidden input.
+async def validate_location_gate(
+    page,
+    *,
+    input_selector: str,
+    hidden_selector: str,
+) -> tuple[bool, dict[str, object]]:
+    """Ensure Lever's structured location hidden JSON contains a non-empty name."""
 
-    Works with Lever's structured location widget that uses #location-input and a
-    hidden #selected-location.
+    try:
+        state = await _evaluate_quiet(
+            page,
+            """
+            (args) => {
+              const { inputSel, hiddenSel } = args || {};
+              const input = document.querySelector(inputSel);
+              const hidden = document.querySelector(hiddenSel);
+              const raw = hidden ? hidden.value || '' : '';
+              let parsed = {};
+              try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = {}; }
+              const name = parsed && typeof parsed.name === 'string' ? parsed.name.trim() : '';
+              return {
+                inputPresent: !!input,
+                hiddenPresent: !!hidden,
+                raw,
+                name,
+              };
+            }
+            """,
+            {"inputSel": input_selector, "hiddenSel": hidden_selector},
+        )
+    except Exception:
+        state = {}
+
+    if not isinstance(state, dict):
+        state = {}
+    name = str(state.get("name") or "").strip()
+    success = bool(name)
+    try:
+        event_name = "form.location_gate.ready" if success else "form.location_gate.missing"
+        log_event(event_name, state=state, inputSelector=input_selector, hiddenSelector=hidden_selector)
+    except Exception:
+        pass
+    return success, state
+
+
+async def collect_invalid_field_selectors(page) -> list[str]:
+    """Call reportValidity/checkValidity in order and gather :invalid selectors."""
+
+    try:
+        await page.evaluate(
+            "() => { const form = document.querySelector('form#application-form'); if (form) try { form.reportValidity(); } catch {} }"
+        )
+    except Exception:
+        pass
+
+    is_valid = True
+    try:
+        result = await page.evaluate(
+            "() => { const form = document.querySelector('form#application-form'); if (!form) return true; try { return form.checkValidity(); } catch { return false; } }"
+        )
+        if isinstance(result, bool):
+            is_valid = result
+    except Exception:
+        is_valid = False
+
+    if is_valid:
+        return []
+
+    try:
+        selectors = await page.evaluate(
+            """
+            () => {
+              const form = document.querySelector('form#application-form');
+              if (!form) return [];
+              const invalid = form.querySelectorAll(':invalid');
+              const result = [];
+              const esc = (value) => String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+              invalid.forEach((el) => {
+                if (el.id) {
+                  result.push(`#${esc(el.id)}`);
+                  return;
+                }
+                const name = el.getAttribute('name');
+                if (name) {
+                  result.push(`${el.tagName.toLowerCase()}[name='${esc(name)}']`);
+                  return;
+                }
+                result.push(el.tagName.toLowerCase());
+              });
+              return result;
+            }
+            """
+        )
+    except Exception:
+        selectors = []
+
+    if not isinstance(selectors, Iterable) or isinstance(selectors, (str, bytes)):
+        selectors = []
+
+    normalized = [str(sel) for sel in selectors if isinstance(sel, str) and sel]
+    if normalized:
+        try:
+            log_event("form.validation.invalid_fields", selectors=normalized)
+        except Exception:
+            pass
+    return normalized
+
+
+async def handle_captcha_block(
+    page,
+    *,
+    state: Mapping[str, object] | object,
+    capture_callback: Callable[..., Awaitable[Mapping[str, object] | None]] | None = None,
+) -> Reason:
+    """Emit telemetry, capture artifacts, and return a blocking reason for CAPTCHA visibility."""
+
+    try:
+        log_event("captcha.blocking_visible", details=state)
+    except Exception:
+        pass
+
+    captured: dict[str, object] | None = None
+    if capture_callback is not None:
+        try:
+            maybe = await capture_callback(page, prefix="captcha-block")
+        except Exception:
+            maybe = None
+        if isinstance(maybe, Mapping):
+            captured = {str(key): value for key, value in maybe.items()}
+    if captured:
+        try:
+            log_event("captcha.blocking_captured", artifacts=captured)
+        except Exception:
+            pass
+
+    return Reason(
+        code="captcha_blocked",
+        message="Visible CAPTCHA detected after submit; manual resolution required",
+    )
+
+
+async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> None:
+    """Type location and select a suggestion so the hidden JSON populates.
+
+    Strategy:
+    - Focus and type the requested value with input/keyboard events.
+    - Wait for dropdown to be visible and populated.
+    - Click a suggestion element (preferring text match), or ArrowDown+Enter as fallback.
+    - Leave gate validation to the caller.
     """
     if not value:
         return
     try:
+        # 1) Focus and type value, character-by-character (user-like)
         await page.evaluate(
-            "(sel, val) => { const el = document.querySelector(sel); if (el) { el.focus(); el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }}",
-            input_selector,
-            value,
+            r"""
+            ({ selector, value }) => {
+              const el = document.querySelector(selector);
+              if (!el) return false;
+              el.focus();
+              const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+              if (proto && proto.set) proto.set.call(el, ''); else el.value = '';
+              const dispatchKey = (type, key, code, keyCode) => {
+                const eventInit = {
+                  key,
+                  code: code || key,
+                  keyCode: typeof keyCode === 'number' ? keyCode : undefined,
+                  which: typeof keyCode === 'number' ? keyCode : undefined,
+                  bubbles: true,
+                };
+                try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
+              };
+              const typeChar = (ch) => {
+                const key = String(ch);
+                let code = key;
+                let keyCode = undefined;
+                if (key.length === 1) {
+                  const upper = key.toUpperCase();
+                  if (/^[A-Z]$/.test(upper)) {
+                    code = `Key${upper}`;
+                    keyCode = upper.charCodeAt(0);
+                  } else if (/^[0-9]$/.test(key)) {
+                    code = `Digit${key}`;
+                    keyCode = key.charCodeAt(0);
+                  } else if (key === ' ') {
+                    code = 'Space';
+                    keyCode = 32;
+                  }
+                }
+                dispatchKey('keydown', key, code, keyCode);
+                if (proto && proto.set) proto.set.call(el, el.value + key); else el.value = el.value + key;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                dispatchKey('keyup', key, code, keyCode);
+              };
+              for (const ch of String(value)) typeChar(ch);
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            """,
+            {"selector": input_selector, "value": value},
         )
-        # Give Lever a moment to render suggestions
-        await asyncio.sleep(1.2)
-        # Try clicking the first suggestion
-        clicked = await page.evaluate(
-            "(containerSel) => {\n              const c = document.querySelector('.dropdown-results');\n              if (!c) return false;\n              const first = c.querySelector('[data-value], li, div');\n              if (first && typeof first.click === 'function') { first.click(); return true; }\n              return false;\n            }",
-            ".dropdown-results",
-        )
-        if not clicked:
-            # Fallback: set hidden selectedLocation value directly
+
+        # Helpers to check dropdown and hidden JSON
+        async def _roots_state():
+            try:
+                return await page.evaluate(
+                    r"""
+                    () => {
+                      const roots = [
+                        document.querySelector('.dropdown-results'),
+                        document.querySelector('ul.dropdown-results'),
+                        document.querySelector('[role="listbox"]'),
+                      ].filter(Boolean);
+                      const counts = roots.map(r => (r ? r.children.length : 0));
+                      const total = counts.reduce((a,b)=>a+b,0);
+                      let visible = false;
+                      const c = document.querySelector('.dropdown-container');
+                      if (c) { try { visible = getComputedStyle(c).display !== 'none'; } catch {} }
+                      return { total, visible };
+                    }
+                    """
+                )
+            except Exception:
+                return {"total": 0, "visible": False}
+
+        async def _hidden_name() -> str:
+            try:
+                raw = await page.evaluate(
+                    "(sel) => { const el = document.querySelector(sel); return el ? (el.value || '') : '' }",
+                    hidden_selector,
+                )
+            except Exception:
+                raw = ""
+            try:
+                data = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+            except Exception:
+                data = {}
+            name = str(data.get("name") or "") if isinstance(data, dict) else ""
+            return name.strip()
+
+        # 2) Wait at least 5s for suggestions or an already-populated hidden value
+        start = time.monotonic()
+        min_wait = 5.0
+        hard_deadline = start + 10.0
+        suggestions_seen = False
+        try:
+            log_event("form.location_gate.waiting", minSeconds=min_wait)
+        except Exception:
+            pass
+        while True:
+            nm = await _hidden_name()
+            if nm:
+                return
+            st = await _roots_state()
+            total = (st or {}).get("total", 0)
+            visible = (st or {}).get("visible", False)
+            if total and not suggestions_seen:
+                suggestions_seen = True
+                try:
+                    log_event("form.location_gate.suggestions_detected", total=total, visible=visible)
+                except Exception:
+                    pass
+            now = time.monotonic()
+            if now >= start + min_wait and (total > 0 or now >= hard_deadline):
+                break
+            if now >= hard_deadline:
+                break
+            await asyncio.sleep(0.2)
+
+        # 3) Keyboard-first selection: ArrowDown + Enter up to 3 attempts
+        for attempt in range(3):
             await page.evaluate(
-                "(sel, val) => { const el = document.querySelector(sel); if (el) { el.value = val; el.dispatchEvent(new Event('change', {bubbles:true})); }}",
-                hidden_selector,
-                value,
+                r"""
+                ({ selector }) => {
+                  const el = document.querySelector(selector);
+                  if (!el) return false;
+                  const dispatchKey = (type, key, code, keyCode) => {
+                    const eventInit = {
+                      key,
+                      code,
+                      keyCode,
+                      which: keyCode,
+                      bubbles: true,
+                    };
+                    try { el.dispatchEvent(new KeyboardEvent(type, eventInit)); } catch {}
+                  };
+                  dispatchKey('keydown', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keyup', 'ArrowDown', 'ArrowDown', 40);
+                  dispatchKey('keydown', 'Enter', 'Enter', 13);
+                  dispatchKey('keyup', 'Enter', 'Enter', 13);
+                  return true;
+                }
+                """,
+                {"selector": input_selector},
             )
+            await asyncio.sleep(0.4)
+            if await _hidden_name():
+                try:
+                    log_event("form.location_gate.keyboard_selected", attempts=attempt + 1)
+                except Exception:
+                    pass
+                return
+
+        # 4) Click fallback: try to click a visible suggestion anywhere in the menu
+        clicked = await page.evaluate(
+            r"""
+            ({ typed }) => {
+              const SEL = '.dropdown-location, [role="option"], .Select-option, li[role="option"], li, [data-value], .Select-option div';
+              const isVisible = (node) => {
+                if (!node) return false;
+                try {
+                  const style = window.getComputedStyle(node);
+                  if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                } catch {
+                  return false;
+                }
+                const rect = node.getBoundingClientRect();
+                return rect && rect.width > 0 && rect.height > 0;
+              };
+              const nodes = Array.from(document.querySelectorAll(SEL)).filter(isVisible);
+              if (!nodes.length) return { clicked: false, why: 'no-candidates' };
+              const norm = (s) => String(s || '').trim().toLowerCase();
+              const t = norm(typed);
+              let choice = nodes.find(n => norm(n.textContent) === t)
+                         || nodes.find(n => norm(n.textContent).startsWith(t))
+                         || nodes[0];
+              const payload = {
+                text: (choice.textContent || '').trim(),
+                dataset: { ...choice.dataset },
+                tag: choice.tagName,
+                classes: choice.className,
+              };
+              const emitMouse = (type) => {
+                try {
+                  choice.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                } catch {}
+              };
+              const emitPointer = (type) => {
+                try {
+                  if (typeof PointerEvent === 'function') {
+                    choice.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+                  }
+                } catch {}
+              };
+              emitPointer('pointerover');
+              emitPointer('pointerdown');
+              emitMouse('mouseover');
+              emitMouse('mousedown');
+              emitPointer('pointerup');
+              emitMouse('mouseup');
+              try {
+                if (typeof choice.click === 'function') {
+                  choice.click();
+                } else {
+                  choice.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+                }
+              } catch {}
+              return { clicked: true, ...payload };
+            }
+            """,
+            {"typed": value},
+        )
+        if isinstance(clicked, Mapping):
+            try:
+                log_event("form.location_gate.click_attempt", result=dict(clicked))
+            except Exception:
+                pass
+        await asyncio.sleep(0.4)
+        for _ in range(5):
+            if await _hidden_name():
+                return
+            await asyncio.sleep(0.2)
+        try:
+            log_event("form.location_gate.click_failed", result=clicked)
+        except Exception:
+            pass
+        # leave gate validation to caller
     except Exception:
-        # Best effort only
+        # Best effort only; the caller will validate the gate and report details
         pass
 
 
@@ -2134,6 +2581,7 @@ def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
 def _normalize_question_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\s]", "", text.lower())
     return " ".join(cleaned.split())
+
 
 
 

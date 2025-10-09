@@ -29,6 +29,8 @@ Schema: `contracts/schemas/discover.schema.json`
 {"event":"end","summary":{"submitted":N,"failed":M}}
 ```
 - Submitted events include `confirmation_text` and attach `confirmation_id` when an identifier is captured from the site.
+- Runtime telemetry emits a deterministic Step1 form plan (meta/widgets/fields/submit) and logs
+  `captcha.capture.artifacts` with DOM/screenshot paths when a post-submit CAPTCHA blocks the flow.
 - Exit codes: 0 success; 3 partial failures; 1 fatal error
 
 Schema (per line): `contracts/schemas/apply-event.schema.json`
