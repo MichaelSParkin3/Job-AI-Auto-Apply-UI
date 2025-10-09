@@ -166,6 +166,16 @@ def cmd_apply(args: argparse.Namespace) -> int:
     profile_id = _profile_id(profile_obj)
     profile_name = _profile_name(profile_obj)
 
+    # Configure file logging if requested
+    if getattr(args, "save_logs", False):
+        from .telemetry import configure_file_logging
+        log_dir = getattr(args, "logs_dir", "logs")
+        log_file = configure_file_logging(log_dir, profile_id)
+        if log_file:
+            print(f"Logs will be saved to: {log_file}")
+        else:
+            print("Warning: Could not configure file logging")
+
     log_event("apply.start", profile=profile_id, mode=mode)
     log_event(
         "apply.llm_config",
@@ -591,6 +601,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Override wait for upload success signals "
             "(AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)"
         ),
+    )
+    p_apply.add_argument(
+        "--save-logs",
+        action="store_true",
+        help="Save structured logs to timestamped file in logs/ directory",
+    )
+    p_apply.add_argument(
+        "--logs-dir",
+        default="logs",
+        help="Directory for log files (default: logs/)",
     )
     p_apply.set_defaults(func=cmd_apply)
 
