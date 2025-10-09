@@ -91,7 +91,7 @@ flowchart LR
     EventBus -->|fails| Postmortem[Snapshot + manual prompt]
 ```
 
-**Success Checks**: `_wait_for_resume_upload` considers success once any of these are true: `input.files.length > 0`, hidden `resumeStorageId` populated, visible `.resume-upload-success` / `.application-upload-success`, or filename label filled. Failure banners short-circuit.
+**Success Checks**: `_wait_for_resume_upload` (timeout reduced to 10s, configurable via `AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS`) considers success once any of these are true: `input.files.length > 0`, hidden `resumeStorageId` populated, visible `.resume-upload-success` / `.application-upload-success`, or filename label filled. Failure banners (`.resume-upload-failure`, `.resume-upload-oversize`) are only blocking if NO success indicators are present, preventing false-positive failures from Lever's "Couldn't auto-read resume" OCR errors. JSON string parsing handles cases where `page.evaluate()` returns serialized JSON instead of objects.
 
 **Manual Supervision**: If all branches fail and mode is supervised, the CLI prompts the user to attach manually, re-checks for success, and returns a failure reason if still missing.
 
@@ -100,6 +100,10 @@ flowchart LR
    - Link fields (`portfolio_url`, `github_url`, `linkedin_url`).
    - Default questions (company, salary, authorization) using heuristics with profile defaults.
    - Dynamic questions list from plan; answers may use cached prompts (`profile.prompts`).
+   - EEO fields with conditional disability signature section (`_fill_disability_signature`):
+     - Detects visibility of conditional signature fields using computed styles
+     - Auto-fills `eeo[disabilitySignature]` with profile name
+     - Auto-fills `eeo[disabilitySignatureDate]` with current date (MM/DD/YYYY format)
    - Optional cover letter generation:
      - When a cover letter textarea is present, `_maybe_generate_cover_letter` uses `OpenRouterClient` if available. Prompt includes job details, profile summary, accomplishments, and guidance; otherwise falls back to stored prompt snippet.
    - For custom cards (checkbox/radio), simple heuristics auto-select frequent responses.
@@ -139,11 +143,18 @@ flowchart LR
 
 - **Queues**: JSON files updated after each item, preserving confirmation artifacts (id, text, timestamp) for audit.
 - **Artifacts Directory**: Controlled by `AUTO_APPLY_ARTIFACTS_DIR`. When diagnostics enabled, Browser-Use may capture HAR/video snapshots keyed by profile.
-- **Telemetry**: Each major phase emits logs (e.g., `apply.navigate.*`, `form.wait.*`, `resume_upload.*`) to stderr for ingestion or debugging.
+- **Telemetry**: Each major phase emits structured logs (e.g., `apply.navigate.*`, `form.wait.*`, `resume_upload.*`) to stderr for real-time monitoring or ingestion.
+- **File-Based Logging** (`--save-logs` flag):
+  - Saves structured logs to timestamped `.jsonl` files in `logs/` directory (configurable via `--logs-dir`)
+  - Filename format: `<profile>_YYYY-MM-DDTHH-MM-SS.jsonl`
+  - Each line is a JSON event, enabling easy parsing and analysis
+  - Useful for debugging resume upload detection, form filling issues, and post-mortem analysis
 
 ## Summary
 
-- Profiles define inputs and defaults; discovery populates queues via Browser-Use (with HTTP fallback) without LLMs.
-- Apply orchestrates a hardened browser workflow with layered fallbacks for navigation, resume upload, autofill, and validation.
-- LLMs are optional helpers: locating inputs, generating cover letters, and clearing validation blockers when human supervision is absent.
-- Structured logging and queue state make retries, audits, and manual review repeatable.
+- **Python 3.11+ Required**: The application requires Python 3.11 or higher due to the browser-use dependency. Development environment uses Python 3.13.7 in `.venv/`.
+- **Profiles** define inputs and defaults; discovery populates queues via Browser-Use (with HTTP fallback) without LLMs.
+- **Apply** orchestrates a hardened browser workflow with layered fallbacks for navigation, resume upload (with enhanced 10s timeout and smart failure detection), autofill (including conditional EEO disability signatures), and validation.
+- **LLMs** are optional helpers: locating inputs, generating cover letters, and clearing validation blockers when human supervision is absent.
+- **Structured logging** (console + optional file-based `.jsonl` logs) and queue state make retries, audits, and manual review repeatable.
+- **Testing**: 33 tests (contract, integration, unit) all passing, ensuring reliability of core workflows.
