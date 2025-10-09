@@ -143,5 +143,9 @@ def test_discover_jobs_uses_browser_session(monkeypatch) -> None:
 
     assert stub_session.started is True
     assert stub_session.stopped is True
-    assert stub_session.page.visited_urls == [build_search_url(profile, 24)]
+    # Browser-based discovery now visits both search URL and posting URLs
+    expected_search_url = build_search_url(profile, 24)
+    assert stub_session.page.visited_urls[0] == expected_search_url
+    assert len(stub_session.page.visited_urls) == 2  # search + posting
+    assert "jobs.lever.co/example/123" in stub_session.page.visited_urls[1]
     assert len(items) == 1

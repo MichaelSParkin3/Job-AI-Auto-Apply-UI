@@ -16,6 +16,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Virtual Environment
+
+This project uses a virtual environment located at `.venv/` (gitignored). The venv uses **Python 3.13.7**.
+
+**Activate the venv:**
+```bash
+# Windows
+.venv\Scripts\activate
+
+# Unix/macOS
+source .venv/bin/activate
+```
+
+**After activation, install dependencies:**
+```bash
+pip install -e .
+```
+
+**Important**: Always activate the venv before running tests or CLI commands to ensure Python 3.11+ compatibility (required by browser-use).
+
 ### Development
 ```bash
 # Install (editable mode)

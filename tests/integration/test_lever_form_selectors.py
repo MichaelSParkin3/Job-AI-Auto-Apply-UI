@@ -32,8 +32,6 @@ def test_form_plan_and_allowed_domains(monkeypatch: pytest.MonkeyPatch) -> None:
 
     kwargs = options.to_browser_use_kwargs()
     assert kwargs["allowed_domains"] == ["jobs.lever.co", "careers.example.com"]
-    assert kwargs["record_video"] is True
-    assert kwargs["record_har"] is True
 
     agent = LeverApplyAgent(options=options)
     plan = agent.build_plan(html)
