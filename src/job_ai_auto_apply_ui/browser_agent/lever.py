@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -3347,25 +3346,25 @@ def _default_eeo_answer(profile: Profile, field: EeoField) -> str | None:
 
 
 async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> None:
-    for field in fields:
-        desired = _default_eeo_answer(profile, field)
+    for eeo_field in fields:
+        desired = _default_eeo_answer(profile, eeo_field)
         if not desired:
-            desired = _eeo_opt_out_value(field)
+            desired = _eeo_opt_out_value(eeo_field)
         value = None
         if desired:
-            value = field.options.get(_normalize_choice_key(desired)) or desired
-        if value is None and field.option_pairs:
+            value = eeo_field.options.get(_normalize_choice_key(desired)) or desired
+        if value is None and eeo_field.option_pairs:
             # fallback to the first non-empty option
-            for candidate, _display in field.option_pairs:
+            for candidate, _display in eeo_field.option_pairs:
                 if candidate:
                     value = candidate
                     break
         if value is None:
             continue
-        if field.field_type == "select":
-            await _set_select_value(page, field.selector, value)
+        if eeo_field.field_type == "select":
+            await _set_select_value(page, eeo_field.selector, value)
         else:
-            await _select_choice_option(page, field.name, value)
+            await _select_choice_option(page, eeo_field.name, value)
 
 
 async def _select_choice_option(page, field_name: str | None, value: str | None) -> None:
