@@ -29,6 +29,7 @@ Examples
   - `auto-apply discover --profile michael_scott_parkin_iii --window 24h --cap 10`
 - Apply in supervised mode with robust resume upload diagnostics:
   - `auto-apply apply --profile michael_scott_parkin_iii --use-llm-locator --debug-resume-widget --resume-wait-timeout-seconds 25`
+  - Add `--save-logs` (optionally `--logs-dir logs/run-$(date +%s)`) to persist structured logs alongside stdout/stderr
 - Resume a specific queued job by id:
   - `auto-apply resume-job 0199a9b79cf7f4e39afef467030c`
 
@@ -49,10 +50,13 @@ Examples
     - `--use-llm-locator` (sets `AUTO_APPLY_USE_LLM_LOCATOR=1` for the run)
     - `--debug-resume-widget` (sets `AUTO_APPLY_DEBUG_RESUME_WIDGET=1` to emit a structured widget snapshot if upload isn’t detected)
     - `--resume-wait-timeout-seconds N` (sets `AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS=N`)
+  - Logging: `--save-logs` writes structured JSON logs to `<logs-dir>/<timestamp>.log` (default `logs/`); override directory with `--logs-dir <path>`
+  - Exit codes: `0` when every item submits, `3` when any item fails
 
 - `auto-apply resume-job`
   - `id` (required): application item id from `data/queues/<profile>.json`
   - `--json`: machine‑readable output
+  - Exit codes: `0` on success, `4` when the id is not found
 
 ## Profiles (TOML)
 
@@ -103,6 +107,7 @@ Networking
 - `PROXY_URL` or `HTTP_PROXY` / `HTTPS_PROXY`
 - `USER_AGENT` (override UA string if needed)
 - `ALLOWED_DOMAINS` (comma‑separated; default `google.*,jobs.lever.co`)
+- `AUTO_APPLY_BROWSER_MODE` (`auto` | `off` | `disabled` | `http`) — force legacy HTTP discovery when not `auto`
 
 Diagnostics & Artifacts
 - `AUTO_APPLY_DIAGNOSTICS` (default `0`) — turn on all capture

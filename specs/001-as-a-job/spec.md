@@ -1,214 +1,117 @@
-# Feature Specification: Lever Auto‑Apply Assistant (Google Sourcing + Lever Forms)
+# Feature Specification: Lever Auto-Apply CLI
 
-**Feature Branch**: `001-as-a-job`  
-**Created**: 2025-10-01  
-**Status**: Draft  
-**Input**: User description distilled from conversation (see triggering /specify message)
+**Feature Branch**: `001-as-a-job`
+**Created**: 2025-10-01
+**Status**: Current
+**Input**: Runtime behaviour from `auto-apply` CLI, queue persistence, and automated tests
 
 ## Execution Flow (main)
 ```
-1. Parse user description from Input
-   → If empty: ERROR "No feature description provided"
-2. Extract key concepts from description
-   → Identify: actors, actions, data, constraints
-3. For each unclear aspect:
-   → Mark with [NEEDS CLARIFICATION: specific question]
-4. Fill User Scenarios & Testing section
-   → If no clear user flow: ERROR "Cannot determine user scenarios"
-5. Generate Functional Requirements
-   → Each requirement must be testable
-   → Mark ambiguous requirements
-6. Identify Key Entities (if data involved)
-7. Run Review Checklist
-   → If any [NEEDS CLARIFICATION]: WARN "Spec has uncertainties"
-   → If implementation details found: ERROR "Remove tech details"
-8. Return: SUCCESS (spec ready for planning)
+1. Operator selects a profile and runs an `auto-apply` subcommand.
+   → `discover` builds a Google query, parses Lever-hosted results, and enqueues new ApplicationItems.
+2. Queue persistence stores ApplicationItems with status/metadata per profile.
+   → JSON files under `data/queues/<profile>.json` deduplicate by URL/company/title hash.
+3. `apply` streams ApplicationQueue.pending() items through the browser agent.
+   → Each item launches a Browser-Use session, fills the Lever form, and records submitted/failed events.
+4. `resume-job` lifts an item back to `in_progress` so operators can re-run `apply` from the queue.
+5. Structured logs and optional JSON output describe discoveries, apply events, and resume status.
 ```
+Implementation references: [`src/job_ai_auto_apply_ui/orchestrator.py#L77-L366`](../src/job_ai_auto_apply_ui/orchestrator.py#L77-L366), [`src/job_ai_auto_apply_ui/application_queue.py#L1-L460`](../src/job_ai_auto_apply_ui/application_queue.py#L1-L460), [`src/job_ai_auto_apply_ui/job_discovery.py#L277-L520`](../src/job_ai_auto_apply_ui/job_discovery.py#L277-L520).
 
 ---
 
 ## ⚡ Quick Guidelines
-- ✅ Focus on WHAT users need and WHY
-- ❌ Avoid HOW to implement (no tech stack, APIs, code structure)
-- 👥 Written for business stakeholders, not developers
+- ✅ Deliver a reliable CLI for job seekers automating Lever applications with supervised defaults.
+- ❌ Do not document unsupported flags or behaviours (e.g., no `--discovery-only` toggle).
+- 👥 Primary persona: an operator maintaining TOML profiles and running discovery/apply sessions locally.
 
 ### Section Requirements
-- **Mandatory sections**: Must be completed for every feature
-- **Optional sections**: Include only when relevant to the feature
-- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+- Cover each CLI command (discover, apply, resume-job) and how they interact with the queue and browser agent.
+- Document configuration levers exposed via environment variables and CLI flags.
+- Capture success/exit-code contracts validated by automated tests.
 
 ### For AI Generation
-When creating this spec from a user prompt:
-1. **Mark all ambiguities**: Use [NEEDS CLARIFICATION: specific question] for any assumption you'd need to make
-2. **Don't guess**: If the prompt doesn't specify something (e.g., "login system" without auth method), mark it
-3. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-4. **Common underspecified areas**:
-   - User types and permissions
-   - Data retention/deletion policies  
-   - Performance targets and scale
-   - Error handling behaviors
-   - Integration requirements
-   - Security/compliance needs
+When extending this feature:
+1. Treat CLI contracts and JSON schemas as the source of truth; add tests before expanding outputs.
+2. Mark new flags or behaviours in both spec and README alongside parser updates.
+3. Keep queue semantics (status transitions, dedupe hash, artifact handling) backward compatible or document migrations.
+4. Validate browser automation changes with contract tests that stub `iter_apply_events`.
 
 ---
-
-## Clarifications
-
-### Session 2025-10-01
-- Q: What should be the default operating mode when the assistant runs with no flags? → A: Auto‑fill then pause at final submit.
-- Q: What is the default discovery cap per run (max new postings to queue)? → A: 10 max; fewer if available.
-- Q: What’s the default scope for reusing LLM-generated answers (Answer Cache)? → A: Per profile for generic fields; long-form/job-specific not reused by default.
-- Q: What is the default retention period for artifacts under data/ (logs, DOM snapshots, screenshots)? → A: Keep until manual cleanup.
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### Primary User Story
-As a job seeker, I want an assistant that discovers fresh Lever-hosted postings and
-auto-fills/auto-submits my applications using a selected profile (resume, defaults,
-prompts), so that I save time while keeping control and traceability.
+As a job seeker running the CLI, I want to discover Lever postings and stream supervised apply runs for my chosen profile so that I can submit consistent applications quickly.
+
+- **Preconditions**
+  - A TOML profile exists in `profiles/<id>.toml` with resume path, defaults, keywords, and prompts (`Profile.from_mapping`).[`src/job_ai_auto_apply_ui/profile_manager.py#L17-L86`](../src/job_ai_auto_apply_ui/profile_manager.py#L17-L86)
+  - Queue storage is writable under `data/queues/<profile>.json`; existing items deserialize with optional JobDetails (`ApplicationQueue.__init__`).[`src/job_ai_auto_apply_ui/application_queue.py#L200-L244`](../src/job_ai_auto_apply_ui/application_queue.py#L200-L244)
+
+- **Happy Path Steps**
+  1. Run `auto-apply discover --profile <id> --window 24h --cap 10` to construct a Google search URL, parse Lever hits (browser or HTTP fallback), and enqueue unique ApplicationItems while emitting either human-readable text or JSON depending on `--json` (`cmd_discover`, `discover_jobs`).[`src/job_ai_auto_apply_ui/orchestrator.py#L77-L131`](../src/job_ai_auto_apply_ui/orchestrator.py#L77-L131)[`src/job_ai_auto_apply_ui/job_discovery.py#L277-L520`](../src/job_ai_auto_apply_ui/job_discovery.py#L277-L520)
+  2. Run `auto-apply apply --profile <id>` in supervised mode by default (unless `--auto` is passed) to iterate `ApplicationQueue.pending()`, resume items into `in_progress`, drive Browser-Use to execute the Lever form plan, and stream `start`/`item`/`submitted`/`failed`/`end` events (`iter_apply_events`).[`src/job_ai_auto_apply_ui/orchestrator.py#L252-L366`](../src/job_ai_auto_apply_ui/orchestrator.py#L252-L366)
+  3. Inspect terminal output or `--json` streams for confirmation text with optional IDs. Submitted items are marked with attached artifacts; failures record reason codes via `ApplicationQueue.mark_submitted/mark_failed`.[`src/job_ai_auto_apply_ui/orchestrator.py#L338-L365`](../src/job_ai_auto_apply_ui/orchestrator.py#L338-L365)[`src/job_ai_auto_apply_ui/application_queue.py#L312-L371`](../src/job_ai_auto_apply_ui/application_queue.py#L312-L371)
+
+- **Inputs**
+  - CLI flags: `--profile` (required), `--window`, `--cap`, `--json`, `--auto`, `--supervised`, `--llm-provider`, `--llm-model`, `--use-llm-locator` / `--no-use-llm-locator`, `--debug-resume-widget`, `--resume-wait-timeout-seconds`, `--save-logs`, `--logs-dir` (`build_parser`).[`src/job_ai_auto_apply_ui/orchestrator.py#L520-L565`](../src/job_ai_auto_apply_ui/orchestrator.py#L520-L565)
+  - Environment overrides loaded via `Settings` (timing, diagnostics, browser stealth, LLM defaults).[`src/job_ai_auto_apply_ui/config.py#L34-L138`](../src/job_ai_auto_apply_ui/config.py#L34-L138)
+
+- **Outputs**
+  - Queue JSON persisted with updated statuses/artifacts per item (`ApplicationQueue._persist`).[`src/job_ai_auto_apply_ui/application_queue.py#L372-L381`](../src/job_ai_auto_apply_ui/application_queue.py#L372-L381)
+  - CLI exit codes: `discover` returns `0` when items found or `2` when empty; `apply` returns `0` when no failures else `3`; `resume-job` returns `0` on success or `4` if not found (`cmd_*` handlers, tests).[`src/job_ai_auto_apply_ui/orchestrator.py#L130-L131`](../src/job_ai_auto_apply_ui/orchestrator.py#L130-L131)[`src/job_ai_auto_apply_ui/orchestrator.py#L218-L219`](../src/job_ai_auto_apply_ui/orchestrator.py#L218-L219)[`src/job_ai_auto_apply_ui/orchestrator.py#L223-L249`](../src/job_ai_auto_apply_ui/orchestrator.py#L223-L249)[`tests/contract/test_cli_contracts.py#L48-L132`](../tests/contract/test_cli_contracts.py#L48-L132)
+  - JSON event stream adheres to `apply-event.schema.json` when `--json` is set (contract tests stubbing `iter_apply_events`).[`tests/contract/test_cli_contracts.py#L135-L175`](../tests/contract/test_cli_contracts.py#L135-L175)
+
+- **Acceptance Criteria**
+  1. Discovery emits schema-compliant payloads and exit code `2` when no new items; queue file is untouched when nothing enqueued.[`src/job_ai_auto_apply_ui/orchestrator.py#L107-L131`](../src/job_ai_auto_apply_ui/orchestrator.py#L107-L131)[`tests/contract/test_cli_contracts.py#L48-L79`](../tests/contract/test_cli_contracts.py#L48-L79)
+  2. Apply streams events (human + JSON modes) reflecting queue state transitions and returns `3` if any item fails (`cmd_apply`, `iter_apply_events`, tests).[`src/job_ai_auto_apply_ui/orchestrator.py#L134-L220`](../src/job_ai_auto_apply_ui/orchestrator.py#L134-L220)[`tests/contract/test_cli_contracts.py#L81-L175`](../tests/contract/test_cli_contracts.py#L81-L175)
+  3. Resume-job sets the item back to `in_progress` (or reports not found) and emits matching JSON (`resume_job`, `cmd_resume`).[`src/job_ai_auto_apply_ui/orchestrator.py#L509-L548`](../src/job_ai_auto_apply_ui/orchestrator.py#L509-L548)[`tests/contract/test_cli_contracts.py#L110-L132`](../tests/contract/test_cli_contracts.py#L110-L132)
+
+- **Implementation Links**
+  - CLI orchestrator and streaming: [`src/job_ai_auto_apply_ui/orchestrator.py`](../src/job_ai_auto_apply_ui/orchestrator.py)
+  - Discovery pipeline: [`src/job_ai_auto_apply_ui/job_discovery.py`](../src/job_ai_auto_apply_ui/job_discovery.py)
+  - Queue persistence: [`src/job_ai_auto_apply_ui/application_queue.py`](../src/job_ai_auto_apply_ui/application_queue.py)
+
+- **Validation Links**
+  - CLI contract smoke tests: [`tests/contract/test_cli_contracts.py`](../tests/contract/test_cli_contracts.py)
+  - Discovery unit coverage (query building, browser mode): [`tests/unit/test_job_discovery.py`](../tests/unit/test_job_discovery.py)
 
 ### Acceptance Scenarios
-1. Given a selected profile, when I run a discovery + apply session, then the system
-   gathers Google results filtered to `site:jobs.lever.co` from the last 24h and
-   creates a normalized application queue without duplicates.
-2. Given a queue item, when an application form is accessible without portal login,
-   then the assistant auto-fills fields from the profile and cached answers and
-   attempts submission, capturing confirmation details.
-3. Given a posting that enforces SSO, when the assistant detects a login wall, then
-   it pauses and marks the item for manual handoff with a resume path to return and
-   auto-replay from the saved step.
-4. Given configured rate-limit and stealth settings, when running a session, then
-   dwell time, action jitter, and tab concurrency adhere to configured bounds and
-   the assistant stays within allowed domains for safety.
-5. Given a submission attempt, when the posting is closed or the link is dead,
-   then the assistant marks the item failed with reason and stores a screenshot and
-   DOM snapshot as artifacts.
-6. Given an in-progress application, when a CAPTCHA is encountered, then the system
-   serializes progress (values, URL, step index), stores DOM/screen snapshots, marks
-   `captcha_blocked`, and provides a resume path to continue after manual solve.
-7. Given a previously applied or duplicate posting, when it is rediscovered, then
-   the system de-dupes by URL/company/title hash and updates status accordingly.
-8. Given an interruption (crash or user stop), when I relaunch the assistant, then
-   it resumes from the most recent saved step with consistent state.
-9. Given observability is enabled, when a step completes, then a step-level record
-   with timestamps and optional screenshots is available for auditing.
-10. Given discovery or when opening the application form, when job posting details
-    are extracted, then normalized JobDetails fields are persisted on the
-    ApplicationItem and raw artifacts are saved for auditing.
-11. Given prompts are generated for long-form answers or cover letters, when the
-    assistant prepares the prompt, then it MUST include JobDetails (title, company,
-    location, employment_type, and posting_excerpt) alongside resume context.
+1. **Given** a valid profile and empty queue, **when** `auto-apply discover --profile <id> --json` runs with no matching postings, **then** exit code `2` and an empty `items` array are returned while no browser modules load.[`tests/contract/test_cli_contracts.py#L48-L79`](../tests/contract/test_cli_contracts.py#L48-L79)
+2. **Given** an ApplicationQueue with pending items, **when** `auto-apply apply --profile <id>` runs without `--json`, **then** human-readable progress and summary print to stdout and exit code `0` is returned if no failures occur.[`src/job_ai_auto_apply_ui/orchestrator.py#L187-L220`](../src/job_ai_auto_apply_ui/orchestrator.py#L187-L220)[`tests/contract/test_cli_contracts.py#L81-L108`](../tests/contract/test_cli_contracts.py#L81-L108)
+3. **Given** a queue item identifier, **when** `auto-apply resume-job <id> --json` finds the item, **then** the payload reports `status: "in_progress"` with `resumed_from_step: 0` and exit code `0`.[`src/job_ai_auto_apply_ui/orchestrator.py#L509-L548`](../src/job_ai_auto_apply_ui/orchestrator.py#L509-L548)[`tests/contract/test_cli_contracts.py#L110-L132`](../tests/contract/test_cli_contracts.py#L110-L132)
 
 ### Edge Cases
-- CAPTCHAs/bot gates block form interactions. Progress is serialized; status set
-  to `captcha_blocked`; operator receives a resume path for manual solve + replay.
-- Dead links/closed roles detected by key-element validation cause early abort with
-  clear log and screenshot.
-- Unsupported/dynamic widgets or upload quirks trigger graceful failure: store field
-  values, screenshots, and status with reason; item remains in queue for retry.
-- Already-applied or duplicate postings are skipped or marked with the correct
-  terminal status and rationale.
+- Duplicate discoveries are skipped via hash checks while preserving original queue entries.[`src/job_ai_auto_apply_ui/application_queue.py#L244-L308`](../src/job_ai_auto_apply_ui/application_queue.py#L244-L308)
+- Invalid or non-HTTP Google result links are ignored with logged reasons (`discover_jobs`).[`src/job_ai_auto_apply_ui/job_discovery.py#L314-L345`](../src/job_ai_auto_apply_ui/job_discovery.py#L314-L345)
+- `AUTO_APPLY_BROWSER_MODE` set to `off|disabled|http` forces HTTP-only discovery, bypassing Browser-Use dependencies.[`src/job_ai_auto_apply_ui/job_discovery.py#L295-L312`](../src/job_ai_auto_apply_ui/job_discovery.py#L295-L312)[`tests/unit/test_job_discovery.py#L118-L151`](../tests/unit/test_job_discovery.py#L118-L151)
+- Resume-job returns exit code `4` with a `not_found` payload when the queue lacks the requested ID.[`src/job_ai_auto_apply_ui/orchestrator.py#L233-L242`](../src/job_ai_auto_apply_ui/orchestrator.py#L233-L242)
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
-- **FR-001**: System MUST discover postings via Google results filtered to
-  `site:jobs.lever.co` limited to last 24h.
-- **FR-002**: System MUST normalize discovered links into queue items with fields:
-  url, company, title, discovered_at, source, and a stable de-dup hash.
-- **FR-003**: System MUST support a selectable profile (resume path, defaults,
-  keywords, prompts) used to populate forms.
-- **FR-004**: System MUST auto-fill Lever application forms using deterministic
-  JSON field mappings and helper selectors for common widgets.
-- **FR-005**: System MUST capture submission confirmations (text, IDs, or emails)
-  and attach them to the queue item.
-- **FR-006**: System MUST maintain statuses: `new`, `in_progress`, `captcha_blocked`,
-  `submitted`, `failed` (with reason code and message).
-- **FR-007**: System MUST persist resumable state (current URL, step index, stored
-  values, artifacts) to allow recovery after interruptions.
-- **FR-008**: System MUST store structured logs, DOM snapshots, and screenshots
-  under `data/` and associate them to queue items.
-- **FR-009**: System MUST enforce configurable rate/stealth controls: min dwell,
-  action jitter, max parallel tabs, retry/backoff, optional proxy, and UA override.
-- **FR-010**: System MUST avoid interactive prompts during unattended runs and
-  provide a non-interactive mode toggle.
-- **FR-011**: System MUST provide a manual handoff path when SSO is required and
-  resume automatically after user completes the step.
-- **FR-012**: System MUST validate key elements before fill to detect content drift
-  and abort with a clear log when validation fails.
-- **FR-013**: System MUST de-duplicate new discoveries against existing items by
-  hash of URL/company/title and update status appropriately.
-- **FR-014**: System MUST produce human-readable logs and optional `--json` outputs
-  for automation pipelines.
-- **FR-016**: System MUST allow users to review and edit answers before submission
-  when operating in supervised mode.
-- **FR-017**: System MUST provide clear failure reasons and retry guidance per item.
-- **FR-018**: System MUST allow configuration of the discovery time window (default
-  24h) and search query tuning (keywords, locations).
-- **FR-019**: System MUST expose deterministic exit codes and structured error
-  messages for operational troubleshooting.
-- **FR-020**: System MUST capture and attach the final application URL and timestamp
-  to submitted items.
-- **FR-030**: Default mode MUST auto-fill forms and pause at the final submit step
-  for one-click user approval. Operators MAY pass `--auto` to submit without
-  pausing or `--supervised` to opt-in explicitly. Apply runs MUST honor documented
-  toggles for LLM selection (`--llm-provider`, `--llm-model`) and resume upload
-  handling (`--use-llm-locator` / `--no-use-llm-locator`,
-  `--debug-resume-widget`, `--resume-wait-timeout-seconds`).
-- **FR-032**: System MUST cap discovery at a configurable maximum of 10 items per
-  run by default; queue size may be smaller when fewer matching postings exist.
-- **FR-033**: AnswerCache MUST reuse answers per profile for generic fields (e.g.,
-  contact info, eligibility, links). Long-form or job/company-specific answers are
-  NOT reused by default and require fresh generation or explicit opt-in.
-- **FR-034**: Artifact retention defaults to indefinite (no automatic deletion).
-  Users MAY configure `retention_days` to enable automatic pruning.
-
-*Clarifications required:*
-- **FR-021**: System MUST source Google results via an in-browser public search
-  (no external Search API required), limited to a configurable time window (default
-  24h).
-- **FR-022**: System MUST enforce default pacing limits unless overridden: minimum
-  dwell per page 0.8s with ±0.4s jitter; maximum parallel tabs 3; retries with
-  exponential backoff up to 2 attempts per failing step.
-- **FR-024**: System MUST allow optional HTTP/HTTPS/SOCKS5 proxy configuration at
-  the profile or session level, including host/port and basic auth.
-- **FR-025**: System MUST run on a modern Chromium-based desktop browser in visible
-  (non-headless) mode by default and support persisted user profiles (optional
-  `user_data_dir`) for cookie reuse.
-- **FR-026**: System MUST store artifacts (screenshots and DOM snapshots) for
-  failures, and MAY store video/HAR traces when diagnostics mode is enabled.
-- **FR-027**: System MUST record a step-level timeline (start/end timestamps and
-  action summaries) accessible from logs for auditability.
-- **FR-028**: System MUST gate navigation to allowed domains during discovery and
-  application (e.g., `google.*`, `jobs.lever.co`, company subpaths) to keep runs
-  deterministic and safe.
-- **FR-029**: System MUST provide a supervised mode that previews generated long-
-  form answers for human approval before final submission.
+- **FR-001**: The CLI MUST expose `discover`, `apply`, and `resume-job` subcommands with the flag set documented above (including logging and LLM overrides).[`src/job_ai_auto_apply_ui/orchestrator.py#L520-L565`](../src/job_ai_auto_apply_ui/orchestrator.py#L520-L565)
+- **FR-002**: Discovery MUST construct Google search queries limited to six unique profile terms and map the window to Google `tbs` filters before parsing Lever results.[`src/job_ai_auto_apply_ui/job_discovery.py#L277-L340`](../src/job_ai_auto_apply_ui/job_discovery.py#L277-L340)[`tests/unit/test_job_discovery.py#L34-L79`](../tests/unit/test_job_discovery.py#L34-L79)
+- **FR-003**: Discovery MUST enqueue only unique ApplicationItems per profile, persisting queue files and returning schema-compliant payloads.[`src/job_ai_auto_apply_ui/application_queue.py#L244-L308`](../src/job_ai_auto_apply_ui/application_queue.py#L244-L308)[`tests/contract/test_cli_contracts.py#L48-L79`](../tests/contract/test_cli_contracts.py#L48-L79)
+- **FR-004**: Apply MUST default to supervised mode, stream structured events (human or JSON), and update queue statuses/artifacts for submitted and failed items.[`src/job_ai_auto_apply_ui/orchestrator.py#L134-L366`](../src/job_ai_auto_apply_ui/orchestrator.py#L134-L366)
+- **FR-005**: Apply MUST honour resume upload toggles (`--use-llm-locator`, `--no-use-llm-locator`, `--debug-resume-widget`, `--resume-wait-timeout-seconds`) by mutating environment variables for downstream helpers.[`src/job_ai_auto_apply_ui/orchestrator.py#L148-L157`](../src/job_ai_auto_apply_ui/orchestrator.py#L148-L157)
+- **FR-006**: Apply MUST support optional LLM overrides (`--llm-provider`, `--llm-model`) and emit the effective configuration for telemetry.[`src/job_ai_auto_apply_ui/orchestrator.py#L159-L184`](../src/job_ai_auto_apply_ui/orchestrator.py#L159-L184)
+- **FR-007**: Apply MUST optionally save structured logs when `--save-logs` is provided, using `--logs-dir` as the target directory.[`src/job_ai_auto_apply_ui/orchestrator.py#L169-L178`](../src/job_ai_auto_apply_ui/orchestrator.py#L169-L178)
+- **FR-008**: Resume-job MUST locate items across all queue files, transition them to `in_progress`, and report `not_found` otherwise.[`src/job_ai_auto_apply_ui/orchestrator.py#L509-L548`](../src/job_ai_auto_apply_ui/orchestrator.py#L509-L548)
+- **FR-009**: Settings MUST expose dwell/jitter, retries, discovery cap/window, diagnostics toggles, and stealth environment knobs via environment variables.[`src/job_ai_auto_apply_ui/config.py#L34-L138`](../src/job_ai_auto_apply_ui/config.py#L34-L138)
+- **FR-010**: Browser-based discovery MUST operate when `AUTO_APPLY_BROWSER_MODE` is `auto`, falling back gracefully when disabled and ensuring sessions are started/stopped.[`src/job_ai_auto_apply_ui/job_discovery.py#L332-L520`](../src/job_ai_auto_apply_ui/job_discovery.py#L332-L520)[`tests/unit/test_job_discovery.py#L118-L151`](../tests/unit/test_job_discovery.py#L118-L151)
 
 ### Key Entities *(include if feature involves data)*
-- **Profile**: Selected configuration for applying (resume path, defaults, keywords,
-  prompts); may include a `user_data_dir` for cookie reuse and a preferred browser.
-- **ApplicationItem**: A discovered posting to process. Fields: id, url, company,
-  title, status, discovered_at, last_updated_at, reason, artifacts, hash, and
-  optional `details` populated after extraction completes.
-- **AnswerCache**: Q/A pairs used to fill forms (question key → prepared answer),
-  seeded from resume/job description; reused across retries. Entries carry `type`
-  = {generic | long_form}, `scope` default `profile` for generic, and may include
-  optional `company_id`/`posting_id` when scoping is narrower.
-- **Artifacts**: File references for DOM snapshots, screenshots, optional video/HAR,
-  confirmation data, and structured logs associated with an ApplicationItem.
-- **Config**: Rate/stealth settings (dwell, jitter, tabs, retry/backoff), allowed
-  domains, discovery window, optional proxy, output modes (human/JSON), and
-  `discovery_cap` (default 10), plus `retention_days` (0 means keep until manual
-  cleanup).
+- **Profile**: User configuration (id, name, resume, defaults, keywords, prompts, optional browser prefs).[`src/job_ai_auto_apply_ui/profile_manager.py#L17-L86`](../src/job_ai_auto_apply_ui/profile_manager.py#L17-L86)
+- **ApplicationItem & ApplicationQueue**: Queue element with status, timestamps, optional JobDetails/artifacts/reason plus hash-based dedupe persisted to JSON per profile.[`src/job_ai_auto_apply_ui/application_queue.py#L27-L381`](../src/job_ai_auto_apply_ui/application_queue.py#L27-L381)
+- **JobDetails**: Optional normalized metadata captured during discovery (location, department, posting text, apply URL).[`src/job_ai_auto_apply_ui/application_queue.py#L102-L174`](../src/job_ai_auto_apply_ui/application_queue.py#L102-L174)
+- **Artifacts**: Optional DOM/screenshot/video/HAR and confirmation metadata attached after apply runs.[`src/job_ai_auto_apply_ui/application_queue.py#L54-L100`](../src/job_ai_auto_apply_ui/application_queue.py#L54-L100)
+- **LeverFormPlan & Browser Options**: Form selectors, dynamic questions, and browser session configuration used by the apply agent.[`src/job_ai_auto_apply_ui/browser_agent/lever.py#L18-L147`](../src/job_ai_auto_apply_ui/browser_agent/lever.py#L18-L147)
 
 ### Non-Functional Requirements
-- The assistant SHOULD complete typical Lever applications within 2–5 minutes per
-  posting under default pacing and network conditions.
-- Logs MUST be human-readable by default and optionally emitted as structured JSON.
-- Personally identifiable information in logs MUST be redacted by default.
-- Default artifact retention is indefinite; users MAY set a retention window to
-  enable automatic pruning.
+- CLI output MUST remain copy/paste friendly and structured logs MUST emit via `structlog` with optional file capture.[`src/job_ai_auto_apply_ui/orchestrator.py#L169-L220`](../src/job_ai_auto_apply_ui/orchestrator.py#L169-L220)
+- JSON contracts MUST stay aligned with schemas stored in `specs/001-as-a-job/contracts/schemas/` and validated by contract tests.[`tests/contract/test_cli_contracts.py#L48-L175`](../tests/contract/test_cli_contracts.py#L48-L175)
+- Browser sessions MUST apply locale/timezone stealth settings before navigation to reduce detection risk.[`src/job_ai_auto_apply_ui/browser_agent/lever.py#L99-L134`](../src/job_ai_auto_apply_ui/browser_agent/lever.py#L99-L134)
 
 ---
 
@@ -216,29 +119,29 @@ prompts), so that I save time while keeping control and traceability.
 *GATE: Automated checks run during main() execution*
 
 ### Content Quality
-- [ ] No implementation details (languages, frameworks, APIs)
-- [ ] Focused on user value and business needs
-- [ ] Written for non-technical stakeholders
-- [ ] All mandatory sections completed
+- [x] No implementation details leak beyond what users must know
+- [x] Focused on user value and operational outcomes
+- [x] Written for non-technical stakeholders coordinating CLI usage
+- [x] All mandatory sections completed
 
 ### Requirement Completeness
-- [ ] No [NEEDS CLARIFICATION] markers remain
-- [ ] Requirements are testable and unambiguous  
-- [ ] Success criteria are measurable
-- [ ] Scope is clearly bounded
-- [ ] Dependencies and assumptions identified
+- [x] No clarification markers remain
+- [x] Requirements are testable and unambiguous
+- [x] Success criteria are measurable via exit codes/events
+- [x] Scope is clearly bounded around Lever CLI workflows
+- [x] Dependencies and assumptions identified (profiles, env vars, browser availability)
 
 ---
 
 ## Execution Status
-*Updated by main() during processing*
+*Updated by maintainers during documentation refresh*
 
-- [ ] User description parsed
-- [ ] Key concepts extracted
-- [ ] Ambiguities marked
-- [ ] User scenarios defined
-- [ ] Requirements generated
-- [ ] Entities identified
-- [ ] Review checklist passed
+- [x] User description parsed
+- [x] Key concepts extracted
+- [x] Ambiguities resolved
+- [x] User scenarios defined
+- [x] Requirements generated
+- [x] Entities identified
+- [x] Review checklist passed
 
 ---
