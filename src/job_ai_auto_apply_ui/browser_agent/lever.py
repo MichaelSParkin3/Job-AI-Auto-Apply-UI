@@ -2131,6 +2131,13 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
                 """,
                 selector,
             )
+            # Parse JSON string if page.evaluate() returns string instead of dict
+            if isinstance(state, str):
+                import json
+                try:
+                    state = json.loads(state)
+                except (json.JSONDecodeError, TypeError):
+                    pass
             if state is None:
                 try:
                     log_event("resume_upload.detect.poll_returned_none", selector=selector)
@@ -2173,6 +2180,13 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
                             """,
                             selector,
                         )
+                        # Parse JSON string if needed
+                        if isinstance(s2, str):
+                            import json
+                            try:
+                                s2 = json.loads(s2)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
                         if s2 and s2.get("fail"):
                             return False
                         if s2 and s2.get("ok"):
