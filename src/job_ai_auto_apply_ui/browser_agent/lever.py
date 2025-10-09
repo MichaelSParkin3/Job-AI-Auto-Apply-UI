@@ -1508,7 +1508,11 @@ async def _evaluate_quiet(page, script: str, *args):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             return await page.evaluate(script, *args)
-    except Exception:
+    except Exception as e:
+        try:
+            log_event("evaluate_quiet.fallback", error=str(e), error_type=type(e).__name__)
+        except Exception:
+            pass
         return await page.evaluate(script, *args)
 async def _fill_textarea(page, selector: str, value: str) -> None:
     try:
@@ -2060,6 +2064,20 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
     - .resume-upload-failure visible
     - .resume-upload-oversize visible
     """
+    # Sanity check: verify page.evaluate() works before polling
+    try:
+        sanity = await _evaluate_quiet(page, "() => 'ok'")
+        if sanity != 'ok':
+            try:
+                log_event("resume_upload.detect.sanity_check_failed", result=sanity, selector=selector)
+            except Exception:
+                pass
+    except Exception as e:
+        try:
+            log_event("resume_upload.detect.sanity_check_exception", error=str(e), error_type=type(e).__name__, selector=selector)
+        except Exception:
+            pass
+
     # Allow environment override
     try:
         import os
@@ -2102,11 +2120,21 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                     const style = window.getComputedStyle(o);
                     return style && style.display !== 'none' && style.visibility !== 'hidden';
                   })();
-                  return { ok: (ok1 || ok2 || ok3 || ok4), fail: (fail1 || fail2), files };
+                  const hasSuccess = ok1 || ok2 || ok3 || ok4;
+                  // IMPORTANT: Lever sometimes shows .resume-upload-failure ("Couldn't auto-read resume")
+                  // even when upload succeeds (failure = OCR failed, not upload failed).
+                  // Only treat failure banner as blocking if NO success indicators are present.
+                  const hardFail = (fail1 || fail2) && !hasSuccess;
+                  return { ok: hasSuccess, fail: hardFail, files };
                 }
                 """,
                 selector,
             )
+            if state is None:
+                try:
+                    log_event("resume_upload.detect.poll_returned_none", selector=selector)
+                except Exception:
+                    pass
             if state and state.get("ok"):
                 # Short settle: ensure state remains OK briefly and no failure banners appear
                 try:
@@ -2121,13 +2149,16 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                               const el = document.querySelector(sel);
                               const files = el && el.files ? el.files.length : 0;
                               const ok2 = !!document.querySelector('input[name="resumeStorageId"][value]:not([value=""])');
-                              const fail = (() => {
+                              const failBannersVisible = (() => {
                                 const f = document.querySelector('.resume-upload-failure');
                                 const o = document.querySelector('.resume-upload-oversize');
                                 const v = (n) => { if (!n) return false; const s = window.getComputedStyle(n); return s.display !== 'none' && s.visibility !== 'hidden'; };
                                 return v(f) || v(o);
                               })();
-                              return { ok: (files>0 || ok2) && !fail, fail };
+                              const hasSuccess = files > 0 || ok2;
+                              // Only fail if failure banner visible AND no success indicators
+                              const hardFail = failBannersVisible && !hasSuccess;
+                              return { ok: hasSuccess, fail: hardFail };
                             }
                             """,
                             selector,
@@ -2142,8 +2173,11 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 25.0)
                 return True
             if state and state.get("fail"):
                 return False
-        except Exception:
-            pass
+        except Exception as e:
+            try:
+                log_event("resume_upload.detect.poll_exception", error=str(e), error_type=type(e).__name__, selector=selector)
+            except Exception:
+                pass
         await asyncio.sleep(0.3)
     # Final diagnostic snapshot (optional)
     try:
@@ -2516,7 +2550,11 @@ async def _log_resume_postmortem(page, selector: str) -> None:
             """,
             selector,
         )
-    except Exception:
+    except Exception as e:
+        try:
+            log_event("resume_upload.postmortem.exception", error=str(e), error_type=type(e).__name__, selector=selector)
+        except Exception:
+            pass
         snapshot = None
     try:
         log_event("resume_upload.postmortem", snapshot=snapshot or {})
