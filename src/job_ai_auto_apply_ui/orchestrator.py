@@ -816,6 +816,9 @@ def resume_job(job_id: str, submit_after_prefill: bool = False) -> dict[str, obj
             # Prefill form from saved state
             await prefill_from_saved_state(page, saved_form_state)
 
+            # Give browser time to render the filled values in DOM
+            await asyncio.sleep(1.5)
+
             if submit_after_prefill:
                 # Submit and capture confirmation
                 submit_selector = saved_form_state.get("plan", {}).get(
