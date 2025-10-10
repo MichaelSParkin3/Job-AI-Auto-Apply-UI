@@ -770,17 +770,10 @@ def resume_job(job_id: str, submit_after_prefill: bool = False) -> dict[str, obj
         raise FileNotFoundError(f"pre.json not found at {pre_json_path}")
 
     # Read saved state - may raise JSONDecodeError
-    # (Will be used in full implementation with browser prefill)
-    _saved_form_state = saved_state.read_pre_state(pre_json_path)
+    saved_form_state = saved_state.read_pre_state(pre_json_path)
 
     # Load profile for browser session
-    # (Will be used in full implementation with browser prefill)
-    _profile = profile_manager.load_profile(profile_id)
-
-    # NOTE: Full browser prefill + submit implementation would go here
-    # For T012, we implement the basic structure and flag handling
-    # The actual browser interaction requires browser agent support (T015)
-    # For now, just reset the queue status and return paused/submitted payload
+    profile = profile_manager.load_profile(profile_id)
 
     # Transition to IN_PROGRESS
     try:
@@ -790,22 +783,82 @@ def resume_job(job_id: str, submit_after_prefill: bool = False) -> dict[str, obj
         item.last_updated_at = datetime.now(UTC)
         queue.update(item)
 
-    if submit_after_prefill:
-        # Placeholder for actual browser submit flow
-        # This will be implemented when browser agent support is added in T015
-        return {
-            "id": job_id,
-            "status": "submitted",
-            "confirmation_text": "Placeholder - browser submit not yet implemented",
-            "confirmation_id": None,
-        }
-    else:
-        # Pause mode - just prefill
-        return {
-            "id": job_id,
-            "status": "paused",
-            "message": "Form prefilled from saved state. Review and submit manually.",
-        }
+    # Full browser prefill + submit implementation
+    async def _resume_browser() -> dict[str, object]:
+        from browser_use.browser.session import BrowserSession
+
+        from .browser_agent import prefill_from_saved_state
+
+        # Create browser session
+        LeverBrowserOptions, _, _ = _load_browser_runtime()
+        browser_options = LeverBrowserOptions.from_settings(profile=profile)
+        browser_options.apply_stealth_environment()
+
+        channel = _resolve_browser_channel(profile.preferred_browser)
+        user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
+
+        session = BrowserSession(
+            headless=False,
+            channel=channel,
+            user_data_dir=user_data_dir,
+            keep_alive=True,
+            **browser_options.to_browser_use_kwargs(),
+        )
+        await session.start()
+
+        try:
+            # Navigate to saved URL
+            page = await session.new_page()
+            apply_url = saved_form_state.get("apply_url") or saved_form_state.get("url")
+            await page.goto(apply_url)
+            log_event("resume.navigate", url=apply_url, job_id=job_id)
+
+            # Prefill form from saved state
+            await prefill_from_saved_state(page, saved_form_state)
+
+            if submit_after_prefill:
+                # Submit and capture confirmation
+                submit_selector = saved_form_state.get("plan", {}).get(
+                    "submit_button", "button#btn-submit"
+                )
+                await page.locator(submit_selector).click()
+                await asyncio.sleep(2.0)
+                log_event("resume.submitted", job_id=job_id)
+
+                # Extract confirmation text
+                confirmation_text = await page.text_content("body")
+                confirmation_text = confirmation_text[:500] if confirmation_text else "submitted"
+
+                return {
+                    "id": job_id,
+                    "status": "submitted",
+                    "confirmation_text": confirmation_text,
+                    "confirmation_id": None,
+                }
+            else:
+                # Pause for manual review
+                log_event("resume.paused", job_id=job_id)
+                print(
+                    f"\nJob {job_id} prefilled and ready. "
+                    "Review the form, then press Enter to continue..."
+                )
+                try:
+                    input()
+                except (EOFError, KeyboardInterrupt):
+                    pass
+
+                return {
+                    "id": job_id,
+                    "status": "paused",
+                    "message": "Form prefilled from saved state.",
+                }
+        finally:
+            try:
+                await session.stop()
+            except Exception:
+                pass
+
+    return asyncio.run(_resume_browser())
 
 
 def replay_job(job_id: str) -> dict[str, object]:

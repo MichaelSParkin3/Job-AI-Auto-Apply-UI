@@ -3843,7 +3843,8 @@ async def capture_pre_artifacts(
     # Capture full-page screenshot
     pre_screenshot_path = artifacts_dir / "pre-full.jpg"
     try:
-        await page.screenshot(path=str(pre_screenshot_path), full_page=True, type="jpeg")
+        screenshot_bytes = await page.screenshot(full_page=True, type="jpeg")
+        pre_screenshot_path.write_bytes(screenshot_bytes)
         log_event("artifacts.pre_screenshot.saved", path=str(pre_screenshot_path))
     except Exception as exc:
         log_event("artifacts.pre_screenshot.failed", error=str(exc))
@@ -3881,7 +3882,8 @@ async def capture_post_screenshot(
 
     post_screenshot_path = artifacts_dir / "post-full.jpg"
     try:
-        await page.screenshot(path=str(post_screenshot_path), full_page=True, type="jpeg")
+        screenshot_bytes = await page.screenshot(full_page=True, type="jpeg")
+        post_screenshot_path.write_bytes(screenshot_bytes)
         log_event("artifacts.post_screenshot.saved", path=str(post_screenshot_path))
     except Exception as exc:
         log_event("artifacts.post_screenshot.failed", error=str(exc))
@@ -3889,3 +3891,55 @@ async def capture_post_screenshot(
         post_screenshot_path.touch()
 
     return post_screenshot_path
+
+
+async def prefill_from_saved_state(page, saved_state: dict) -> None:
+    """Prefill form fields using saved state from pre.json.
+
+    Args:
+        page: Playwright page instance.
+        saved_state: SavedState v1 dict loaded from pre.json.
+
+    Raises:
+        Exception: If prefilling fails due to missing selectors or page errors.
+
+    """
+    plan = saved_state.get("plan", {})
+    values = saved_state.get("values", {})
+
+    # JavaScript to set input value by selector
+    js_set_value = (
+        "(sel, val) => { const el = document.querySelector(sel); if (!el) return false; "
+        "const proto = (el.tagName==='TEXTAREA') ? HTMLTextAreaElement.prototype : "
+        "HTMLInputElement.prototype; const setter = Object.getOwnPropertyDescriptor(proto, 'value').set; "
+        "setter.call(el, String(val)); el.dispatchEvent(new Event('input', {bubbles:true})); "
+        "el.dispatchEvent(new Event('change', {bubbles:true})); el.blur && el.blur(); return true; }"
+    )
+
+    # Fill contact fields
+    contact_fields = plan.get("contact_fields", {})
+    for field_name, selector in contact_fields.items():
+        if not selector:
+            continue
+        value = values.get(field_name)
+        if value:
+            try:
+                await page.evaluate(js_set_value, selector, value)
+                log_event("resume.prefill.field", field=field_name, selector=selector)
+            except Exception as exc:
+                log_event("resume.prefill.field_failed", field=field_name, error=str(exc))
+
+    # Fill link fields
+    link_fields = plan.get("link_fields", {})
+    for field_name, selector in link_fields.items():
+        if not selector:
+            continue
+        value = values.get(field_name)
+        if value:
+            try:
+                await page.evaluate(js_set_value, selector, value)
+                log_event("resume.prefill.link", field=field_name, selector=selector)
+            except Exception as exc:
+                log_event("resume.prefill.link_failed", field=field_name, error=str(exc))
+
+    log_event("resume.prefill.complete")
