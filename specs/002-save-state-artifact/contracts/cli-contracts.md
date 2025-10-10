@@ -16,8 +16,11 @@
 - Flags: `--json`
 
 ### cleanup-artifacts (NEW)
-- Default scope: older than N days (prompt for N).
-- Flags: `--profile <id>`, `--older-than <days>`, `--dry-run`, `--json`
+- Flags: `--profile <id>`, `--older-than <days>` (REQUIRED), `--dry-run`, `--json`
+- Behavior:
+  - Running without `--older-than` returns exit code `5` (invalid args).
+  - With `--older-than` and `--dry-run`, prints JSON listing matched files and returns `0`.
+  - With `--older-than` (no `--dry-run`), deletes matched files and returns `0`; returns `2` when nothing matched.
 
 ## JSON Events (apply/resume flows)
 - start: `{ "event": "start", "profile": "<id>" }`
@@ -30,7 +33,11 @@
 
 ## Exit Codes
 - apply: `0` when all succeed; `3` when any fail
-- resume-job: `0` on success; `4` when id not found
+- resume-job: `0` on success; `4` when id not found; `6` when saved state is missing/corrupt (`invalid_state`)
 - replay-job: `0` on success; `4` when id not found
-- cleanup-artifacts: `0` on success; `2` when nothing matched; `5` on invalid args
+- cleanup-artifacts: `0` on success; `2` when nothing matched; `5` on invalid args (e.g., missing `--older-than`)
 
+### Error JSON (resume invalid state)
+```
+{ "id": "01HXYZ...", "status": "invalid_state", "error": "pre.json missing or invalid" }
+```

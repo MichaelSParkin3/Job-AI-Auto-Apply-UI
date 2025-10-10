@@ -11,8 +11,8 @@
   - resume-job opens, pre-fills, pauses by default; `--submit` to send
   - replay-job resets item to in_progress without opening a browser
 - Retention policy:
-  - Manual cleanup only by default; no automatic deletion
-  - Default cleanup scope when no flags provided: older than N days (prompt for N)
+  - Manual cleanup only; no automatic deletion; no default TTL
+  - Cleanup requires explicit `--older-than <days>`; missing argument is an error
 - Privacy:
   - Unredacted artifacts (local-only storage) in v1
 - Scope:
@@ -22,7 +22,7 @@
 - Pre-submit artifacts enable auditability and reliable resume/replay.
 - Post-submit screenshot provides visual confirmation beyond textual confirmation.
 - Keeping resume-job as an interactive checkpoint reduces mis-submits; `--submit` provides automation when desired.
-- Manual cleanup avoids accidental data loss and fits local-only storage.
+- Manual cleanup avoids accidental data loss and fits local-only storage while still enabling minimal retention via explicit operator action.
 - Unredacted storage aligns with local, operator-controlled usage; avoids complexity of masking.
 
 ## Alternatives Considered
@@ -35,3 +35,5 @@
 - Optional export of artifacts bundle (zip) for sharing.
 - Configurable JPEG quality and max width.
 
+## Privacy & Operator Notice
+- A one-time unredacted warning is emitted when capturing artifacts to remind operators of local-only storage.

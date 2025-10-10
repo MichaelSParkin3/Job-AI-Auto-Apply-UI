@@ -81,7 +81,7 @@
   - Behavior: reset queue item to IN_PROGRESS; do not open browser; JSON output includes id + status
 - [ ] T014 Implement cleanup-artifacts command
   - File: src/job_ai_auto_apply_ui/orchestrator.py
-  - Flags: --profile <id>, --older-than <days>, --dry-run, --json; default when no flags: prompt for N days; exit codes per contract
+  - Flags: --profile <id>, --older-than <days> (REQUIRED), --dry-run, --json; exit codes per contract (0 success, 2 nothing matched, 5 invalid args)
 - [ ] T015 Capture pre.json + pre-full.jpg and optional post-full.jpg in browser agent
   - File: src/job_ai_auto_apply_ui/browser_agent/lever.py
   - Add helpers: capture_pre_artifacts(session,page,profile,item,plan,values) → (pre_json_path, pre_screenshot_path); capture_post_screenshot(...) → post_screenshot_path
@@ -110,6 +110,20 @@
   - Reflect: final flags, exit codes, event fields
 - [ ] T022 [P] Ruff/format pass and minor refactors
   - Command: ruff check .
+
+## Additional Coverage (appendix)
+- [ ] T023 [P] Integration test: success path captures post-full.jpg and confirmation.json
+  - File: tests/integration/test_submit_artifacts_success.py
+  - Arrange: stub browser agent/session; After submitted event, assert `post-full.jpg` and `confirmation.json` exist under `data/artifacts/<profile>/<item_id>/`
+- [ ] T024 [P] Integration test: replay-job resets to IN_PROGRESS without browser
+  - File: tests/integration/test_replay_job.py
+  - Arrange: existing queue item; run `auto-apply replay-job <id>`; assert status `in_progress`; verify no browser session initiated (stubbed)
+- [ ] T025 Contract test: resume-job invalid_state exit code 6 + JSON error
+  - File: tests/contract/test_resume_invalid_state.py
+  - Arrange: queue contains id but missing/corrupt `pre.json`; assert exit `6` and error JSON payload
+- [ ] T026 [P] Documentation updates: naming + cleanup semantics
+  - Files: specs/002-save-state-artifact/spec.md, specs/002-save-state-artifact/plan.md, specs/002-save-state-artifact/contracts/cli-contracts.md
+  - Ensure identifiers use snake_case in backticks; cleanup requires `--older-than`; no default TTL; add invalid_state in resume-job
 
 ## Dependencies
 - Tests (T003–T007) before Core (T008–T016)
@@ -142,4 +156,3 @@ task start T022 --repo G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI
 - [P] tasks = different files, no dependencies
 - Verify tests fail before implementing (TDD)
 - Use `cd src; pytest -q` to run tests quickly; `ruff check .` for lint
-

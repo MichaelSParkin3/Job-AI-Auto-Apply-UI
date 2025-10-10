@@ -1,8 +1,8 @@
 ﻿# Feature Specification: Saved Form State & Audit Artifacts for Job Applications
 
-**Feature Branch**: $branch  
+**Feature Branch**: 002-save-state-artifact  
 **Created**: 2025-10-09  
-**Status**: Draft  
+**Status**: Planned  
 **Input**: User description: "G:Github_ReposJob-AI-Auto-Apply-UIJob-AI-Auto-Apply-UIspecs002-save-state-artifact"
 
 ## Execution Flow (main)
@@ -70,7 +70,10 @@ As a job seeker running the CLI, I want the system to save the fully filled appl
 3. **Given** a successful submission, **When** the confirmation page is shown, **Then** the system records confirmation details and captures a post‑submit full‑page screenshot by default (toggleable), and artifacts are available per item.
 4. **Given** an item needs to be retried from scratch, **When** the operator runs replay-job <id>, **Then** the item is reset to in‑progress without opening the browser or pre‑filling.
 5. **Given** artifacts exist for multiple items, **When** the operator invokes the cleanup-artifacts command with a chosen scope, **Then** only targeted artifacts are removed and non‑targeted data (queue files, logs) remain intact.
-6. **Given** a saved form state for an item, **When** the operator runs resume-job <id> without --submit, **Then** the browser opens with fields prefilled and the CLI pauses for manual review; with --submit, the form is submitted and confirmation artifacts are captured.### Edge Cases
+6. **Given** a saved form state for an item, **When** the operator runs resume-job <id> without --submit, **Then** the browser opens with fields prefilled and the CLI pauses for manual review; with --submit, the form is submitted and confirmation artifacts are captured.
+7. **Given** an application id exists but the saved state is missing or corrupted, **When** the operator runs resume-job <id>, **Then** the command exits with code 6 (invalid_state) and emits JSON: `{ "id": "<id>", "status": "invalid_state", "error": "pre.json missing or invalid" }`.
+
+### Edge Cases
 - Saved state missing or corrupted → clearly surfaced error and guidance to re‑run apply.
 - Form structure changed since capture → prefill best‑effort; operator can edit before submit.
 - No confirmation page is present → fall back to confirmation text on the page area or final URL.
@@ -80,17 +83,18 @@ As a job seeker running the CLI, I want the system to save the fully filled appl
 
 ### Functional Requirements
 - **FR-001**: Provide a review mode that fills the form and saves pre‑submit artifacts, then skips submission.
-- **FR-002**: On captcha‑blocked attempts, save pre‑submit form state and a full‑page screenshot and mark the item appropriately.
+- **FR-002**: On `captcha_blocked` attempts, save pre‑submit form state and a full‑page screenshot and mark the item appropriately.
 - **FR-003**: On every attempt (success or failure), save pre‑submit artifacts (form state + full‑page screenshot) before any submit action.
 - **FR-004**: On successful submission, save confirmation details and a post‑submit full‑page screenshot by default; allow disabling via a flag/setting.
-- **FR-005**: Introduce resume-job <id> to reopen a posting, apply the saved state to prefill fields, and pause for manual review by default; allow --submit to proceed.
-- **FR-006**: Introduce replay-job <id> to reset the queue item to in‑progress without opening a browser or applying state.
-- **FR-007**: Persist artifacts per item under a predictable folder: data/artifacts/<profile>/<item_id>/ containing pre.json, pre-full.jpg, post-full.jpg (optional), and confirmation.json (on submit).
+- **FR-005**: Introduce `resume-job <id>` to reopen a posting, apply the saved state to prefill fields, and pause for manual review by default; allow `--submit` to proceed.
+- **FR-006**: Introduce `replay-job <id>` to reset the queue item to `in_progress` without opening a browser or applying state.
+- **FR-007**: Persist artifacts per item under a concrete folder: `data/artifacts/<profile>/<item_id>/` containing `pre.json`, `pre-full.jpg`, `post-full.jpg` (optional), and `confirmation.json` (on submit).
 - **FR-008**: Expose operator controls to enable/disable post‑submit screenshot capture (default ON).
-- **FR-009**: Update queue item status to include pending_review alongside existing states; define valid transitions for resume/replay flows.
-- **FR-010**: Provide a manual cleanup capability to delete saved artifacts on demand; default scope when run with no flags is "older than N days" (prompt operator for N). No automatic retention policy applies by default.### Key Entities *(include if feature involves data)*
-- **FR-011**: Expose a CLI command named `cleanup-artifacts` to perform manual cleanup; must support `--profile`, `--older-than <days>`, and `--dry-run` flags, and prompt for confirmation when deleting.
-- **FR-012**: Saved artifacts are unredacted by default; v1 performs no masking. Operators acknowledge local-only storage.
+- **FR-009**: Update queue item status to include `pending_review` alongside existing states; define valid transitions for resume/replay flows.
+- **FR-010**: Provide a `cleanup-artifacts` command that REQUIRES `--older-than <days>`; flags: `--profile <id>`, `--older-than <days>`, `--dry-run`, `--json`. Running without `--older-than` returns exit code 5 (invalid args). No default TTL and no automatic deletion.
+- **FR-011**: Saved artifacts are unredacted by default; v1 performs no masking. A one-time stderr warning is shown when capturing artifacts.
+
+### Key Entities *(include if feature involves data)*
 - **Application Item**: A single job application attempt, with status and metadata.
 - **Artifacts**: Paths to saved files per item (pre.json, screenshots, confirmation data).
 - **Form State**: The captured mapping of selectors and values needed to prefill forms later.

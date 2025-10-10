@@ -11,13 +11,13 @@
 4. Control screenshots:
    - Default: post-full.jpg captured on success
    - Disable: `auto-apply apply --no-audit-after-submit`
-5. Cleanup artifacts:
-   - Older than N days (default prompt):
-     - `auto-apply cleanup-artifacts`
+5. Cleanup artifacts (explicit days required):
+   - Delete artifacts older than 30 days:
+     - `auto-apply cleanup-artifacts --older-than 30`
    - Specific profile and days:
      - `auto-apply cleanup-artifacts --profile my --older-than 30`
-   - Dry-run first:
-     - `auto-apply cleanup-artifacts --dry-run`
+   - Dry-run first (lists matches without deleting):
+     - `auto-apply cleanup-artifacts --older-than 30 --dry-run`
 
 Acceptance validation
 - Resume-job opens the target posting, pre-fills fields, and pauses; with `--submit`, submission succeeds and confirmation artifacts appear.
@@ -25,3 +25,4 @@ Acceptance validation
 - Captcha-blocked runs persist pre artifacts and set status to captcha_blocked.
 - Cleanup removes only targeted artifacts; queue files remain untouched.
 
+Note: Artifacts are unredacted and saved locally. A one-time warning is shown when capturing artifacts.
