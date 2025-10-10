@@ -1,4 +1,4 @@
-﻿"""Contract tests for the `apply` CLI command."""
+"""Contract tests for the `apply` CLI command."""
 
 from __future__ import annotations
 
@@ -95,9 +95,7 @@ def test_apply_json_stream_success(
         assert mode == "supervised"
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, err = _run_cli(orchestrator_module, ["apply", "--profile", "front_end", "--json"])
@@ -113,7 +111,6 @@ def test_apply_json_stream_success(
             assert payload.get("confirmation_text") == "Submitted"
     assert err == ""
     assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
-
 
 
 def test_apply_cli_accepts_extended_flags(
@@ -134,9 +131,7 @@ def test_apply_cli_accepts_extended_flags(
         yield {"event": "start", "profile": profile_id}
         yield {"event": "end", "summary": {"submitted": 0, "failed": 0}}
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, err = _run_cli(
@@ -167,7 +162,6 @@ def test_apply_cli_accepts_extended_flags(
     assert os.environ["AUTO_APPLY_USE_LLM_LOCATOR"] == "1"
     assert os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] == "1"
     assert os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] == "45"
-
 
 
 def test_apply_stream_handles_failure(
@@ -209,7 +203,6 @@ def test_apply_stream_handles_failure(
         validate(instance=payload, schema=apply_schema)
     assert err == ""
     assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
-
 
 
 def test_iter_apply_events_attaches_confirmation_id(
@@ -359,7 +352,6 @@ def test_iter_apply_events_attaches_confirmation_id(
             assert "confirmation_id" not in event
 
 
-
 def test_apply_json_partial_failure(
     monkeypatch: pytest.MonkeyPatch,
     apply_schema: dict[str, Any],
@@ -401,6 +393,3 @@ def test_apply_json_partial_failure(
         validate(instance=payload, schema=apply_schema)
     assert err == ""
     assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
-
-
-

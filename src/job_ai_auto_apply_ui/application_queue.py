@@ -30,6 +30,7 @@ class ApplicationStatus(str, Enum):
     NEW = "new"
     IN_PROGRESS = "in_progress"
     CAPTCHA_BLOCKED = "captcha_blocked"
+    PENDING_REVIEW = "pending_review"
     SUBMITTED = "submitted"
     FAILED = "failed"
 
@@ -61,6 +62,9 @@ class Artifacts:
     har_path: str | None = None
     confirmation_text: str | None = None
     confirmation_id: str | None = None
+    form_state_path: str | None = None
+    screenshot_before_path: str | None = None
+    screenshot_after_path: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
         """Return a dictionary representation of the captured artifacts.
@@ -76,6 +80,9 @@ class Artifacts:
             "har_path": self.har_path,
             "confirmation_text": self.confirmation_text,
             "confirmation_id": self.confirmation_id,
+            "form_state_path": self.form_state_path,
+            "screenshot_before_path": self.screenshot_before_path,
+            "screenshot_after_path": self.screenshot_after_path,
         }
 
     @classmethod
@@ -96,6 +103,9 @@ class Artifacts:
             har_path=data.get("har_path"),
             confirmation_text=data.get("confirmation_text"),
             confirmation_id=data.get("confirmation_id"),
+            form_state_path=data.get("form_state_path"),
+            screenshot_before_path=data.get("screenshot_before_path"),
+            screenshot_after_path=data.get("screenshot_after_path"),
         )
 
 
@@ -434,6 +444,32 @@ class ApplicationQueue:
         )
         return item
 
+    def mark_pending_review(
+        self,
+        item_id: str,
+        artifacts: Artifacts,
+    ) -> ApplicationItem:
+        """Mark item as pending review with saved artifacts.
+
+        Args:
+            item_id: Application item identifier.
+            artifacts: Captured artifacts including form_state_path and screenshot_before_path.
+
+        Returns:
+            ApplicationItem: Updated item with PENDING_REVIEW status.
+
+        """
+        item = self._require(item_id)
+        item.update_status(ApplicationStatus.PENDING_REVIEW)
+        item.attach_artifacts(artifacts)
+        self.update(item)
+        log_event(
+            "queue.pending_review",
+            profile=self.profile_id,
+            item=item_id,
+        )
+        return item
+
     def resume(self, item_id: str) -> ApplicationItem:
         item = self._require(item_id)
         item.update_status(ApplicationStatus.IN_PROGRESS)
@@ -509,9 +545,15 @@ def _is_valid_transition(old: ApplicationStatus, new: ApplicationStatus) -> bool
             ApplicationStatus.SUBMITTED,
             ApplicationStatus.FAILED,
             ApplicationStatus.CAPTCHA_BLOCKED,
+            ApplicationStatus.PENDING_REVIEW,
         },
         ApplicationStatus.CAPTCHA_BLOCKED: {
             ApplicationStatus.IN_PROGRESS,
+            ApplicationStatus.FAILED,
+        },
+        ApplicationStatus.PENDING_REVIEW: {
+            ApplicationStatus.IN_PROGRESS,
+            ApplicationStatus.SUBMITTED,
             ApplicationStatus.FAILED,
         },
         ApplicationStatus.SUBMITTED: set(),

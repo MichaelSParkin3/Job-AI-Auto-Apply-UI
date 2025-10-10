@@ -1,4 +1,5 @@
-﻿"""Structured logging helpers for the auto-apply assistant."""
+"""Structured logging helpers for the auto-apply assistant."""
+
 from __future__ import annotations
 
 import logging

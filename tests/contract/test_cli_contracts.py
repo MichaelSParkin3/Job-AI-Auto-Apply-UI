@@ -1,4 +1,4 @@
-﻿"""CLI contract smoke tests that exercise high-level orchestrator flows."""
+"""CLI contract smoke tests that exercise high-level orchestrator flows."""
 
 from __future__ import annotations
 
@@ -54,12 +54,8 @@ def test_discover_json_contract_no_results(
     def fake_discover(profile: dict[str, str], window_hours: int, cap: int) -> list[Any]:
         return []
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
+    monkeypatch.setattr("job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover)
 
     code, out, err = _run_cli(
         orchestrator_module, ["discover", "--profile", "dev", "--json"], monkeypatch
@@ -68,9 +64,7 @@ def test_discover_json_contract_no_results(
     assert code == 2
     payload = json.loads(out)
     repo = Path(__file__).resolve().parents[2]
-    schema_path = (
-        repo / "specs" / "001-as-a-job" / "contracts" / "schemas" / "discover.schema.json"
-    )
+    schema_path = repo / "specs" / "001-as-a-job" / "contracts" / "schemas" / "discover.schema.json"
     discover_schema = json.loads(schema_path.read_text(encoding="utf-8"))
     validate(instance=payload, schema=discover_schema)
     assert payload["items"] == []
@@ -94,9 +88,7 @@ def test_apply_human_mode_success(
     def fake_iter_apply_events(profile: Any, mode: str):
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, err = _run_cli(orchestrator_module, ["apply", "--profile", "dev"], monkeypatch)
@@ -115,9 +107,7 @@ def test_resume_job_json_contract(
 
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.resume_job", fake_resume)
 
-    code, out, err = _run_cli(
-        orchestrator_module, ["resume-job", "abc123", "--json"], monkeypatch
-    )
+    code, out, err = _run_cli(orchestrator_module, ["resume-job", "abc123", "--json"], monkeypatch)
 
     assert code == 0
     payload = json.loads(out)
@@ -132,9 +122,7 @@ def test_resume_job_json_contract(
     assert err == ""
 
 
-def test_apply_json_event_schema(
-    monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
-) -> None:
+def test_apply_json_event_schema(monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any) -> None:
     events = [
         {"event": "start", "profile": "dev"},
         {"event": "item", "id": "item-1", "status": "in_progress"},
@@ -153,9 +141,7 @@ def test_apply_json_event_schema(
     def fake_iter_apply_events(profile: Any, mode: str):
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, err = _run_cli(

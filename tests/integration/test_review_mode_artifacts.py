@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from job_ai_auto_apply_ui.application_queue import ApplicationItem, ApplicationQueue, ApplicationStatus
+from job_ai_auto_apply_ui.application_queue import (
+    ApplicationItem,
+    ApplicationQueue,
+    ApplicationStatus,
+)
 from job_ai_auto_apply_ui.profile_manager import Profile
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -46,7 +49,7 @@ class _StubPage:
         path = kwargs.get("path")
         self.screenshots.append((path, kwargs))
         # Return fake JPEG bytes
-        return b'\xff\xd8\xff\xe0' + b'\x00' * 100  # Minimal JPEG header + padding
+        return b"\xff\xd8\xff\xe0" + b"\x00" * 100  # Minimal JPEG header + padding
 
     async def content(self) -> str:
         return self.html
@@ -146,11 +149,11 @@ async def test_review_mode_emits_saved_for_review_event(monkeypatch: pytest.Monk
     """Test that review mode emits saved_for_review JSON event with correct fields."""
 
     # Setup
-    profile = _test_profile()
+    _profile = _test_profile()
 
     # NOTE: This test will FAIL until orchestrator review-mode implementation
     # Expected event structure:
-    expected_event = {
+    _expected_event = {
         "event": "saved_for_review",
         "id": "01HXYZ",  # Application item ID
         "form_state_path": "data/artifacts/test_review/01HXYZ/pre.json",

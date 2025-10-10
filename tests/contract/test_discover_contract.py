@@ -1,4 +1,4 @@
-﻿"""Contract tests for the `discover` CLI command."""
+"""Contract tests for the `discover` CLI command."""
 
 from __future__ import annotations
 
@@ -70,7 +70,6 @@ def test_build_parser_keeps_browser_lazy(orchestrator_module: Any) -> None:
     assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
 
 
-
 def test_discover_json_success(
     monkeypatch: pytest.MonkeyPatch,
     discover_schema: dict[str, Any],
@@ -100,12 +99,8 @@ def test_discover_json_success(
         assert cap == 5
         return fake_items
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
+    monkeypatch.setattr("job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover)
 
     code, out, err = _run_cli(
         orchestrator_module,
@@ -118,7 +113,6 @@ def test_discover_json_success(
     assert payload["items"] == [item.data for item in fake_items]
     assert err == ""
     assert "job_ai_auto_apply_ui.browser_agent.lever" not in sys.modules
-
 
 
 def test_discover_json_no_results(
@@ -134,12 +128,8 @@ def test_discover_json_no_results(
     def fake_discover(profile: dict[str, Any], window_hours: int, cap: int) -> list[_FakeItem]:
         return []
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
+    monkeypatch.setattr("job_ai_auto_apply_ui.job_discovery.discover_jobs", fake_discover)
 
     code, out, err = _run_cli(orchestrator_module, ["discover", "--profile", "front_end", "--json"])
 

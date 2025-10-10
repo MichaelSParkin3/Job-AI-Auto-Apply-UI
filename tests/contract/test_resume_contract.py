@@ -1,4 +1,4 @@
-﻿"""Contract tests for the `resume-job` CLI command."""
+"""Contract tests for the `resume-job` CLI command."""
 
 from __future__ import annotations
 

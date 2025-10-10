@@ -1,4 +1,4 @@
-﻿"""Unit tests for ApplicationQueue serialization behaviors."""
+"""Unit tests for ApplicationQueue serialization behaviors."""
 
 from __future__ import annotations
 

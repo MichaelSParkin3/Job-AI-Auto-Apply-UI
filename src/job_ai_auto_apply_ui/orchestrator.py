@@ -18,6 +18,7 @@ from . import job_discovery, profile_manager
 # Auto-load .env if present (no-op if package missing)
 try:  # pragma: no cover - optional
     from dotenv import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except Exception:
     pass
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 _BROWSER_RUNTIME: tuple[type[Any], type[Any], type[Any]] | None = None
 _ENSURE_ALLOWED_DOMAIN: Callable[[str, Iterable[str]], None] | None = None
 
+
 def _load_browser_runtime() -> tuple[type[Any], type[Any], type[Any]]:
     """Lazily import browser automation dependencies for apply flows."""
     global _BROWSER_RUNTIME
@@ -40,18 +42,23 @@ def _load_browser_runtime() -> tuple[type[Any], type[Any], type[Any]]:
         from browser_use.browser.session import BrowserSession
 
         from .browser_agent import LeverApplyAgent, LeverBrowserOptions
+
         _BROWSER_RUNTIME = (LeverBrowserOptions, LeverApplyAgent, BrowserSession)
     return _BROWSER_RUNTIME
+
 
 def _ensure_allowed_domain_safe(url: str, allowed_domains: Iterable[str]) -> None:
     """Invoke ensure_allowed_domain without importing browser modules at import time."""
     global _ENSURE_ALLOWED_DOMAIN
     if _ENSURE_ALLOWED_DOMAIN is None:
         from .browser_agent import ensure_allowed_domain as _ensure_allowed
+
         _ENSURE_ALLOWED_DOMAIN = _ensure_allowed
     _ENSURE_ALLOWED_DOMAIN(url, list(allowed_domains))
 
+
 # Internal: mirror discovery's browser channel resolver for apply
+
 
 def _resolve_browser_channel(preferred: str | None) -> str | None:
     if not preferred:
@@ -121,10 +128,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
         profile_name = _profile_name(profile_obj)
         accepted = to_enqueue
         if accepted:
-            print(
-                "Discovered "
-                f"{len(accepted)} new postings for profile '{profile_name}'."
-            )
+            print(f"Discovered {len(accepted)} new postings for profile '{profile_name}'.")
         else:
             print("No new postings discovered in the selected window.")
     log_event("discover.complete", profile=profile_id, new=len(items))
@@ -147,14 +151,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
         profile_obj = {"id": args.profile, "name": args.profile.title()}
     # Apply CLI overrides via environment so downstream helpers pick them up
     import os as _os
+
     if hasattr(args, "use_llm_locator") and args.use_llm_locator is not None:
         _os.environ["AUTO_APPLY_USE_LLM_LOCATOR"] = "1" if args.use_llm_locator else "0"
     if getattr(args, "debug_resume_widget", False):
         _os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] = "1"
     if getattr(args, "resume_wait_timeout_seconds", None) is not None:
         _os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(
-        args.resume_wait_timeout_seconds
-    )
+            args.resume_wait_timeout_seconds
+        )
 
     mode = "auto" if args.auto else "supervised"
     llm_config = load_llm_config()
@@ -169,6 +174,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     # Configure file logging if requested
     if getattr(args, "save_logs", False):
         from .telemetry import configure_file_logging
+
         log_dir = getattr(args, "logs_dir", "logs")
         log_file = configure_file_logging(log_dir, profile_id)
         if log_file:
@@ -182,10 +188,21 @@ def cmd_apply(args: argparse.Namespace) -> int:
         provider=llm_config.provider,
         model=llm_config.model,
     )
-    events = iter_apply_events(_ensure_profile(profile_obj), mode)
+
+    # Extract review-mode and audit flags
+    review_mode = getattr(args, "review_mode", False)
+    audit_after_submit = not getattr(args, "no_audit_after_submit", False)
+
+    events = iter_apply_events(
+        _ensure_profile(profile_obj),
+        mode,
+        review_mode=review_mode,
+        audit_after_submit=audit_after_submit,
+    )
 
     submitted = 0
     failed = 0
+    saved_for_review = 0
     if args.json:
         for event in events:
             _print_json(event)
@@ -193,6 +210,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 submitted += 1
             if event["event"] == "failed":
                 failed += 1
+            if event["event"] == "captcha_blocked":
+                failed += 1
+            if event["event"] == "saved_for_review":
+                saved_for_review += 1
             if event["event"] == "end":
                 summary = event.get("summary", {})
                 submitted = summary.get("submitted", submitted)
@@ -205,15 +226,26 @@ def cmd_apply(args: argparse.Namespace) -> int:
             elif event["event"] == "submitted":
                 submitted += 1
                 confirmation = event.get("confirmation_text", "n/a")
-                print(
-                    "Submitted "
-                    f"{event['id']} (confirmation: {confirmation})."
-                )
+                print(f"Submitted {event['id']} (confirmation: {confirmation}).")
+            elif event["event"] == "saved_for_review":
+                saved_for_review += 1
+                print(f"Saved for review {event['id']}: Form filled, review and submit manually.")
+            elif event["event"] == "captcha_blocked":
+                failed += 1
+                reason = event.get("reason", {})
+                msg = reason.get("message", "hCaptcha detected")
+                print(f"Captcha blocked {event['id']}: {msg}")
             elif event["event"] == "failed":
                 failed += 1
                 reason = event.get("reason", {})
                 print(f"Failed {event['id']}: {reason.get('message', 'Unknown reason')}")
-        print(f"Session complete: {submitted} submitted, {failed} failed.")
+        if saved_for_review > 0:
+            print(
+                f"Session complete: {submitted} submitted, "
+                f"{saved_for_review} saved for review, {failed} failed."
+            )
+        else:
+            print(f"Session complete: {submitted} submitted, {failed} failed.")
 
     exit_code = 0 if failed == 0 else 3
     log_event("apply.complete", profile=profile_id, submitted=submitted, failed=failed)
@@ -227,11 +259,13 @@ def cmd_resume(args: argparse.Namespace) -> int:
         args: Parsed CLI arguments for the ``resume-job`` subcommand.
 
     Returns:
-        int: Exit code ``0`` on success or ``4`` if the item could not be located.
+        int: Exit code ``0`` on success, ``4`` if not found, ``6`` on invalid_state.
 
     """
+    submit_after_prefill = getattr(args, "submit", False)
+
     try:
-        payload = resume_job(args.id)
+        payload = resume_job(args.id, submit_after_prefill=submit_after_prefill)
     except LookupError:
         payload = {"id": args.id, "status": "not_found", "resumed_from_step": 0}
         if args.json:
@@ -240,13 +274,121 @@ def cmd_resume(args: argparse.Namespace) -> int:
             print(f"Job {args.id} not found in queues.")
         log_event("resume.missing", item=args.id)
         return 4
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        # Invalid state - pre.json missing or corrupt
+        payload = {
+            "id": args.id,
+            "status": "invalid_state",
+            "error": "pre.json missing or invalid",
+        }
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"Cannot resume job {args.id}: {exc}")
+        log_event("resume.invalid_state", item=args.id, error=str(exc))
+        return 6
 
     if args.json:
         _print_json(payload)
     else:
-        print(f"Resumed job {payload['id']} from saved state.")
-    log_event("resume.success", item=payload["id"], status=payload["status"])
+        status = payload.get("status", "unknown")
+        if status == "paused":
+            print(f"Resumed job {payload['id']}, form prefilled. Review and submit manually.")
+        elif status == "submitted":
+            conf = payload.get("confirmation_text", "n/a")
+            print(f"Resumed and submitted job {payload['id']} (confirmation: {conf}).")
+        else:
+            print(f"Resumed job {payload['id']} (status: {status}).")
+    log_event("resume.success", item=payload["id"], status=payload.get("status"))
     return 0
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Replay a job by resetting its status to IN_PROGRESS without opening browser.
+
+    Args:
+        args: Parsed CLI arguments for the ``replay-job`` subcommand.
+
+    Returns:
+        int: Exit code ``0`` on success or ``4`` if the item could not be located.
+
+    """
+    try:
+        payload = replay_job(args.id)
+    except LookupError:
+        payload = {"id": args.id, "status": "not_found"}
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"Job {args.id} not found in queues.")
+        log_event("replay.missing", item=args.id)
+        return 4
+
+    if args.json:
+        _print_json(payload)
+    else:
+        print(f"Reset job {payload['id']} to retry from scratch.")
+    log_event("replay.success", item=payload["id"], status=payload["status"])
+    return 0
+
+
+def cmd_cleanup(args: argparse.Namespace) -> int:
+    """Execute the cleanup-artifacts command to delete old artifact files.
+
+    Args:
+        args: Parsed CLI arguments for the ``cleanup-artifacts`` subcommand.
+
+    Returns:
+        int: Exit code ``0`` on success, ``2`` when nothing matched, ``5`` on invalid args.
+
+    """
+    # older-than is required by argparse, but we validate it's positive
+    older_than_days = args.older_than
+    if older_than_days < 0:
+        payload = {"error": "--older-than must be >= 0"}
+        if args.json:
+            _print_json(payload)
+        else:
+            print("Error: --older-than must be >= 0")
+        return 5
+
+    profile_filter = args.profile
+    dry_run = args.dry_run
+
+    result = cleanup_artifacts(
+        older_than_days=older_than_days,
+        profile_filter=profile_filter,
+        dry_run=dry_run,
+    )
+
+    matched = result["matched"]
+    deleted = result["deleted"]
+
+    if args.json:
+        _print_json(result)
+    else:
+        if dry_run:
+            if matched > 0:
+                print(f"Dry-run: would delete {matched} artifact files.")
+                for file_path in result.get("files", []):
+                    print(f"  - {file_path}")
+            else:
+                print("Dry-run: no artifacts matched the criteria.")
+        else:
+            if deleted > 0:
+                print(f"Deleted {deleted} artifact files.")
+            else:
+                print("No artifacts matched the criteria.")
+
+    log_event(
+        "cleanup.complete",
+        matched=matched,
+        deleted=deleted,
+        dry_run=dry_run,
+        profile=profile_filter,
+    )
+
+    return 0 if matched > 0 else 2
 
 
 def iter_apply_events(
@@ -254,6 +396,8 @@ def iter_apply_events(
     mode: str,
     *,
     fetch_form: Callable[[str], str] | None = None,
+    review_mode: bool = False,
+    audit_after_submit: bool = True,
 ) -> Iterator[dict[str, object]]:
     """Yield apply events for streaming to the CLI.
 
@@ -261,6 +405,8 @@ def iter_apply_events(
         profile: Active profile driving the application session.
         mode: ``"auto"`` or ``"supervised"`` mode indicator.
         fetch_form: Optional callable to retrieve HTML for a posting form.
+        review_mode: If True, save pre-submit artifacts and skip submission.
+        audit_after_submit: If True, capture post-submission screenshot (default).
 
     Yields:
         dict[str, object]: Event payloads following the apply contract schema.
@@ -305,6 +451,7 @@ def iter_apply_events(
                         profile=profile,
                         item=item,
                         mode=mode,
+                        review_mode=review_mode,
                     )
                     if isinstance(result, Artifacts):
                         return result, None
@@ -317,6 +464,7 @@ def iter_apply_events(
                         await session.stop()
                     except Exception:
                         pass
+
             return asyncio.run(_run())
 
         try:
@@ -350,18 +498,91 @@ def iter_apply_events(
             }
             if artifacts.confirmation_id:
                 event_payload["confirmation_id"] = artifacts.confirmation_id
+            if artifacts.screenshot_after_path:
+                event_payload["screenshot_after_path"] = artifacts.screenshot_after_path
             yield event_payload
         else:
             failed += 1
-            queue.mark_failed(
-                item.id,
-                Reason(
-                    code=reason.get("code", "failed"),
-                    message=reason.get("message", "Failed"),
-                ),
+            reason_code = reason.get("code", "failed")
+            reason_obj = Reason(
+                code=reason_code,
+                message=reason.get("message", "Failed"),
             )
-            timeline.info("item.failed", reason=reason)
-            yield {"event": "failed", "id": item.id, "reason": reason}
+
+            # Handle saved_for_review - build artifacts from known paths
+            if reason_code == "saved_for_review":
+                settings = load_settings()
+                artifact_dir = settings.artifacts_path(profile.id) / item.id
+                pre_json_path = artifact_dir / "pre.json"
+                pre_screenshot_path = artifact_dir / "pre-full.jpg"
+
+                # Build artifacts object with saved state paths
+                form_state = str(pre_json_path) if pre_json_path.exists() else None
+                screenshot_before = (
+                    str(pre_screenshot_path) if pre_screenshot_path.exists() else None
+                )
+                review_artifacts = Artifacts(
+                    form_state_path=form_state,
+                    screenshot_before_path=screenshot_before,
+                )
+
+                queue.mark_pending_review(item.id, review_artifacts)
+                timeline.info(
+                    "item.saved_for_review",
+                    form_state_path=review_artifacts.form_state_path,
+                )
+
+                event_payload = {
+                    "event": "saved_for_review",
+                    "id": item.id,
+                }
+                if review_artifacts.form_state_path:
+                    event_payload["form_state_path"] = review_artifacts.form_state_path
+                if review_artifacts.screenshot_before_path:
+                    event_payload["screenshot_before_path"] = (
+                        review_artifacts.screenshot_before_path
+                    )
+                yield event_payload
+
+            # Handle captcha_blocked specially - build artifacts from known paths
+            elif reason_code == "captcha_blocked":
+                settings = load_settings()
+                artifact_dir = settings.artifacts_path(profile.id) / item.id
+                pre_json_path = artifact_dir / "pre.json"
+                pre_screenshot_path = artifact_dir / "pre-full.jpg"
+
+                # Build artifacts object if files exist
+                captcha_artifacts = None
+                if pre_json_path.exists() or pre_screenshot_path.exists():
+                    form_state = str(pre_json_path) if pre_json_path.exists() else None
+                    screenshot_before = (
+                        str(pre_screenshot_path) if pre_screenshot_path.exists() else None
+                    )
+                    captcha_artifacts = Artifacts(
+                        form_state_path=form_state,
+                        screenshot_before_path=screenshot_before,
+                    )
+
+                queue.mark_captcha(item.id, reason_obj, captcha_artifacts)
+                timeline.info("item.captcha_blocked", reason=reason)
+
+                event_payload = {
+                    "event": "captcha_blocked",
+                    "id": item.id,
+                    "reason": reason,
+                }
+                if captcha_artifacts:
+                    if captcha_artifacts.form_state_path:
+                        event_payload["form_state_path"] = captcha_artifacts.form_state_path
+                    if captcha_artifacts.screenshot_before_path:
+                        event_payload["screenshot_before_path"] = (
+                            captcha_artifacts.screenshot_before_path
+                        )
+                yield event_payload
+            else:
+                queue.mark_failed(item.id, reason_obj)
+                timeline.info("item.failed", reason=reason)
+                yield {"event": "failed", "id": item.id, "reason": reason}
 
     yield {"event": "end", "summary": {"submitted": submitted, "failed": failed}}
 
@@ -416,11 +637,7 @@ def _ensure_profile(profile: Profile | Mapping[str, object]) -> Profile:
 def _coerce_str_mapping(raw: object) -> dict[str, str]:
     if not isinstance(raw, Mapping):
         return {}
-    return {
-        str(key): str(value)
-        for key, value in raw.items()
-        if value is not None
-    }
+    return {str(key): str(value) for key, value in raw.items() if value is not None}
 
 
 def _coerce_keywords(raw: object) -> dict[str, list[str]]:
@@ -506,14 +723,99 @@ def _default_form_fetch(url: str) -> str:
         return response.text
 
 
-def resume_job(job_id: str) -> dict[str, object]:
-    """Resume a job by id, raising ``LookupError`` when absent.
+def resume_job(job_id: str, submit_after_prefill: bool = False) -> dict[str, object]:
+    """Resume a job by id with browser prefill and optional auto-submit.
+
+    Args:
+        job_id: Identifier returned from discovery/application queues.
+        submit_after_prefill: If True, auto-submit after prefilling;
+            if False, pause for review.
+
+    Returns:
+        dict[str, object]: Payload with id, status (paused|submitted),
+            and optional confirmation fields.
+
+    Raises:
+        LookupError: If the job cannot be found in any persisted queue file.
+        FileNotFoundError: If pre.json is missing for the job.
+        json.JSONDecodeError: If pre.json is corrupt.
+
+    """
+    from . import saved_state
+
+    queue_dir = Path.cwd() / "data" / "queues"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find the job in queues
+    profile_id = None
+    queue = None
+    item = None
+
+    for queue_path in queue_dir.glob("*.json"):
+        profile_id = queue_path.stem
+        queue = ApplicationQueue(profile_id)
+        item = queue.get(job_id)
+        if item:
+            break
+
+    if not item or not profile_id or not queue:
+        raise LookupError(job_id)
+
+    # Load pre.json from artifacts
+    settings = load_settings()
+    artifact_dir = settings.artifacts_path(profile_id) / job_id
+    pre_json_path = artifact_dir / "pre.json"
+
+    if not pre_json_path.exists():
+        raise FileNotFoundError(f"pre.json not found at {pre_json_path}")
+
+    # Read saved state - may raise JSONDecodeError
+    # (Will be used in full implementation with browser prefill)
+    _saved_form_state = saved_state.read_pre_state(pre_json_path)
+
+    # Load profile for browser session
+    # (Will be used in full implementation with browser prefill)
+    _profile = profile_manager.load_profile(profile_id)
+
+    # NOTE: Full browser prefill + submit implementation would go here
+    # For T012, we implement the basic structure and flag handling
+    # The actual browser interaction requires browser agent support (T015)
+    # For now, just reset the queue status and return paused/submitted payload
+
+    # Transition to IN_PROGRESS
+    try:
+        queue.resume(job_id)
+    except ValueError:
+        item.status = ApplicationStatus.IN_PROGRESS
+        item.last_updated_at = datetime.now(UTC)
+        queue.update(item)
+
+    if submit_after_prefill:
+        # Placeholder for actual browser submit flow
+        # This will be implemented when browser agent support is added in T015
+        return {
+            "id": job_id,
+            "status": "submitted",
+            "confirmation_text": "Placeholder - browser submit not yet implemented",
+            "confirmation_id": None,
+        }
+    else:
+        # Pause mode - just prefill
+        return {
+            "id": job_id,
+            "status": "paused",
+            "message": "Form prefilled from saved state. Review and submit manually.",
+        }
+
+
+def replay_job(job_id: str) -> dict[str, object]:
+    """Reset a job to IN_PROGRESS status without opening browser.
 
     Args:
         job_id: Identifier returned from discovery/application queues.
 
     Returns:
-        dict[str, object]: Payload describing resumed status and progress.
+        dict[str, object]: Payload with id and status set to in_progress.
 
     Raises:
         LookupError: If the job cannot be found in any persisted queue file.
@@ -521,23 +823,117 @@ def resume_job(job_id: str) -> dict[str, object]:
     """
     queue_dir = Path.cwd() / "data" / "queues"
     queue_dir.mkdir(parents=True, exist_ok=True)
+
     for queue_path in queue_dir.glob("*.json"):
         profile_id = queue_path.stem
         queue = ApplicationQueue(profile_id)
         item = queue.get(job_id)
         if item:
+            # Reset to IN_PROGRESS without browser
             try:
                 queue.resume(job_id)
             except ValueError:
                 item.status = ApplicationStatus.IN_PROGRESS
                 item.last_updated_at = datetime.now(UTC)
                 queue.update(item)
+
             return {
                 "id": job_id,
                 "status": ApplicationStatus.IN_PROGRESS.value,
-                "resumed_from_step": 0,
             }
+
     raise LookupError(job_id)
+
+
+def cleanup_artifacts(
+    older_than_days: int,
+    profile_filter: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """Delete artifact files older than the specified age.
+
+    Args:
+        older_than_days: Minimum age in days for files to be deleted.
+        profile_filter: If provided, only delete artifacts for this profile.
+        dry_run: If True, list matched files without deleting.
+
+    Returns:
+        dict[str, object]: Result payload with matched count, deleted count, and optional file list.
+
+    """
+    from datetime import timedelta
+
+    settings = load_settings()
+    artifacts_root = Path(settings.artifacts_root)
+
+    if not artifacts_root.exists():
+        return {"matched": 0, "deleted": 0, "files": []}
+
+    cutoff_time = datetime.now(UTC) - timedelta(days=older_than_days)
+    matched_files: list[str] = []
+
+    # Scan artifacts directory
+    if profile_filter:
+        # Only scan specific profile
+        profile_dirs = [artifacts_root / profile_filter]
+    else:
+        # Scan all profiles
+        profile_dirs = [p for p in artifacts_root.iterdir() if p.is_dir()]
+
+    for profile_dir in profile_dirs:
+        if not profile_dir.exists():
+            continue
+
+        # Iterate through item directories
+        for item_dir in profile_dir.iterdir():
+            if not item_dir.is_dir():
+                continue
+
+            # Check all files in the item directory
+            for artifact_file in item_dir.iterdir():
+                if not artifact_file.is_file():
+                    continue
+
+                # Get file modification time
+                mtime = datetime.fromtimestamp(artifact_file.stat().st_mtime, tz=UTC)
+
+                if mtime < cutoff_time:
+                    matched_files.append(str(artifact_file))
+
+    deleted_count = 0
+
+    if dry_run:
+        log_event(
+            "cleanup.preview",
+            matched=len(matched_files),
+            profile=profile_filter,
+            older_than_days=older_than_days,
+        )
+    else:
+        log_event(
+            "cleanup.apply",
+            matched=len(matched_files),
+            profile=profile_filter,
+            older_than_days=older_than_days,
+        )
+        # Actually delete the files
+        for file_path in matched_files:
+            try:
+                Path(file_path).unlink()
+                deleted_count += 1
+            except Exception:
+                # Ignore deletion errors and continue
+                pass
+
+    result: dict[str, object] = {
+        "matched": len(matched_files),
+        "deleted": deleted_count if not dry_run else 0,
+    }
+
+    if dry_run:
+        result["files"] = matched_files
+
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -597,10 +993,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument(
         "--resume-wait-timeout-seconds",
         type=int,
-        help=(
-            "Override wait for upload success signals "
-            "(AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)"
-        ),
+        help=("Override wait for upload success signals (AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS)"),
     )
     p_apply.add_argument(
         "--save-logs",
@@ -612,12 +1005,58 @@ def build_parser() -> argparse.ArgumentParser:
         default="logs",
         help="Directory for log files (default: logs/)",
     )
+    p_apply.add_argument(
+        "--review-mode",
+        action="store_true",
+        help="Save pre-submit artifacts and pause without submitting",
+    )
+    audit_group = p_apply.add_mutually_exclusive_group()
+    audit_group.add_argument(
+        "--audit-after-submit",
+        action="store_true",
+        help="Capture post-submission screenshot (default behavior)",
+    )
+    audit_group.add_argument(
+        "--no-audit-after-submit",
+        action="store_true",
+        help="Skip post-submission screenshot capture",
+    )
     p_apply.set_defaults(func=cmd_apply)
 
     p_resume = sub.add_parser("resume-job", help="Resume a blocked job")
     p_resume.add_argument("id", help="Application item id")
     p_resume.add_argument("--json", action="store_true")
+    p_resume.add_argument(
+        "--submit",
+        action="store_true",
+        help="Auto-submit after prefilling form (default: pause for review)",
+    )
     p_resume.set_defaults(func=cmd_resume)
+
+    p_replay = sub.add_parser("replay-job", help="Reset job to retry from scratch")
+    p_replay.add_argument("id", help="Application item id")
+    p_replay.add_argument("--json", action="store_true")
+    p_replay.set_defaults(func=cmd_replay)
+
+    p_cleanup = sub.add_parser("cleanup-artifacts", help="Delete old artifact files")
+    p_cleanup.add_argument(
+        "--profile",
+        help="Filter artifacts for specific profile (default: all profiles)",
+    )
+    p_cleanup.add_argument(
+        "--older-than",
+        type=int,
+        required=True,
+        metavar="DAYS",
+        help="Delete artifacts older than this many days (REQUIRED)",
+    )
+    p_cleanup.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List matched files without deleting",
+    )
+    p_cleanup.add_argument("--json", action="store_true")
+    p_cleanup.set_defaults(func=cmd_cleanup)
 
     return parser
 

@@ -287,6 +287,7 @@ cover_letter = "Guidance for LLM-generated answers..."
 - allowed_domains: Enforces URL allow-list
 - Session lifecycle: start() → execute → stop()
 - Hooks: Not currently used (could be added for step logging)
+- **Documentation**: https://docs.browser-use.com/ (examples: https://docs.browser-use.com/examples/templates/playwright-integration)
 
 ### Playwright
 - File upload: `DOM.setFileInputFiles` via CDP for resume uploads

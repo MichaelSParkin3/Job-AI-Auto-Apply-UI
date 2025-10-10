@@ -1,4 +1,4 @@
-﻿"""Utilities for analyzing Lever forms and configuring browser sessions."""
+"""Utilities for analyzing Lever forms and configuring browser sessions."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 
 from browser_use.browser.session import BrowserSession
 
+from .. import saved_state
 from ..application_queue import ApplicationItem, Artifacts, JobDetails, Reason
 from ..config import Settings, load_settings
 from ..llm.openrouter_client import OpenRouterClient, OpenRouterError
@@ -103,12 +104,10 @@ class LeverBrowserOptions:
         if profile is not None:
             artifacts_root = artifacts_root / profile.id
         capture_video = bool(
-            resolved_settings.diagnostics_enabled
-            or resolved_settings.diagnostics_capture_video
+            resolved_settings.diagnostics_enabled or resolved_settings.diagnostics_capture_video
         )
         capture_har = bool(
-            resolved_settings.diagnostics_enabled
-            or resolved_settings.diagnostics_capture_har
+            resolved_settings.diagnostics_enabled or resolved_settings.diagnostics_capture_har
         )
         return cls(
             allowed_domains=allowed,
@@ -119,7 +118,9 @@ class LeverBrowserOptions:
             timezone=str(resolved_settings.browser_timezone or "America/Los_Angeles"),
             viewport_width=int(getattr(resolved_settings, "browser_viewport_width", 1280)),
             viewport_height=int(getattr(resolved_settings, "browser_viewport_height", 800)),
-            disable_default_extensions=bool(getattr(resolved_settings, "disable_default_extensions", True)),
+            disable_default_extensions=bool(
+                getattr(resolved_settings, "disable_default_extensions", True)
+            ),
         )
 
     def to_browser_use_kwargs(self) -> dict[str, object]:
@@ -139,6 +140,7 @@ class LeverBrowserOptions:
         """
         try:
             import os as _os
+
             _os.environ["TZ"] = str(self.timezone)
             # Normalize locale for POSIX-style env
             loc = self.locale.replace("-", "_")
@@ -340,7 +342,9 @@ def analyze_form(html: str) -> LeverFormPlan:
                         cache_key=_normalize_question_key(prompt),
                         answer_selector=answer_selector,
                         field_name=answer_name,
-                        field_type="textarea" if (node_tag == "textarea" or field_type == "textarea") else "text",
+                        field_type="textarea"
+                        if (node_tag == "textarea" or field_type == "textarea")
+                        else "text",
                     )
                 )
 
@@ -894,7 +898,11 @@ class LeverApplyAgent:
             elif field_type == "short_text":
                 field_type = "text"
             elif not field_type:
-                field_type = "textarea" if (isinstance(answer_selector, str) and "textarea" in answer_selector) else "text"
+                field_type = (
+                    "textarea"
+                    if (isinstance(answer_selector, str) and "textarea" in answer_selector)
+                    else "text"
+                )
             options_map: dict[str, str] = {}
             option_pairs: list[tuple[str, str]] = []
             for opt in q.get("options", []) or []:
@@ -959,7 +967,9 @@ class LeverApplyAgent:
             dynamic_questions=dynamic_questions,
             eeo_fields=eeo_fields,
             submit_button=str(data.get("submitButton", "button#btn-submit")),
-            captcha_selector=(str(data.get("captchaSelector")) if data.get("captchaSelector") else None),
+            captcha_selector=(
+                str(data.get("captchaSelector")) if data.get("captchaSelector") else None
+            ),
         )
 
     async def execute_in_browser(
@@ -969,13 +979,21 @@ class LeverApplyAgent:
         profile: Profile,
         item: ApplicationItem,
         mode: str,
+        review_mode: bool = False,
     ) -> Artifacts | Reason:
-        """Open the apply URL in the given session, fill, and submit.
+        """Open the apply URL in the given session, fill, and optionally submit.
+
+        Args:
+            session: Active browser session.
+            profile: User profile with defaults and credentials.
+            item: Application item being processed.
+            mode: "auto" or "supervised" mode indicator.
+            review_mode: If True, save pre-submit artifacts and pause without submitting.
 
         Returns:
-            Artifacts on success or Reason on failure.
+            Artifacts on success or Reason on failure/review.
         """
-        apply_url = (item.details.apply_url if item.details and item.details.apply_url else item.url)
+        apply_url = item.details.apply_url if item.details and item.details.apply_url else item.url
         ensure_allowed_domain(apply_url, self._options.allowed_domains)
 
         page = await session.new_page()
@@ -994,7 +1012,9 @@ class LeverApplyAgent:
         except Exception:
             pass
         # Wait for form root (captcha may be present in DOM but hidden; do not bail yet)
-        await _wait_for_any(page, ["form#application-form", "#application"])  # removed presence-only captcha wait
+        await _wait_for_any(
+            page, ["form#application-form", "#application"]
+        )  # removed presence-only captcha wait
         try:
             state = await _hcaptcha_state(page)
             if state.get("present") and not state.get("visible"):
@@ -1050,8 +1070,12 @@ class LeverApplyAgent:
             plan.contact_fields.get("name"),
             profile.defaults.get("name") or profile.name,
         )
-        await _fill_if_available(page, plan.contact_fields.get("email"), profile.defaults.get("email"))
-        await _fill_if_available(page, plan.contact_fields.get("phone"), profile.defaults.get("phone"))
+        await _fill_if_available(
+            page, plan.contact_fields.get("email"), profile.defaults.get("email")
+        )
+        await _fill_if_available(
+            page, plan.contact_fields.get("phone"), profile.defaults.get("phone")
+        )
         # Current company/org
         await _fill_if_available(
             page,
@@ -1069,7 +1093,9 @@ class LeverApplyAgent:
         )
         if not location_valid and mode != "auto":
             log_event("form.location.needs_manual_selection", mode=mode)
-            print("⚠️  Location field needs manual selection from dropdown. Please select a location from the suggestions.")
+            print(
+                "⚠️  Location field needs manual selection from dropdown. Please select a location from the suggestions."
+            )
 
         # Pronouns (optional checkboxes). Supports single string or comma-separated list.
         pronouns_raw = profile.defaults.get("pronouns")
@@ -1116,12 +1142,16 @@ class LeverApplyAgent:
                     # LLM fallback if no profile match found
                     if not desired and client and q.option_pairs:
                         # Build prompt with options for LLM to choose from
-                        options_text = "\n".join([f"- {opt[1]}" for opt in q.option_pairs]) if q.option_pairs else ""
+                        options_text = (
+                            "\n".join([f"- {opt[1]}" for opt in q.option_pairs])
+                            if q.option_pairs
+                            else ""
+                        )
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(
                                 id=q.cache_key,
                                 text=f"{q.prompt}\n\nAvailable options:\n{options_text}\n\nRespond with ONLY the exact text of one option above.",
-                                required=q.required
+                                required=q.required,
                             ),
                             job=item.details or JobDetails(),
                             extra_context=None,
@@ -1141,10 +1171,16 @@ class LeverApplyAgent:
                         if value is None and normalized:
                             norm_lower = normalized.lower()
                             for opt_key, opt_value in q.options.items():
-                                if norm_lower == "yes" and ("yes" in opt_key.lower() or "required" in opt_key.lower()):
+                                if norm_lower == "yes" and (
+                                    "yes" in opt_key.lower() or "required" in opt_key.lower()
+                                ):
                                     value = opt_value
                                     break
-                                elif norm_lower == "no" and ("no" in opt_key.lower() or "not" in opt_key.lower() or "don't" in opt_key.lower()):
+                                elif norm_lower == "no" and (
+                                    "no" in opt_key.lower()
+                                    or "not" in opt_key.lower()
+                                    or "don't" in opt_key.lower()
+                                ):
                                     value = opt_value
                                     break
                     if value is not None and q.field_name:
@@ -1156,12 +1192,16 @@ class LeverApplyAgent:
                     desired = _default_choice_answer(profile, q)
                     if not desired and client:
                         # Build prompt with options for LLM to choose from
-                        options_text = "\n".join([f"- {opt[1]}" for opt in q.option_pairs]) if q.option_pairs else ""
+                        options_text = (
+                            "\n".join([f"- {opt[1]}" for opt in q.option_pairs])
+                            if q.option_pairs
+                            else ""
+                        )
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(
                                 id=q.cache_key,
                                 text=f"{q.prompt}\n\nAvailable options:\n{options_text}\n\nRespond with ONLY the exact text of one option above.",
-                                required=q.required
+                                required=q.required,
                             ),
                             job=item.details or JobDetails(),
                             extra_context=None,
@@ -1221,7 +1261,9 @@ class LeverApplyAgent:
                     except Exception:
                         answer = None
                 if not answer and q.required:
-                    answer = profile.prompts.get("fallback_answer") or profile.prompts.get("default_long_form")
+                    answer = profile.prompts.get("fallback_answer") or profile.prompts.get(
+                        "default_long_form"
+                    )
                 if answer and q.answer_selector:
                     await _fill_textarea(page, q.answer_selector, answer)
 
@@ -1239,7 +1281,9 @@ class LeverApplyAgent:
         if has_cover:
             cover_selector = "textarea[name='comments']"  # prefer named textarea
             try:
-                exists_named = await page.evaluate("() => !!document.querySelector('textarea[name=\\'comments\\']')")
+                exists_named = await page.evaluate(
+                    "() => !!document.querySelector('textarea[name=\\'comments\\']')"
+                )
             except Exception:
                 exists_named = False
             if not exists_named:
@@ -1255,20 +1299,31 @@ class LeverApplyAgent:
                     "linkedin_url": profile.defaults.get("linkedin_url"),
                 }
                 messages = [
-                    {"role": "system", "content": (
-                        "You write concise, tailored cover letters. 180-220 words, positive, specific, no fluff. "
-                        "Include a sentence on impact, a brief skills-to-role bridge, and a polite close."
-                    )},
-                    {"role": "user", "content": json.dumps({
-                        "job": job.to_dict(),
-                        "profile": {
-                            "name": profile.name,
-                            "resume_summary": profile.prompts.get("resume_summary"),
-                            "key_accomplishments": profile.prompts.get("key_accomplishments"),
-                            **profile_links,
-                        },
-                        "hint": profile.prompts.get("cover_letter"),
-                    }, ensure_ascii=False)},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You write concise, tailored cover letters. 180-220 words, positive, specific, no fluff. "
+                            "Include a sentence on impact, a brief skills-to-role bridge, and a polite close."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {
+                                "job": job.to_dict(),
+                                "profile": {
+                                    "name": profile.name,
+                                    "resume_summary": profile.prompts.get("resume_summary"),
+                                    "key_accomplishments": profile.prompts.get(
+                                        "key_accomplishments"
+                                    ),
+                                    **profile_links,
+                                },
+                                "hint": profile.prompts.get("cover_letter"),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
                 ]
                 cover_text = client.complete(messages, temperature=0.2)
             except Exception:
@@ -1315,7 +1370,9 @@ class LeverApplyAgent:
                     return pause_reason
             else:
                 # LLM assist then re-validate
-                await _apply_llm_assist(page, profile=profile, job=item.details, invalid_fields=invalid_fields)
+                await _apply_llm_assist(
+                    page, profile=profile, job=item.details, invalid_fields=invalid_fields
+                )
             if not await _form_check_validity(page):
                 return Reason(code="validation_failed", message="Form still invalid after autofill")
 
@@ -1336,6 +1393,30 @@ class LeverApplyAgent:
                 except Exception:
                     pass
 
+        # Review-mode: capture pre-submission artifacts and pause
+        if review_mode:
+            log_event("apply.review_mode.start", item_id=item.id, profile=profile.id)
+            try:
+                values = _build_filled_values(profile, plan)
+                pre_json_path, pre_screenshot_path = await capture_pre_artifacts(
+                    session, page, profile, item, plan, values
+                )
+                log_event(
+                    "review_mode.artifacts_captured",
+                    item_id=item.id,
+                    pre_json=str(pre_json_path),
+                    pre_screenshot=str(pre_screenshot_path),
+                )
+                return Reason(
+                    code="saved_for_review",
+                    message="Form filled and saved for review. Submit manually or use resume-job --submit.",
+                )
+            except Exception as exc:
+                log_event("review_mode.artifacts_failed", error=str(exc))
+                return Reason(
+                    code="review_failed", message=f"Failed to capture review artifacts: {exc}"
+                )
+
         # Supervised pause before submit (robust to non-interactive stdin)
         if mode != "auto":
             pause_reason = await _supervised_pause()
@@ -1351,21 +1432,44 @@ class LeverApplyAgent:
             cstate = await _hcaptcha_state(page)
             if cstate.get("blocking"):
                 log_event("captcha.blocking_visible", details=cstate)
-                return Reason(code="captcha_blocked", message="hCaptcha visible and blocking submission")
+                # Capture pre-submission artifacts before failing
+                try:
+                    values = _build_filled_values(profile, plan)
+                    await capture_pre_artifacts(session, page, profile, item, plan, values)
+                    log_event("captcha.artifacts_captured", item_id=item.id)
+                except Exception as exc:
+                    log_event("captcha.artifacts_failed", error=str(exc))
+                return Reason(
+                    code="captcha_blocked", message="hCaptcha visible and blocking submission"
+                )
         except Exception:
             pass
 
         # Post-submit sanity: page should either navigate or hide form
-        still_has_form = await page.evaluate("() => !!document.querySelector('form#application-form')")
+        still_has_form = await page.evaluate(
+            "() => !!document.querySelector('form#application-form')"
+        )
         if still_has_form:
-            # If form remains, re-check validity â€“ likely a client-side validation
+            # If form remains, re-check validity â€" likely a client-side validation
             if not await _form_check_validity(page):
-                return Reason(code="validation_failed", message="Client-side validation blocked submission")
+                return Reason(
+                    code="validation_failed", message="Client-side validation blocked submission"
+                )
 
         confirmation_text = await _extract_confirmation_text(page)
+
+        # Capture post-submission screenshot
+        post_screenshot_path = None
+        try:
+            post_path = await capture_post_screenshot(session, page, profile, item)
+            post_screenshot_path = str(post_path)
+        except Exception as exc:
+            log_event("artifacts.post_screenshot.error", error=str(exc))
+
         artifacts = Artifacts(
             confirmation_text=(confirmation_text[:500] if confirmation_text else "submitted"),
             confirmation_id=None,
+            screenshot_after_path=post_screenshot_path,
         )
         return artifacts
 
@@ -1424,6 +1528,7 @@ async def _wait_for_any(page, selectors: list[str]) -> None:
     timeout_s = 20.0
     try:
         import os as _os
+
         env_to = float(_os.getenv("AUTO_APPLY_FORM_WAIT_TIMEOUT_SECONDS", "0") or 0)
         if env_to > 0:
             timeout_s = max(5.0, env_to)
@@ -1487,10 +1592,10 @@ async def _fill_if_available(page, selector: str | None, value: str | None) -> N
         pass
 
 
-
 def _quiet_js_eval_enabled() -> bool:
     try:
         import os as _os
+
         v = _os.getenv("AUTO_APPLY_DEBUG_JS_EVAL", "").strip().lower()
         return v in ("1", "true", "on", "yes")
     except Exception:
@@ -1504,6 +1609,7 @@ async def _evaluate_quiet(page, script: str, *args):
     try:
         import contextlib
         import io
+
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             return await page.evaluate(script, *args)
@@ -1513,6 +1619,8 @@ async def _evaluate_quiet(page, script: str, *args):
         except Exception:
             pass
         return await page.evaluate(script, *args)
+
+
 async def _fill_textarea(page, selector: str, value: str) -> None:
     try:
         await page.evaluate(
@@ -1547,13 +1655,16 @@ async def _close_stray_about_blank_tabs(session: BrowserSession) -> None:
                 url = (target.get("url") or "").lower().strip()
                 if url in ("about:blank", "chrome://newtab", "chrome://new-tab-page/"):
                     try:
-                        await cdp.send.Target.closeTarget(params={"targetId": target_id}, session_id=sid)
+                        await cdp.send.Target.closeTarget(
+                            params={"targetId": target_id}, session_id=sid
+                        )
                     except Exception:
                         pass
             except Exception:
                 continue
     except Exception:
         return
+
 
 async def _robust_navigate(session: BrowserSession, page, url: str) -> None:
     """Navigate to URL using Browser-Use event bus, then fall back to CDP, then page.goto.
@@ -1674,6 +1785,8 @@ async def _get_cdp_sender(page, session: BrowserSession | None):
                 if callable(fn):
                     return fn
     return None
+
+
 async def _upload_resume(session: BrowserSession | None, page, selector: str, path: str) -> bool:
     """Attach a resume file using best available mechanism and wait for success.
 
@@ -1696,7 +1809,9 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             "has_set_input_files": bool(getattr(page, "set_input_files", None)),
             "has_frame_locator": bool(getattr(page, "frame_locator", None)),
             "has_expect_file_chooser": bool(getattr(page, "expect_file_chooser", None)),
-            "has_event_bus": bool(getattr(session, "event_bus", None)) if session is not None else False,
+            "has_event_bus": bool(getattr(session, "event_bus", None))
+            if session is not None
+            else False,
         }
         log_event("resume_upload.start", selector=selector, capabilities=caps)
     except Exception:
@@ -1737,7 +1852,6 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 return True
     except Exception:
         pass
-
 
     # 2b) Frame-scoped attempt (Playwright only)
     try:
@@ -1781,7 +1895,10 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             except Exception:
                 pass
             async with page.expect_file_chooser() as fc_info:
-                await page.evaluate("(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }", selector)
+                await page.evaluate(
+                    "(sel) => { const btn = document.querySelector('a.visible-resume-upload') || document.querySelector(sel); if (btn) btn.click(); }",
+                    selector,
+                )
             fc = await fc_info
             await fc.set_files(path)
             ok = await _wait_for_resume_upload(page, selector)
@@ -1800,7 +1917,9 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             log_event("resume_upload.attempt", method="click_anchor_then_retry")
         except Exception:
             pass
-        await page.evaluate("() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }")
+        await page.evaluate(
+            "() => { const btn = document.querySelector('a.visible-resume-upload'); if (btn) btn.click(); }"
+        )
         # Give the page a brief moment to render/recreate the input
         try:
             await asyncio.sleep(0.4)
@@ -1840,7 +1959,13 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
     # 5) LLM-locator fallback (optional)
     try:
         import os
-        use_llm = os.getenv("AUTO_APPLY_USE_LLM_LOCATOR", "0").strip() not in ("", "0", "false", "False")
+
+        use_llm = os.getenv("AUTO_APPLY_USE_LLM_LOCATOR", "0").strip() not in (
+            "",
+            "0",
+            "false",
+            "False",
+        )
     except Exception:
         use_llm = False
     if use_llm:
@@ -1854,22 +1979,33 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 element = None
                 try:
                     import os as _os
+
                     llm_obj = None
                     if _os.getenv("GOOGLE_API_KEY"):
                         try:
                             from browser_use.llm.google import (
                                 ChatGoogle as _BUGemini,  # type: ignore
                             )
+
                             llm_obj = _BUGemini()
                         except Exception:
                             llm_obj = None
-                    if llm_obj is None and (_os.getenv("OPENROUTER_API_KEY") or _os.getenv("OPENAI_API_KEY")):
+                    if llm_obj is None and (
+                        _os.getenv("OPENROUTER_API_KEY") or _os.getenv("OPENAI_API_KEY")
+                    ):
                         try:
-                            if _os.getenv("OPENROUTER_API_KEY") and not _os.getenv("OPENAI_API_KEY"):
-                                _os.environ["OPENAI_API_KEY"] = _os.getenv("OPENROUTER_API_KEY") or ""
-                                if not _os.getenv("OPENAI_BASE_URL") and not _os.getenv("OPENAI_API_BASE"):
+                            if _os.getenv("OPENROUTER_API_KEY") and not _os.getenv(
+                                "OPENAI_API_KEY"
+                            ):
+                                _os.environ["OPENAI_API_KEY"] = (
+                                    _os.getenv("OPENROUTER_API_KEY") or ""
+                                )
+                                if not _os.getenv("OPENAI_BASE_URL") and not _os.getenv(
+                                    "OPENAI_API_BASE"
+                                ):
                                     _os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
                             from browser_use.llm.openai import ChatOpenAI as _BUChat
+
                             llm_obj = _BUChat()
                         except Exception:
                             llm_obj = None
@@ -1877,21 +2013,24 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                         # Pass model from env if available to improve accuracy (OpenRouter/Google)
                         try:
                             import os as _os
+
                             model_name = _os.getenv("LLM_MODEL")
                             if model_name and hasattr(llm_obj, "model"):
                                 try:
-                                    llm_obj.model = model_name  # best-effort; some clients accept assignment
+                                    llm_obj.model = (
+                                        model_name  # best-effort; some clients accept assignment
+                                    )
                                 except Exception:
                                     pass
                         except Exception:
                             pass
                         element = await page.must_get_element_by_prompt(
-                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
+                            'the resume upload input element (the <input type=\\"file\\"> used to attach a resume) inside the application form; not the submit button',
                             llm=llm_obj,
                         )
                     else:
                         element = await page.must_get_element_by_prompt(
-                            "the resume upload input element (the <input type=\\\"file\\\"> used to attach a resume) inside the application form; not the submit button",
+                            'the resume upload input element (the <input type=\\"file\\"> used to attach a resume) inside the application form; not the submit button',
                         )
                 except Exception:
                     element = None
@@ -1905,7 +2044,7 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 # Retry with a couple of prompt variants to increase recall
                 try:
                     alt_prompts = [
-                        "the file upload control (input[type=\\\"file\\\"]) used to attach a resume/CV inside the application form",
+                        'the file upload control (input[type=\\"file\\"]) used to attach a resume/CV inside the application form',
                         "the resume/CV chooser input element in the application form",
                     ]
                     for ptxt in alt_prompts:
@@ -1931,7 +2070,11 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                 except Exception:
                     backend_id = None
                 try:
-                    log_event("resume_upload.llm_locator.result", css_selector=new_selector, backend_node_id=backend_id)
+                    log_event(
+                        "resume_upload.llm_locator.result",
+                        css_selector=new_selector,
+                        backend_node_id=backend_id,
+                    )
                 except Exception:
                     pass
                 if isinstance(new_selector, str) and new_selector:
@@ -1984,7 +2127,9 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
                     pass
             else:
                 try:
-                    log_event("resume_upload.llm_locator.result", css_selector=None, backend_node_id=None)
+                    log_event(
+                        "resume_upload.llm_locator.result", css_selector=None, backend_node_id=None
+                    )
                 except Exception:
                     pass
         except Exception as _e:
@@ -1999,7 +2144,9 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             log_event("resume_upload.cdp.start", selector=selector)
         except Exception:
             pass
-        if await _cdp_set_file_input_files(page, selector, path, backend_node_id=backend_id, session=session):
+        if await _cdp_set_file_input_files(
+            page, selector, path, backend_node_id=backend_id, session=session
+        ):
             # Nudge UI listeners in case the widget needs explicit events
             try:
                 await _dispatch_file_input_events(page, selector)
@@ -2039,7 +2186,7 @@ async def _upload_resume(session: BrowserSession | None, page, selector: str, pa
             log_event("resume_upload.eventbus.error", error=str(e))
         except Exception:
             pass
-    
+
     # No branch succeeded; emit compact postmortem for diagnostics
     try:
         await _log_resume_postmortem(page, selector)
@@ -2066,20 +2213,28 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
     # Sanity check: verify page.evaluate() works before polling
     try:
         sanity = await _evaluate_quiet(page, "() => 'ok'")
-        if sanity != 'ok':
+        if sanity != "ok":
             try:
-                log_event("resume_upload.detect.sanity_check_failed", result=sanity, selector=selector)
+                log_event(
+                    "resume_upload.detect.sanity_check_failed", result=sanity, selector=selector
+                )
             except Exception:
                 pass
     except Exception as e:
         try:
-            log_event("resume_upload.detect.sanity_check_exception", error=str(e), error_type=type(e).__name__, selector=selector)
+            log_event(
+                "resume_upload.detect.sanity_check_exception",
+                error=str(e),
+                error_type=type(e).__name__,
+                selector=selector,
+            )
         except Exception:
             pass
 
     # Allow environment override
     try:
         import os
+
         env_to = float(os.getenv("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", "0") or 0)
         if env_to > 0:
             timeout = env_to
@@ -2133,6 +2288,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
             # Parse JSON string if page.evaluate() returns string instead of dict
             if isinstance(state, str):
                 import json
+
                 try:
                     state = json.loads(state)
                 except (json.JSONDecodeError, TypeError):
@@ -2144,10 +2300,12 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
                     pass
             # Debug logging to diagnose type issues
             try:
-                log_event("resume_upload.detect.state_debug",
-                         state_type=type(state).__name__,
-                         state_repr=repr(state)[:200],
-                         selector=selector)
+                log_event(
+                    "resume_upload.detect.state_debug",
+                    state_type=type(state).__name__,
+                    state_repr=repr(state)[:200],
+                    selector=selector,
+                )
             except Exception:
                 pass
             if state and state.get("ok"):
@@ -2182,6 +2340,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
                         # Parse JSON string if needed
                         if isinstance(s2, str):
                             import json
+
                             try:
                                 s2 = json.loads(s2)
                             except (json.JSONDecodeError, TypeError):
@@ -2198,14 +2357,25 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
                 return False
         except Exception as e:
             try:
-                log_event("resume_upload.detect.poll_exception", error=str(e), error_type=type(e).__name__, selector=selector)
+                log_event(
+                    "resume_upload.detect.poll_exception",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    selector=selector,
+                )
             except Exception:
                 pass
         await asyncio.sleep(0.3)
     # Final diagnostic snapshot (optional)
     try:
         import os
-        debug = os.getenv("AUTO_APPLY_DEBUG_RESUME_WIDGET", "0").strip() not in ("", "0", "false", "False")
+
+        debug = os.getenv("AUTO_APPLY_DEBUG_RESUME_WIDGET", "0").strip() not in (
+            "",
+            "0",
+            "false",
+            "False",
+        )
     except Exception:
         debug = False
     if debug:
@@ -2270,6 +2440,7 @@ async def _dispatch_file_input_events(page, selector: str) -> None:
     except Exception:
         pass
 
+
 async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: str) -> bool:
     """Try to upload a file via browser-use event bus fallback.
 
@@ -2287,12 +2458,18 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
     try:
         if not has_bus or not callable(get_by_index) or not callable(is_file_input):
             try:
-                log_event("resume_upload.eventbus.unavailable", has_bus=has_bus, has_get_by_index=bool(get_by_index), has_is_file_input=bool(is_file_input))
+                log_event(
+                    "resume_upload.eventbus.unavailable",
+                    has_bus=has_bus,
+                    has_get_by_index=bool(get_by_index),
+                    has_is_file_input=bool(is_file_input),
+                )
             except Exception:
                 pass
             return False
         # Heuristic: probe first N DOM elements by index and try uploading when type is file
         from browser_use.browser.events import UploadFileEvent  # type: ignore
+
         scanned = 0
         matched = 0
         # Increase scan window; bail early on first success
@@ -2308,6 +2485,7 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
                 maybe = is_file_input(el)
                 try:
                     import asyncio as _asyncio
+
                     if _asyncio.iscoroutine(maybe):
                         ok_type = await maybe
                     else:
@@ -2344,7 +2522,13 @@ async def _eventbus_upload_resume(session: BrowserSession, selector: str, path: 
     return False
 
 
-async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node_id: int | None = None, session: BrowserSession | None = None) -> bool:
+async def _cdp_set_file_input_files(
+    page,
+    selector: str,
+    path: str,
+    backend_node_id: int | None = None,
+    session: BrowserSession | None = None,
+) -> bool:
     """Best-effort CDP fallback using DOM.setFileInputFiles.
 
     Tries to find a CDP client on the page/session and call the DevTools
@@ -2490,7 +2674,10 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
         # Prefer backendNodeId if provided (more stable across rerenders)
         if backend_node_id:
             try:
-                await send("DOM.setFileInputFiles", {"files": [path], "backendNodeId": int(backend_node_id)})
+                await send(
+                    "DOM.setFileInputFiles",
+                    {"files": [path], "backendNodeId": int(backend_node_id)},
+                )
                 return True
             except Exception:
                 pass
@@ -2508,13 +2695,15 @@ async def _cdp_set_file_input_files(page, selector: str, path: str, backend_node
             flat = None
         if isinstance(flat, dict):
             nodes = flat.get("nodes") or []
+
             def _attrs_map(n):
                 attrs = n.get("attributes") or []
                 try:
                     it = iter(attrs)
-                    return {k:v for k,v in zip(it, it)}
+                    return {k: v for k, v in zip(it, it)}
                 except Exception:
                     return {}
+
             best = None
             for n in nodes:
                 try:
@@ -2575,7 +2764,12 @@ async def _log_resume_postmortem(page, selector: str) -> None:
         )
     except Exception as e:
         try:
-            log_event("resume_upload.postmortem.exception", error=str(e), error_type=type(e).__name__, selector=selector)
+            log_event(
+                "resume_upload.postmortem.exception",
+                error=str(e),
+                error_type=type(e).__name__,
+                selector=selector,
+            )
         except Exception:
             pass
         snapshot = None
@@ -2583,11 +2777,14 @@ async def _log_resume_postmortem(page, selector: str) -> None:
         log_event("resume_upload.postmortem", snapshot=snapshot or {})
     except Exception:
         pass
+
+
 async def _set_pronouns(page, pronouns: str | list[str]) -> None:
     """Check pronoun checkboxes by value. Accepts a string or list of strings.
 
     Matches by case-insensitive value, e.g., "He/him", "They/them", "Use name only".
     """
+
     def _normalize(x: str) -> str:
         return str(x).strip().lower()
 
@@ -2653,6 +2850,7 @@ async def _check_location_gate(page, *, hidden_selector: str) -> tuple[bool, dic
         if isinstance(state, str):
             try:
                 import json
+
                 state = json.loads(state)
             except Exception:
                 state = {}
@@ -2665,7 +2863,9 @@ async def _check_location_gate(page, *, hidden_selector: str) -> tuple[bool, dic
     return (is_valid, state)
 
 
-async def _set_structured_location(page, *, input_selector: str, hidden_selector: str, value: str | None) -> bool:
+async def _set_structured_location(
+    page, *, input_selector: str, hidden_selector: str, value: str | None
+) -> bool:
     """Type location with proper keyboard events, wait for suggestions, and select via keyboard or click.
 
     Implements a multi-phase strategy:
@@ -2761,7 +2961,9 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
             # Check BEFORE sending keyboard events - avoid clearing already-valid values
             is_valid, state = await _check_location_gate(page, hidden_selector=hidden_selector)
             if is_valid:
-                log_event("form.location.keyboard_selected", attempt=attempt + 1, name=state.get("name"))
+                log_event(
+                    "form.location.keyboard_selected", attempt=attempt + 1, name=state.get("name")
+                )
                 return True
 
             # Log attempt start with dropdown state
@@ -2779,7 +2981,9 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
                 }
                 """
             )
-            log_event("form.location.keyboard_attempt.start", attempt=attempt + 1, dropdown=dropdown_info)
+            log_event(
+                "form.location.keyboard_attempt.start", attempt=attempt + 1, dropdown=dropdown_info
+            )
 
             # Only send keyboard events if not yet valid
             await page.evaluate(
@@ -2813,7 +3017,12 @@ async def _set_structured_location(page, *, input_selector: str, hidden_selector
 
             # Log state after keyboard events
             post_state = await _check_location_gate(page, hidden_selector=hidden_selector)
-            log_event("form.location.keyboard_attempt.end", attempt=attempt + 1, valid=post_state[0], state=post_state[1])
+            log_event(
+                "form.location.keyboard_attempt.end",
+                attempt=attempt + 1,
+                valid=post_state[0],
+                state=post_state[1],
+            )
 
         # Phase 4: Click fallback - find and click visible dropdown items
         click_result = await page.evaluate(
@@ -3005,6 +3214,7 @@ async def _hcaptcha_state(page) -> dict:
         pass
     return {"present": False, "visible": False, "blocking": False}
 
+
 async def _collect_invalid_fields(page) -> list[dict]:
     try:
         raw = await page.evaluate(
@@ -3042,12 +3252,15 @@ async def _collect_invalid_fields(page) -> list[dict]:
             """
         )
         import json as _json
-        return _json.loads(raw or '[]')
+
+        return _json.loads(raw or "[]")
     except Exception:
         return []
 
 
-async def _apply_llm_assist(page, *, profile: Profile, job: JobDetails | None, invalid_fields: list[dict]) -> None:
+async def _apply_llm_assist(
+    page, *, profile: Profile, job: JobDetails | None, invalid_fields: list[dict]
+) -> None:
     # Build a minimal prompt for deterministic JSON suggestions
     try:
         client = OpenRouterClient.from_settings()
@@ -3058,6 +3271,7 @@ async def _apply_llm_assist(page, *, profile: Profile, job: JobDetails | None, i
         "prefer_not_to_disclose": bool(profile.defaults.get("prefer_not_to_disclose", False)),
     }
     import json as _json
+
     sysmsg = (
         "You are helping complete a job application form. "
         "Return ONLY a compact JSON object mapping HTML input names to suggested values, "
@@ -3128,13 +3342,11 @@ async def _apply_llm_assist(page, *, profile: Profile, job: JobDetails | None, i
       }
     }
     """
-    for name, value in (data.items() if isinstance(data, dict) else []):
+    for name, value in data.items() if isinstance(data, dict) else []:
         try:
             if isinstance(value, str):
                 # Try select first; if not a select, treat as text input
                 applied = await page.evaluate(JS_APPLY_BY_NAME, name, value)
-
-
 
             else:
                 applied = False
@@ -3156,10 +3368,14 @@ async def _supervised_pause(
     if timeout_seconds is None:
         try:
             import os
+
             timeout_seconds = int(os.getenv("AUTO_APPLY_SUPERVISED_TIMEOUT", "15"))
         except Exception:
             timeout_seconds = 15
-    message = prompt or "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
+    message = (
+        prompt
+        or "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
+    )
     print(message)
     try:
         input()
@@ -3294,7 +3510,11 @@ def _default_choice_answer(profile: Profile, question: DynamicQuestion) -> str |
         normalized = _normalize_yes_no_value(raw)
         if normalized:
             return normalized
-    if "require sponsorship" in prompt_lower or "sponsorship" in prompt_lower or "visa status" in prompt_lower:
+    if (
+        "require sponsorship" in prompt_lower
+        or "sponsorship" in prompt_lower
+        or "visa status" in prompt_lower
+    ):
         raw = (
             defaults.get("requires_visa_sponsorship")
             or defaults.get("needs_visa_sponsorship")
@@ -3304,7 +3524,11 @@ def _default_choice_answer(profile: Profile, question: DynamicQuestion) -> str |
         normalized = _normalize_yes_no_value(raw)
         if normalized:
             return normalized
-    if "previously worked" in prompt_lower or "worked for" in prompt_lower or "former employee" in prompt_lower:
+    if (
+        "previously worked" in prompt_lower
+        or "worked for" in prompt_lower
+        or "former employee" in prompt_lower
+    ):
         raw = (
             defaults.get("worked_at_company_before")
             or defaults.get("previously_employed_at_company")
@@ -3478,16 +3702,171 @@ async def _fill_disability_signature(page, profile: Profile) -> None:
         log_event("eeo.disability_signature.failed", error=str(exc))
 
 
+def _build_filled_values(profile: Profile, plan: LeverFormPlan) -> dict[str, str]:
+    """Build a dict of values that were/would be filled from profile and plan.
+
+    Args:
+        profile: User profile with defaults.
+        plan: Form plan with field selectors.
+
+    Returns:
+        dict[str, str]: Mapping of field names/selectors to filled values.
+    """
+    values: dict[str, str] = {}
+
+    # Contact fields
+    if plan.contact_fields.get("name"):
+        values["name"] = profile.defaults.get("name") or profile.name
+    if plan.contact_fields.get("email"):
+        email = profile.defaults.get("email")
+        if email:
+            values["email"] = email
+    if plan.contact_fields.get("phone"):
+        phone = profile.defaults.get("phone")
+        if phone:
+            values["phone"] = phone
+    if plan.contact_fields.get("org"):
+        org = profile.defaults.get("current_company") or profile.defaults.get("company")
+        if org:
+            values["org"] = org
+    if plan.contact_fields.get("location"):
+        location = profile.defaults.get("location")
+        if location:
+            values["location"] = location
+
+    # Link fields
+    for field_name, selector in plan.link_fields.items():
+        key_lower = field_name.lower()
+        value = None
+        if "linkedin" in key_lower:
+            value = (
+                profile.defaults.get("linkedin")
+                or profile.defaults.get("linkedin_url")
+                or profile.defaults.get("linkedinurl")
+            )
+        elif "github" in key_lower:
+            value = (
+                profile.defaults.get("github")
+                or profile.defaults.get("github_url")
+                or profile.defaults.get("githuburl")
+            )
+        elif "portfolio" in key_lower or "website" in key_lower:
+            value = (
+                profile.defaults.get("portfolio")
+                or profile.defaults.get("website")
+                or profile.defaults.get("portfolio_url")
+                or profile.defaults.get("website_url")
+            )
+        if value:
+            values[field_name] = value
+
+    return values
 
 
+async def capture_pre_artifacts(
+    session: BrowserSession,
+    page,
+    profile: Profile,
+    item: ApplicationItem,
+    plan: LeverFormPlan,
+    values: dict[str, str],
+) -> tuple[Path, Path]:
+    """Capture pre-submission artifacts: saved state JSON and full-page screenshot.
+
+    Args:
+        session: Active browser session.
+        page: Playwright page instance.
+        profile: User profile for namespacing artifacts.
+        item: Application item being processed.
+        plan: Form plan with selectors.
+        values: Filled form values to persist.
+
+    Returns:
+        tuple[Path, Path]: Paths to (pre.json, pre-full.jpg).
+
+    Raises:
+        OSError: If artifacts cannot be written to disk.
+    """
+    from ..config import load_settings
+
+    settings = load_settings()
+    artifacts_dir = settings.artifacts_path(profile.id) / item.id
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build SavedState v1 payload
+    apply_url = item.details.apply_url if item.details and item.details.apply_url else item.url
+    state_payload = {
+        "version": 1,
+        "captured_at": datetime.now().isoformat(),
+        "profile_id": profile.id,
+        "item_id": item.id,
+        "url": item.url,
+        "apply_url": apply_url,
+        "plan": {
+            "resume_input": plan.resume_input,
+            "contact_fields": plan.contact_fields,
+            "link_fields": plan.link_fields,
+            "submit_button": plan.submit_button,
+            "captcha_selector": plan.captcha_selector,
+        },
+        "values": values,
+        "labels": {
+            "company": item.company,
+            "title": item.title,
+        },
+    }
+
+    # Write pre.json
+    pre_json_path = artifacts_dir / "pre.json"
+    saved_state.write_pre_state(pre_json_path, state_payload)
+    log_event("artifacts.pre_state.saved", path=str(pre_json_path))
+
+    # Capture full-page screenshot
+    pre_screenshot_path = artifacts_dir / "pre-full.jpg"
+    try:
+        await page.screenshot(path=str(pre_screenshot_path), full_page=True, type="jpeg")
+        log_event("artifacts.pre_screenshot.saved", path=str(pre_screenshot_path))
+    except Exception as exc:
+        log_event("artifacts.pre_screenshot.failed", error=str(exc))
+        # Create empty file as fallback
+        pre_screenshot_path.touch()
+
+    return pre_json_path, pre_screenshot_path
 
 
+async def capture_post_screenshot(
+    session: BrowserSession,
+    page,
+    profile: Profile,
+    item: ApplicationItem,
+) -> Path:
+    """Capture post-submission full-page screenshot.
 
+    Args:
+        session: Active browser session.
+        page: Playwright page instance.
+        profile: User profile for namespacing artifacts.
+        item: Application item being processed.
 
+    Returns:
+        Path: Path to post-full.jpg.
 
+    Raises:
+        OSError: If screenshot cannot be written to disk.
+    """
+    from ..config import load_settings
 
+    settings = load_settings()
+    artifacts_dir = settings.artifacts_path(profile.id) / item.id
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
+    post_screenshot_path = artifacts_dir / "post-full.jpg"
+    try:
+        await page.screenshot(path=str(post_screenshot_path), full_page=True, type="jpeg")
+        log_event("artifacts.post_screenshot.saved", path=str(post_screenshot_path))
+    except Exception as exc:
+        log_event("artifacts.post_screenshot.failed", error=str(exc))
+        # Create empty file as fallback
+        post_screenshot_path.touch()
 
-
-
-
+    return post_screenshot_path

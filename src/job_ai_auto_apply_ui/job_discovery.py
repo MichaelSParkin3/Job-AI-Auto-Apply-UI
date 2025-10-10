@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 _BROWSER_DISCOVERY_RUNTIME: tuple[type[Any], type[Any]] | None = None
 
+
 def _load_browser_discovery_runtime() -> tuple[type[Any], type[Any]]:
     """Load Lever browser dependencies only when needed by discovery."""
     global _BROWSER_DISCOVERY_RUNTIME
@@ -39,6 +40,7 @@ def _load_browser_discovery_runtime() -> tuple[type[Any], type[Any]]:
 
         _BROWSER_DISCOVERY_RUNTIME = (LeverBrowserOptions, BrowserSession)
     return _BROWSER_DISCOVERY_RUNTIME
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -321,9 +323,7 @@ def discover_jobs(
         fetch_posting = fetch_posting or _default_fetch
         try:
             html_document = (
-                fetch_search(search_url)
-                if fetch_search is not None
-                else _default_fetch(search_url)
+                fetch_search(search_url) if fetch_search is not None else _default_fetch(search_url)
             )
         except Exception as exc:  # pragma: no cover - dependency/network failure
             LOGGER.exception("Failed to fetch Google results: %s", exc)
@@ -408,6 +408,7 @@ def discover_jobs(
         return []
     return items
 
+
 def _discover_with_browser_session(
     *,
     profile: Profile,
@@ -481,6 +482,7 @@ def _discover_with_browser_session(
     )
     log_event("discover.browser_complete", profile=profile.id)
     return items
+
 
 async def _extract_item_from_posting(
     session: BrowserSession,
@@ -565,6 +567,7 @@ async def _extract_item_from_posting(
     )
     return item
 
+
 async def _wait_for_any_selector(page, selectors: list[str]) -> None:
     """Return when any selector appears; no-op if none are found in time."""
     deadline = time.monotonic() + 6.0
@@ -579,6 +582,7 @@ async def _wait_for_any_selector(page, selectors: list[str]) -> None:
         await asyncio.sleep(0.3)
     # Let caller decide on timeout handling
     raise asyncio.TimeoutError
+
 
 def _none_if_empty(value: object) -> str | None:
     if value is None:
@@ -717,9 +721,7 @@ async def _capture_page_html(page) -> str:
     """Capture the full HTML for the current page without noisy logs."""
 
     with redirect_stdout(io.StringIO()):
-        html_document = await page.evaluate(
-            "() => document.documentElement.outerHTML"
-        )
+        html_document = await page.evaluate("() => document.documentElement.outerHTML")
     return html_document
 
 

@@ -12,7 +12,7 @@
 - Flags: `--submit`, `--json`
 
 ### replay-job <id> (NEW)
-- Behavior: reset queue item to in_progress without opening a browser.
+- Behavior: reset queue item to `in_progress` without opening a browser.
 - Flags: `--json`
 
 ### cleanup-artifacts (NEW)
@@ -26,10 +26,22 @@
 - start: `{ "event": "start", "profile": "<id>" }`
 - item: `{ "event": "item", "id": "<item_id>", "status": "in_progress" }`
 - saved_for_review: `{ "event": "saved_for_review", "id": "<item_id>", "form_state_path": "...", "screenshot_before_path": "..." }`
-- captcha_blocked: `{ "event": "captcha_blocked", "id": "<item_id>", "form_state_path": "...", "screenshot_before_path": "..." }`
+- captcha_blocked: `{ "event": "captcha_blocked", "id": "<item_id>", "reason": { "code": "captcha_blocked", "message": "..." }, "form_state_path": "...", "screenshot_before_path": "..." }`
 - submitted: `{ "event": "submitted", "id": "<item_id>", "confirmation_text": "...", "confirmation_id": "?", "screenshot_after_path": "..." }`
 - failed: `{ "event": "failed", "id": "<item_id>", "reason": { "code": "...", "message": "..." } }`
 - end: `{ "event": "end", "summary": { "submitted": n, "failed": m } }`
+
+## Internal Log Events
+These structured log events are emitted for telemetry (not part of JSON stream):
+- `apply.review_mode.start` - When review-mode begins
+- `review_mode.artifacts_captured` - Pre-artifacts saved successfully
+- `review_mode.artifacts_failed` - Pre-artifact capture failed
+- `captcha.blocking_visible` - hCaptcha detected and blocking
+- `captcha.artifacts_captured` - Captcha pre-artifacts saved
+- `captcha.artifacts_failed` - Captcha artifact capture failed
+- `cleanup.preview` - Dry-run preview (before listing files)
+- `cleanup.apply` - Actual deletion (before removing files)
+- `cleanup.complete` - Cleanup operation finished
 
 ## Exit Codes
 - apply: `0` when all succeed; `3` when any fail

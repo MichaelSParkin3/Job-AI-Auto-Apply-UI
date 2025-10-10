@@ -58,57 +58,57 @@
   - Assert: JSON reports matched files in dry-run; only eligible paths removed; queues intact
 
 ## Phase 3.3: Core Implementation (ONLY after tests are failing)
-- [ ] T008 Extend ApplicationStatus with 'pending_review' and transitions
+- [X] T008 Extend ApplicationStatus with 'pending_review' and transitions
   - File: src/job_ai_auto_apply_ui/application_queue.py
   - Add: PENDING_REVIEW enum; allow IN_PROGRESS → {SUBMITTED, FAILED, CAPTCHA_BLOCKED, PENDING_REVIEW}; PENDING_REVIEW → {IN_PROGRESS, SUBMITTED, FAILED}
-- [ ] T009 Extend Artifacts with saved-state and audit fields
+- [X] T009 Extend Artifacts with saved-state and audit fields
   - File: src/job_ai_auto_apply_ui/application_queue.py
   - Add fields: form_state_path, screenshot_before_path, screenshot_after_path; include in to_dict/from_dict
-- [ ] T010 [P] Add SavedState v1 model + read/write helpers
+- [X] T010 [P] Add SavedState v1 model + read/write helpers
   - File: src/job_ai_auto_apply_ui/saved_state.py (new)
   - Structure: version, captured_at, profile_id, item_id, url, apply_url; plan selectors; values; labels(optional)
   - Helpers: write_pre_state(path, payload), read_pre_state(path) returning dict
-- [ ] T011 Implement review-mode flags and behavior in apply path
+- [X] T011 Implement review-mode flags and behavior in apply path
   - File: src/job_ai_auto_apply_ui/orchestrator.py
   - Parser: add --review-mode and --audit-after-submit/--no-audit-after-submit to 'apply' subcommand
   - Events: when --review-mode, emit saved_for_review with form_state_path + screenshot_before_path and set queue to PENDING_REVIEW
-- [ ] T012 Implement resume-job semantics and --submit flag
+- [X] T012 Implement resume-job semantics and --submit flag
   - File: src/job_ai_auto_apply_ui/orchestrator.py
   - Parser: add --submit to 'resume-job'
   - Behavior: open browser, apply pre.json, pause by default; when --submit, follow submit flow and capture confirmation
-- [ ] T013 Implement replay-job command
+- [X] T013 Implement replay-job command
   - File: src/job_ai_auto_apply_ui/orchestrator.py
   - Behavior: reset queue item to IN_PROGRESS; do not open browser; JSON output includes id + status
-- [ ] T014 Implement cleanup-artifacts command
+- [X] T014 Implement cleanup-artifacts command
   - File: src/job_ai_auto_apply_ui/orchestrator.py
   - Flags: --profile <id>, --older-than <days> (REQUIRED), --dry-run, --json; exit codes per contract (0 success, 2 nothing matched, 5 invalid args)
-- [ ] T015 Capture pre.json + pre-full.jpg and optional post-full.jpg in browser agent
+- [X] T015 Capture pre.json + pre-full.jpg and optional post-full.jpg in browser agent
   - File: src/job_ai_auto_apply_ui/browser_agent/lever.py
   - Add helpers: capture_pre_artifacts(session,page,profile,item,plan,values) → (pre_json_path, pre_screenshot_path); capture_post_screenshot(...) → post_screenshot_path
   - When captcha detected: return Reason('captcha_blocked', ...) after persisting pre artifacts
-- [ ] T016 Wire JSON events for saved_for_review, captcha_blocked, submitted(confirmation_id, screenshot_after_path)
+- [X] T016 Wire JSON events for saved_for_review, captcha_blocked, submitted(confirmation_id, screenshot_after_path)
   - Files: src/job_ai_auto_apply_ui/orchestrator.py, src/job_ai_auto_apply_ui/browser_agent/lever.py
   - Ensure queue.mark_captcha and queue.mark_submitted attach artifacts with new fields
 
 ## Phase 3.4: Integration
-- [ ] T017 Structured logging for new flows
+- [X] T017 Structured logging for new flows
   - Files: src/job_ai_auto_apply_ui/telemetry.py, src/job_ai_auto_apply_ui/orchestrator.py
-  - Emit: apply.review_mode.start, apply.review_mode.saved, apply.captcha.detected, cleanup.preview, cleanup.apply
-- [ ] T018 Ensure Settings.artifacts_root honored everywhere and per-profile namespacing
+  - Emit: apply.review_mode.start, review_mode.artifacts_captured, captcha.blocking_visible, captcha.artifacts_captured, cleanup.preview, cleanup.apply
+- [X] T018 Ensure Settings.artifacts_root honored everywhere and per-profile namespacing
   - Files: src/job_ai_auto_apply_ui/config.py, src/job_ai_auto_apply_ui/browser_agent/lever.py, src/job_ai_auto_apply_ui/orchestrator.py
   - Use Settings.artifacts_path(profile.id) for all paths under data/artifacts/<profile>/...
 
 ## Phase 3.5: Polish
-- [ ] T019 [P] Unit tests: queue transitions incl. PENDING_REVIEW and CAPTCHA_BLOCKED
+- [X] T019 [P] Unit tests: queue transitions incl. PENDING_REVIEW and CAPTCHA_BLOCKED
   - File: tests/unit/test_queue_transitions.py
   - Assert: invalid transitions rejected; new transitions accepted; serialization round-trip includes new artifact fields
-- [ ] T020 [P] Unit tests: saved_state read/write helpers
+- [X] T020 [P] Unit tests: saved_state read/write helpers
   - File: tests/unit/test_saved_state.py
   - Assert: read_pre_state/write_pre_state produce expected JSON shape and tolerate optional labels
-- [ ] T021 [P] Update docs per accepted behavior
+- [X] T021 [P] Update docs per accepted behavior
   - Files: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\002-save-state-artifact\contracts\cli-contracts.md, G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\002-save-state-artifact\quickstart.md
-  - Reflect: final flags, exit codes, event fields
-- [ ] T022 [P] Ruff/format pass and minor refactors
+  - Reflect: final flags, exit codes, event fields, actual log event names
+- [X] T022 [P] Ruff/format pass and minor refactors
   - Command: ruff check .
 
 ## Additional Coverage (appendix)

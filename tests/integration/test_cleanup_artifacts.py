@@ -9,8 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from job_ai_auto_apply_ui.application_queue import ApplicationItem, ApplicationQueue
-
 
 def _create_artifact_file(path: Path, age_days: int) -> None:
     """Create an artifact file with a specific age."""

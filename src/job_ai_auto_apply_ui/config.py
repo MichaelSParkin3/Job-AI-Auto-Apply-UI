@@ -61,17 +61,11 @@ class Settings:
     # LLM
     llm_provider: str | None = field(default_factory=lambda: os.getenv("LLM_PROVIDER"))
     llm_model: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL"))
-    llm_temperature: float = field(
-        default_factory=lambda: _get_float("LLM_TEMPERATURE", 0.0)
-    )
-    llm_timeout_seconds: int = field(
-        default_factory=lambda: _get_int("LLM_TIMEOUT_SECONDS", 30)
-    )
+    llm_temperature: float = field(default_factory=lambda: _get_float("LLM_TEMPERATURE", 0.0))
+    llm_timeout_seconds: int = field(default_factory=lambda: _get_int("LLM_TIMEOUT_SECONDS", 30))
     llm_referer: str | None = field(default_factory=lambda: os.getenv("LLM_REFERER"))
     llm_user_agent: str | None = field(default_factory=lambda: os.getenv("LLM_USER_AGENT"))
-    openrouter_api_key: str | None = field(
-        default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
-    )
+    openrouter_api_key: str | None = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
     google_api_key: str | None = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY"))
 
     # Diagnostics
@@ -97,9 +91,7 @@ class Settings:
     )
 
     # Stealth / anti-detection
-    browser_locale: str = field(
-        default_factory=lambda: os.getenv("BROWSER_LOCALE", "en-US")
-    )
+    browser_locale: str = field(default_factory=lambda: os.getenv("BROWSER_LOCALE", "en-US"))
     browser_timezone: str = field(
         default_factory=lambda: os.getenv("BROWSER_TIMEZONE", "America/Los_Angeles")
     )
@@ -141,4 +133,3 @@ def load_settings() -> Settings:
         Settings: Configuration populated from process environment variables.
     """
     return Settings()
-

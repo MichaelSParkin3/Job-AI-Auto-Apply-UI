@@ -88,9 +88,9 @@ class PromptBuilder:
             "profile's location. "
             "IMPORTANT: For multiple choice or select dropdown questions with a list of options, "
             "you MUST respond with ONLY the exact text of ONE option from the provided list. "
-            "Do not add explanations, elaborations, or additional context—just the option text itself. "
-            "For open-ended text questions, keep responses concise (2-3 sentences unless "
-            "more detail is clearly needed)."
+            "Do not add explanations, elaborations, or additional context—just the option "
+            "text itself. For open-ended text questions, keep responses concise (2-3 sentences "
+            "unless more detail is clearly needed)."
         )
         if self.provider:
             system_content += f" Target provider: {self.provider}."

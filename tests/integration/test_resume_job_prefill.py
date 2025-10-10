@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from job_ai_auto_apply_ui.application_queue import ApplicationItem, ApplicationQueue
+from job_ai_auto_apply_ui.application_queue import ApplicationItem
 from job_ai_auto_apply_ui.profile_manager import Profile
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -149,7 +149,8 @@ async def test_resume_job_missing_pre_json_returns_invalid_state(
 
     # Expected behavior:
     # 1. Check for pre.json
-    # 2. If missing: return {"id": "...", "status": "invalid_state", "error": "pre.json missing or invalid"}
+    # 2. If missing: return {"id": "...", "status": "invalid_state",
+    #    "error": "pre.json missing or invalid"}
     # 3. Exit code: 6
 
     # Placeholder assertion

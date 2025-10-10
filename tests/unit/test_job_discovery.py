@@ -34,7 +34,7 @@ def _profile() -> Profile:
 def test_build_search_query_limits_terms() -> None:
     query = build_search_query(_profile())
     assert query.startswith("site:jobs.lever.co (")
-    assert query.count("\"") == 12  # 6 quoted terms
+    assert query.count('"') == 12  # 6 quoted terms
     assert query.count(" OR ") == 5
     assert query.endswith(")")
 

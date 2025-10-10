@@ -62,9 +62,7 @@ def test_apply_review_mode_flag_parses(
     def fake_iter_apply_events(profile: Any, mode: str):
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, err = _run_cli(
@@ -104,9 +102,7 @@ def test_apply_audit_after_submit_flags_parse(
     def fake_iter_apply_events(profile: Any, mode: str):
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     # Test --audit-after-submit
@@ -130,6 +126,7 @@ def test_resume_job_with_submit_flag(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test resume-job accepts --submit flag and returns correct structure."""
+
     def fake_resume(job_id: str, submit: bool = False) -> dict[str, Any]:
         if submit:
             return {
@@ -142,9 +139,7 @@ def test_resume_job_with_submit_flag(
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.resume_job", fake_resume)
 
     # Test without --submit
-    code1, out1, _ = _run_cli(
-        orchestrator_module, ["resume-job", "01HXYZ", "--json"], monkeypatch
-    )
+    code1, out1, _ = _run_cli(orchestrator_module, ["resume-job", "01HXYZ", "--json"], monkeypatch)
     assert code1 == 0
     payload1 = json.loads(out1)
     assert payload1["id"] == "01HXYZ"
@@ -164,14 +159,13 @@ def test_replay_job_command_exists(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test replay-job command parses and returns correct exit code."""
+
     def fake_replay(job_id: str) -> dict[str, Any]:
         return {"id": job_id, "status": "in_progress"}
 
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.replay_job", fake_replay)
 
-    code, out, _ = _run_cli(
-        orchestrator_module, ["replay-job", "01HXYZ", "--json"], monkeypatch
-    )
+    code, out, _ = _run_cli(orchestrator_module, ["replay-job", "01HXYZ", "--json"], monkeypatch)
 
     assert code == 0
     payload = json.loads(out)
@@ -183,15 +177,14 @@ def test_cleanup_artifacts_requires_older_than(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test cleanup-artifacts requires --older-than flag and rejects missing arg."""
+
     def fake_cleanup(profile: str | None, older_than: int, dry_run: bool) -> dict[str, Any]:
         return {"matched": 5, "deleted": 0 if dry_run else 5}
 
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.cleanup_artifacts", fake_cleanup)
 
     # Test missing --older-than returns exit code 5
-    code1, out1, err1 = _run_cli(
-        orchestrator_module, ["cleanup-artifacts", "--json"], monkeypatch
-    )
+    code1, out1, err1 = _run_cli(orchestrator_module, ["cleanup-artifacts", "--json"], monkeypatch)
     assert code1 == 5  # invalid args
 
     # Test with --older-than succeeds
@@ -207,12 +200,18 @@ def test_cleanup_artifacts_dry_run_flag(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test cleanup-artifacts --dry-run flag works correctly."""
+
     def fake_cleanup(profile: str | None, older_than: int, dry_run: bool) -> dict[str, Any]:
         files = [
             "data/artifacts/profile1/item1/pre.json",
             "data/artifacts/profile1/item1/pre-full.jpg",
         ]
-        return {"matched": len(files), "files": files if dry_run else [], "deleted": 0 if dry_run else len(files)}
+        deleted_count = 0 if dry_run else len(files)
+        return {
+            "matched": len(files),
+            "files": files if dry_run else [],
+            "deleted": deleted_count,
+        }
 
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.cleanup_artifacts", fake_cleanup)
 
@@ -249,9 +248,7 @@ def test_captcha_blocked_event_includes_artifacts(
     def fake_iter_apply_events(profile: Any, mode: str):
         yield from events
 
-    monkeypatch.setattr(
-        "job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile
-    )
+    monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
     monkeypatch.setattr(orchestrator_module, "iter_apply_events", fake_iter_apply_events)
 
     code, out, _ = _run_cli(
@@ -270,15 +267,14 @@ def test_resume_job_invalid_state_exit_code(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test resume-job returns exit code 6 when saved state is missing/corrupt."""
+
     def fake_resume(job_id: str, submit: bool = False) -> dict[str, Any]:
         # Simulate missing pre.json
         raise ValueError("pre.json missing or invalid")
 
     monkeypatch.setattr("job_ai_auto_apply_ui.orchestrator.resume_job", fake_resume)
 
-    code, out, _ = _run_cli(
-        orchestrator_module, ["resume-job", "01HXYZ", "--json"], monkeypatch
-    )
+    code, out, _ = _run_cli(orchestrator_module, ["resume-job", "01HXYZ", "--json"], monkeypatch)
 
     assert code == 6  # invalid_state exit code
     payload = json.loads(out)
@@ -291,6 +287,7 @@ def test_cleanup_artifacts_nothing_matched_exit_code(
     monkeypatch: pytest.MonkeyPatch, orchestrator_module: Any
 ) -> None:
     """Test cleanup-artifacts returns exit code 2 when nothing matched."""
+
     def fake_cleanup(profile: str | None, older_than: int, dry_run: bool) -> dict[str, Any]:
         return {"matched": 0, "deleted": 0}
 

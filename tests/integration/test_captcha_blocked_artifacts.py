@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from job_ai_auto_apply_ui.application_queue import ApplicationItem, ApplicationQueue, ApplicationStatus
+from job_ai_auto_apply_ui.application_queue import (
+    ApplicationItem,
+    ApplicationQueue,
+    ApplicationStatus,
+)
 from job_ai_auto_apply_ui.profile_manager import Profile
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -68,8 +72,8 @@ async def test_captcha_blocked_persists_pre_artifacts(monkeypatch: pytest.Monkey
 
         # Expected artifact paths
         item_artifact_dir = artifacts_dir / "artifacts" / profile.id / item.id
-        pre_json_path = item_artifact_dir / "pre.json"
-        pre_screenshot_path = item_artifact_dir / "pre-full.jpg"
+        _pre_json_path = item_artifact_dir / "pre.json"
+        _pre_screenshot_path = item_artifact_dir / "pre-full.jpg"
 
         # Placeholder assertions (will fail until implemented)
         assert False, "Captcha-blocked artifact capture not yet implemented"
@@ -123,7 +127,7 @@ async def test_captcha_blocked_emits_correct_event(monkeypatch: pytest.MonkeyPat
     # NOTE: This test will FAIL until T016 (event wiring)
 
     # Expected event structure:
-    expected_event = {
+    _expected_event = {
         "event": "captcha_blocked",
         "id": "01HXYZ",
         "form_state_path": "data/artifacts/test_captcha/01HXYZ/pre.json",
@@ -158,7 +162,7 @@ async def test_captcha_blocked_allows_resume_after_manual_solve(
         (item_artifact_dir / "pre.json").write_text(json.dumps(saved_state), encoding="utf-8")
 
         # Create pre-full.jpg
-        (item_artifact_dir / "pre-full.jpg").write_bytes(b'\xff\xd8\xff\xe0' + b'\x00' * 100)
+        (item_artifact_dir / "pre-full.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
 
         # NOTE: This test will FAIL until T012 (resume-job implementation)
 
@@ -186,7 +190,7 @@ async def test_captcha_detection_via_selector(monkeypatch: pytest.MonkeyPatch) -
     # 3. Save artifacts before blocking
 
     # Test with mock page containing hCaptcha iframe
-    html_with_captcha = """
+    _html_with_captcha = """
     <html>
         <body>
             <form id="application-form">
