@@ -7,6 +7,7 @@ from .lever import (
     LeverFormPlan,
     analyze_form,
     ensure_allowed_domain,
+    prefill_from_saved_state,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "DynamicQuestion",
     "analyze_form",
     "ensure_allowed_domain",
+    "prefill_from_saved_state",
 ]
