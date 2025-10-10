@@ -3843,6 +3843,9 @@ async def capture_pre_artifacts(
     # Capture full-page screenshot using Playwright integration
     pre_screenshot_path = artifacts_dir / "pre-full.jpg"
     try:
+        # Get the current URL from browser-use page to match correct Playwright page
+        current_url = await page.get_url()
+
         # Connect Playwright to the same Chrome instance as browser-use
         from playwright.async_api import async_playwright
 
@@ -3850,10 +3853,25 @@ async def capture_pre_artifacts(
         playwright = await async_playwright().start()
         playwright_browser = await playwright.chromium.connect_over_cdp(cdp_url)
 
-        # Get the current page from the browser context
-        if playwright_browser.contexts and playwright_browser.contexts[0].pages:
-            playwright_page = playwright_browser.contexts[0].pages[0]
+        # Find the correct page by URL instead of blindly using pages[0]
+        playwright_page = None
+        if playwright_browser.contexts:
+            for context in playwright_browser.contexts:
+                for p in context.pages:
+                    page_url = p.url
+                    if page_url == current_url:
+                        playwright_page = p
+                        break
+                if playwright_page:
+                    break
 
+        # Fallback: if no URL match, use the last page (most recently active)
+        if not playwright_page and playwright_browser.contexts:
+            pages = playwright_browser.contexts[0].pages
+            if pages:
+                playwright_page = pages[-1]
+
+        if playwright_page:
             # Use Playwright's native screenshot API with full_page support
             await playwright_page.screenshot(
                 path=str(pre_screenshot_path), full_page=True, type="jpeg", quality=90
@@ -3900,6 +3918,9 @@ async def capture_post_screenshot(
 
     post_screenshot_path = artifacts_dir / "post-full.jpg"
     try:
+        # Get the current URL from browser-use page to match correct Playwright page
+        current_url = await page.get_url()
+
         # Connect Playwright to the same Chrome instance as browser-use
         from playwright.async_api import async_playwright
 
@@ -3907,10 +3928,25 @@ async def capture_post_screenshot(
         playwright = await async_playwright().start()
         playwright_browser = await playwright.chromium.connect_over_cdp(cdp_url)
 
-        # Get the current page from the browser context
-        if playwright_browser.contexts and playwright_browser.contexts[0].pages:
-            playwright_page = playwright_browser.contexts[0].pages[0]
+        # Find the correct page by URL instead of blindly using pages[0]
+        playwright_page = None
+        if playwright_browser.contexts:
+            for context in playwright_browser.contexts:
+                for p in context.pages:
+                    page_url = p.url
+                    if page_url == current_url:
+                        playwright_page = p
+                        break
+                if playwright_page:
+                    break
 
+        # Fallback: if no URL match, use the last page (most recently active)
+        if not playwright_page and playwright_browser.contexts:
+            pages = playwright_browser.contexts[0].pages
+            if pages:
+                playwright_page = pages[-1]
+
+        if playwright_page:
             # Use Playwright's native screenshot API with full_page support
             await playwright_page.screenshot(
                 path=str(post_screenshot_path), full_page=True, type="jpeg", quality=90
