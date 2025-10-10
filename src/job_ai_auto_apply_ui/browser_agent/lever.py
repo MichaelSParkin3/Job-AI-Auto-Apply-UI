@@ -3840,12 +3840,30 @@ async def capture_pre_artifacts(
     saved_state.write_pre_state(pre_json_path, state_payload)
     log_event("artifacts.pre_state.saved", path=str(pre_json_path))
 
-    # Capture full-page screenshot
+    # Capture full-page screenshot using Playwright integration
     pre_screenshot_path = artifacts_dir / "pre-full.jpg"
     try:
-        screenshot_bytes = await page.screenshot(full_page=True, type="jpeg")
-        pre_screenshot_path.write_bytes(screenshot_bytes)
-        log_event("artifacts.pre_screenshot.saved", path=str(pre_screenshot_path))
+        # Connect Playwright to the same Chrome instance as browser-use
+        from playwright.async_api import async_playwright
+
+        cdp_url = session.cdp_url
+        playwright = await async_playwright().start()
+        playwright_browser = await playwright.chromium.connect_over_cdp(cdp_url)
+
+        # Get the current page from the browser context
+        if playwright_browser.contexts and playwright_browser.contexts[0].pages:
+            playwright_page = playwright_browser.contexts[0].pages[0]
+
+            # Use Playwright's native screenshot API with full_page support
+            await playwright_page.screenshot(
+                path=str(pre_screenshot_path), full_page=True, type="jpeg", quality=90
+            )
+            log_event("artifacts.pre_screenshot.saved", path=str(pre_screenshot_path))
+
+        # Cleanup Playwright connection (don't close browser, just disconnect)
+        await playwright_browser.close()
+        await playwright.stop()
+
     except Exception as exc:
         log_event("artifacts.pre_screenshot.failed", error=str(exc))
         # Create empty file as fallback
@@ -3882,9 +3900,27 @@ async def capture_post_screenshot(
 
     post_screenshot_path = artifacts_dir / "post-full.jpg"
     try:
-        screenshot_bytes = await page.screenshot(full_page=True, type="jpeg")
-        post_screenshot_path.write_bytes(screenshot_bytes)
-        log_event("artifacts.post_screenshot.saved", path=str(post_screenshot_path))
+        # Connect Playwright to the same Chrome instance as browser-use
+        from playwright.async_api import async_playwright
+
+        cdp_url = session.cdp_url
+        playwright = await async_playwright().start()
+        playwright_browser = await playwright.chromium.connect_over_cdp(cdp_url)
+
+        # Get the current page from the browser context
+        if playwright_browser.contexts and playwright_browser.contexts[0].pages:
+            playwright_page = playwright_browser.contexts[0].pages[0]
+
+            # Use Playwright's native screenshot API with full_page support
+            await playwright_page.screenshot(
+                path=str(post_screenshot_path), full_page=True, type="jpeg", quality=90
+            )
+            log_event("artifacts.post_screenshot.saved", path=str(post_screenshot_path))
+
+        # Cleanup Playwright connection (don't close browser, just disconnect)
+        await playwright_browser.close()
+        await playwright.stop()
+
     except Exception as exc:
         log_event("artifacts.post_screenshot.failed", error=str(exc))
         # Create empty file as fallback
