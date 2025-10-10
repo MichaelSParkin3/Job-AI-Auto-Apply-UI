@@ -48,15 +48,32 @@ Examples
   - LLM overrides: `--llm-provider`, `--llm-model`
   - Resume widget helpers:
     - `--use-llm-locator` (sets `AUTO_APPLY_USE_LLM_LOCATOR=1` for the run)
-    - `--debug-resume-widget` (sets `AUTO_APPLY_DEBUG_RESUME_WIDGET=1` to emit a structured widget snapshot if upload isn’t detected)
+    - `--debug-resume-widget` (sets `AUTO_APPLY_DEBUG_RESUME_WIDGET=1` to emit a structured widget snapshot if upload isn't detected)
     - `--resume-wait-timeout-seconds N` (sets `AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS=N`)
+  - Saved state & artifacts:
+    - `--review-mode`: Fill forms and save state (`pre.json`, `pre-full.jpg`) without submitting; marks item as `pending_review`
+    - `--audit-after-submit` / `--no-audit-after-submit`: Control post-submission screenshot capture (default: ON)
   - Logging: `--save-logs` writes structured JSON logs to `<logs-dir>/<timestamp>.log` (default `logs/`); override directory with `--logs-dir <path>`
   - Exit codes: `0` when every item submits, `3` when any item fails
 
 - `auto-apply resume-job`
   - `id` (required): application item id from `data/queues/<profile>.json`
+  - `--submit`: Auto-submit after prefilling (default: pause for review)
+  - `--json`: machine‑readable output
+  - Exit codes: `0` on success, `4` when the id is not found, `6` when saved state is missing/corrupt (`invalid_state`)
+
+- `auto-apply replay-job`
+  - `id` (required): application item id
+  - Resets queue item to `in_progress` without opening browser (use when retrying from scratch)
   - `--json`: machine‑readable output
   - Exit codes: `0` on success, `4` when the id is not found
+
+- `auto-apply cleanup-artifacts`
+  - `--older-than <days>` (required): Delete artifacts older than specified days
+  - `--profile <id>` (optional): Limit cleanup to specific profile
+  - `--dry-run`: List matched files without deleting
+  - `--json`: machine‑readable output
+  - Exit codes: `0` success, `2` nothing matched, `5` invalid arguments
 
 ## Profiles (TOML)
 
@@ -150,9 +167,26 @@ Tip: all of the above can be set inline per‑run, or placed in `.env`.
 
 ## Artifacts & Logs
 
-- Logs: structured events like `apply.start`, `form.wait.*`, `resume_upload.*` are emitted in JSON
-- Artifacts: enable `AUTO_APPLY_DIAGNOSTICS=1` or `AUTO_APPLY_CAPTURE_VIDEO/…` to save video/HAR
-- Upload troubleshooting: set `AUTO_APPLY_DEBUG_RESUME_WIDGET=1` to capture a resume widget snapshot when detection fails
+### Structured Logs
+- Events like `apply.start`, `form.wait.*`, `resume_upload.*`, `review_mode.artifacts_captured` emitted in JSON
+- Use `--save-logs` to persist logs to timestamped `.jsonl` files for analysis
+
+### Artifact Files
+Saved to `data/artifacts/<profile>/<item_id>/`:
+
+**Pre-Submission** (review mode or captcha):
+- `pre.json`: SavedState v1 schema (form selectors + filled values)
+- `pre-full.jpg`: Full-page screenshot before submission
+
+**Post-Submission** (successful applications):
+- `post-full.jpg`: Full-page screenshot of confirmation page (disable with `--no-audit-after-submit`)
+- `confirmation.json`: Confirmation text, ID, and capture timestamp
+
+**Diagnostics** (when `AUTO_APPLY_DIAGNOSTICS=1`):
+- Video/HAR recordings (enable with `AUTO_APPLY_CAPTURE_VIDEO=1` / `AUTO_APPLY_CAPTURE_HAR=1`)
+- Resume widget snapshot (enable with `AUTO_APPLY_DEBUG_RESUME_WIDGET=1`)
+
+**Retention**: Manual only—use `auto-apply cleanup-artifacts --older-than <days>` to delete old files
 
 ## Troubleshooting
 

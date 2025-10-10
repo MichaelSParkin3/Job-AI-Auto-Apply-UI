@@ -26,7 +26,7 @@ flowchart TD
 ### Primary Components
 
 - **Profiles**: TOML files describing defaults, keywords, prompts, preferred browser channel, and user data dir. `Profile.resolve_resume_path` respects relative paths.
-- **ApplicationQueue**: JSON per profile under `data/queues/`. Tracks status transitions (NEW, IN_PROGRESS, SUBMITTED, FAILED, CAPTCHA_BLOCKED) and tolerates UTF-8 BOM edits.
+- **ApplicationQueue**: JSON per profile under `data/queues/`. Tracks status transitions (`new`, `in_progress`, `pending_review`, `captcha_blocked`, `submitted`, `failed`) and tolerates UTF-8 BOM edits.
 - **Telemetry**: All major actions emit structured JSON logs via `structlog` (`auto_apply` logger), enabling replayable timelines.
 
 ## Discover Command (`cmd_discover`)
@@ -129,6 +129,75 @@ flowchart LR
 2. Resume upload: locator -> page -> frame -> file chooser -> anchor -> (optional LLM) -> typed CDP -> Browser-Use event bus.
 3. Form filling: defaults -> prompts -> LLM assist (auto mode) or human supervision (supervised mode).
 4. Confirmation: if submission fails, queue marks failure with precise reason codes (runtime_error, captcha_blocked, resume_upload_failed, validation_failed, etc.).
+
+## Saved State & Artifact Capture
+
+The application supports comprehensive artifact capture and resumable workflows for interrupted applications.
+
+### Review Mode (`--review-mode`)
+- **Purpose**: Fill forms and save state without submitting (for manual review before submission).
+- **Artifacts Captured**:
+  - `pre.json`: Saved form state (selectors + filled values) using SavedState v1 schema
+  - `pre-full.jpg`: Full-page screenshot before submission
+- **Status**: Item marked as `pending_review` in queue
+- **Usage**: `auto-apply apply --profile <id> --review-mode`
+
+### Captcha Handling
+- **Detection**: hCaptcha iframe visibility checked before and after submit attempt
+- **Automatic Artifact Capture**: When captcha detected:
+  - `pre.json` and `pre-full.jpg` saved automatically
+  - Status set to `captcha_blocked`
+  - Item available for manual resume after solving captcha
+
+### Post-Submission Artifacts
+- **Default Behavior**: After successful submission, captures:
+  - `post-full.jpg`: Full-page screenshot of confirmation page
+  - `confirmation.json`: Confirmation text, ID, and capture timestamp
+- **Control**: Use `--no-audit-after-submit` to disable post-submission screenshot
+
+### Resume & Replay Commands
+
+**`resume-job <id>` Command**
+- **Purpose**: Resume a `pending_review` or `captcha_blocked` item
+- **Behavior**:
+  - Loads `pre.json` from artifacts
+  - Opens browser to application URL
+  - Prefills all form fields from saved state
+  - **Default**: Pauses for manual review (status: `paused`)
+  - **With `--submit`**: Auto-submits after prefilling
+- **Error Handling**:
+  - Exit code `4` if item not found in queues
+  - Exit code `6` if `pre.json` missing or corrupt (`invalid_state`)
+- **Usage**: `auto-apply resume-job <id>` or `auto-apply resume-job <id> --submit`
+
+**`replay-job <id>` Command**
+- **Purpose**: Reset item to `in_progress` without opening browser or prefilling
+- **Use Case**: Retry application from scratch (e.g., form structure changed)
+- **Behavior**: Updates queue status only, no browser session launched
+- **Usage**: `auto-apply replay-job <id>`
+
+### Artifact Storage
+- **Location**: `data/artifacts/<profile>/<item_id>/`
+- **Files Per Item**:
+  - `pre.json` (review mode / captcha)
+  - `pre-full.jpg` (review mode / captcha)
+  - `post-full.jpg` (successful submission, optional)
+  - `confirmation.json` (successful submission)
+- **Retention**: Manual only—no automatic deletion
+
+### Cleanup Command (`cleanup-artifacts`)
+- **Purpose**: Delete old artifact files to manage disk usage
+- **Required Flag**: `--older-than <days>` (no default TTL)
+- **Optional Flags**:
+  - `--profile <id>`: Limit cleanup to specific profile
+  - `--dry-run`: List matched files without deleting
+  - `--json`: Machine-readable output
+- **Exit Codes**:
+  - `0`: Success (files deleted or dry-run complete)
+  - `2`: Nothing matched criteria
+  - `5`: Invalid arguments (e.g., missing `--older-than`)
+- **Safety**: Only deletes artifact files; queue JSON files remain untouched
+- **Usage**: `auto-apply cleanup-artifacts --older-than 30` or `auto-apply cleanup-artifacts --profile my --older-than 30 --dry-run`
 
 ## Manual Review / Supervised Mode
 

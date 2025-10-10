@@ -112,18 +112,22 @@
   - Command: ruff check .
 
 ## Additional Coverage (appendix)
-- [ ] T023 [P] Integration test: success path captures post-full.jpg and confirmation.json
+- [X] T023 [P] Integration test: success path captures post-full.jpg and confirmation.json
   - File: tests/integration/test_submit_artifacts_success.py
   - Arrange: stub browser agent/session; After submitted event, assert `post-full.jpg` and `confirmation.json` exist under `data/artifacts/<profile>/<item_id>/`
-- [ ] T024 [P] Integration test: replay-job resets to IN_PROGRESS without browser
+  - Added write_confirmation() helper to saved_state.py; wired confirmation.json capture in lever.py
+- [X] T024 [P] Integration test: replay-job resets to IN_PROGRESS without browser
   - File: tests/integration/test_replay_job.py
   - Arrange: existing queue item; run `auto-apply replay-job <id>`; assert status `in_progress`; verify no browser session initiated (stubbed)
-- [ ] T025 Contract test: resume-job invalid_state exit code 6 + JSON error
+  - Created 4 test cases: SUBMITTED→IN_PROGRESS, FAILED→IN_PROGRESS, no browser session, raises on missing item
+- [X] T025 Contract test: resume-job invalid_state exit code 6 + JSON error
   - File: tests/contract/test_resume_invalid_state.py
   - Arrange: queue contains id but missing/corrupt `pre.json`; assert exit `6` and error JSON payload
-- [ ] T026 [P] Documentation updates: naming + cleanup semantics
-  - Files: specs/002-save-state-artifact/spec.md, specs/002-save-state-artifact/plan.md, specs/002-save-state-artifact/contracts/cli-contracts.md
-  - Ensure identifiers use snake_case in backticks; cleanup requires `--older-than`; no default TTL; add invalid_state in resume-job
+  - Created 4 test cases: missing pre.json, corrupt pre.json, JSON structure validation, distinguishes exit 4 vs 6
+- [X] T026 [P] Documentation updates: naming + cleanup semantics
+  - Files: developer_tasks/dev_docs/app-workflow-overview.md, README.md
+  - Updated app-workflow-overview.md with comprehensive "Saved State & Artifact Capture" section
+  - Updated README.md CLI Commands and Artifacts & Logs sections with snake_case identifiers and cleanup semantics
 
 ## Dependencies
 - Tests (T003–T007) before Core (T008–T016)

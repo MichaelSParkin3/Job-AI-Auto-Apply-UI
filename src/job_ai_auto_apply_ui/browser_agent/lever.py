@@ -1466,6 +1466,25 @@ class LeverApplyAgent:
         except Exception as exc:
             log_event("artifacts.post_screenshot.error", error=str(exc))
 
+        # Save confirmation data to confirmation.json
+        try:
+            from datetime import datetime
+
+            settings = load_settings()
+            artifacts_dir = settings.artifacts_path(profile.id) / item.id
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            confirmation_json_path = artifacts_dir / "confirmation.json"
+
+            confirmation_payload = {
+                "confirmation_text": confirmation_text[:500] if confirmation_text else "submitted",
+                "confirmation_id": None,
+                "captured_at": datetime.now().isoformat(),
+            }
+            saved_state.write_confirmation(confirmation_json_path, confirmation_payload)
+            log_event("artifacts.confirmation.saved", path=str(confirmation_json_path))
+        except Exception as exc:
+            log_event("artifacts.confirmation.failed", error=str(exc))
+
         artifacts = Artifacts(
             confirmation_text=(confirmation_text[:500] if confirmation_text else "submitted"),
             confirmation_id=None,

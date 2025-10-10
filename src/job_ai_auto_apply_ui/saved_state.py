@@ -37,3 +37,19 @@ def read_pre_state(path: Path) -> dict:
     """
     content = path.read_text(encoding="utf-8")
     return json.loads(content)
+
+
+def write_confirmation(path: Path, payload: dict) -> None:
+    """Write confirmation data to confirmation.json.
+
+    Args:
+        path: Filesystem path where confirmation.json should be written.
+        payload: Confirmation dictionary containing confirmation_text, confirmation_id,
+            and captured_at.
+
+    Raises:
+        OSError: If the file cannot be written.
+
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
