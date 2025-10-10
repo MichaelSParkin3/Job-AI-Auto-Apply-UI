@@ -116,6 +116,8 @@ class Settings:
     def artifacts_path(self, profile: str | None = None) -> Path:
         """Return the artifacts directory path, optionally namespaced per profile.
 
+        Creates the directory structure if it doesn't exist.
+
         Args:
             profile: Optional profile identifier appended to the artifacts root.
 
@@ -125,7 +127,10 @@ class Settings:
 
         base = Path(self.artifacts_root)
         if profile:
-            return base / profile
+            path = base / profile
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+        base.mkdir(parents=True, exist_ok=True)
         return base
 
 

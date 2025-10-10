@@ -30,29 +30,29 @@
 ```
 
 ## Phase 3.1: Setup
-- [ ] T001 Ensure artifacts root and queues directories exist at runtime
+- [X] T001 Ensure artifacts root and queues directories exist at runtime
   - Code: use Settings.artifacts_path(profile) and Path('data/queues').mkdir(parents=True, exist_ok=True) where needed
   - Files: src/job_ai_auto_apply_ui/config.py, src/job_ai_auto_apply_ui/orchestrator.py
-- [ ] T002 [P] Add test fixtures for saved state and artifacts
+- [X] T002 [P] Add test fixtures for saved state and artifacts
   - Files: tests/fixtures/pre_state_sample.json, tests/fixtures/lever_form.html (reuse), tests/fixtures/lever_posting.html (reuse)
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
-- [ ] T003 [P] Contract test: CLI saved-state, resume, replay, cleanup
+- [X] T003 [P] Contract test: CLI saved-state, resume, replay, cleanup
   - File: tests/contract/test_cli_saved_state_contract.py
   - Based on: G:\Github_Repos\Job-AI-Auto-Apply-UI\Job-AI-Auto-Apply-UI\specs\002-save-state-artifact\contracts\cli-contracts.md
   - Assert: flags (--review-mode, --audit-after-submit/--no-audit-after-submit, resume-job --submit, cleanup-artifacts) parse; JSON events include saved_for_review, captcha_blocked, submitted(confirmation_id, screenshot_after_path); exit codes per spec
-- [ ] T004 [P] Integration test: review-mode persists pre.json + pre-full.jpg and sets pending_review
+- [X] T004 [P] Integration test: review-mode persists pre.json + pre-full.jpg and sets pending_review
   - File: tests/integration/test_review_mode_artifacts.py
   - Arrange: temp artifacts dir; stub BrowserSession/Page to bypass network; simulate LeverFormPlan + values
   - Assert: data/artifacts/<profile>/<item_id> contains pre.json, pre-full.jpg; queue item status == 'pending_review'
-- [ ] T005 [P] Integration test: resume-job prefill + pause; --submit triggers submit path
+- [X] T005 [P] Integration test: resume-job prefill + pause; --submit triggers submit path
   - File: tests/integration/test_resume_job_prefill.py
   - Arrange: existing pre.json; run 'auto-apply resume-job <id>' with and without --submit
   - Assert: without --submit → paused payload; with --submit → submitted event with confirmation fields
-- [ ] T006 [P] Integration test: captcha-blocked persists pre artifacts and sets captcha_blocked
+- [X] T006 [P] Integration test: captcha-blocked persists pre artifacts and sets captcha_blocked
   - File: tests/integration/test_captcha_blocked_artifacts.py
   - Arrange: simulate captcha detected; ensure pre.json + pre-full.jpg written; queue item status == 'captcha_blocked'
-- [ ] T007 [P] Integration test: cleanup-artifacts deletes only targeted files
+- [X] T007 [P] Integration test: cleanup-artifacts deletes only targeted files
   - File: tests/integration/test_cleanup_artifacts.py
   - Arrange: create artifacts across profiles and dates; run 'auto-apply cleanup-artifacts --profile X --older-than 30 --dry-run' then without --dry-run
   - Assert: JSON reports matched files in dry-run; only eligible paths removed; queues intact

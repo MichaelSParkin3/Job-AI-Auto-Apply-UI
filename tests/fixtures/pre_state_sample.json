@@ -1,0 +1,101 @@
+{
+  "version": "v1",
+  "captured_at": "2025-10-09T15:30:00Z",
+  "profile_id": "test_profile",
+  "item_id": "01HXYZ1234567890ABCDEFGHIJ",
+  "url": "https://jobs.lever.co/example/senior-frontend-engineer",
+  "apply_url": "https://jobs.lever.co/example/senior-frontend-engineer/apply",
+  "plan": {
+    "resume_input": "#resume-upload-input",
+    "contact_fields": {
+      "name": "input[name='name']",
+      "email": "input[name='email']",
+      "phone": "input[name='phone']",
+      "location": "input[name='location']"
+    },
+    "link_fields": {
+      "portfolio_url": "input[name='urls[Portfolio]']",
+      "github_url": "input[name='urls[GitHub]']",
+      "linkedin_url": "input[name='urls[LinkedIn]']"
+    },
+    "dynamic_questions": [
+      {
+        "field_name": "salary_expectation",
+        "field_type": "text",
+        "selector": "textarea[name='comments']",
+        "options": null
+      },
+      {
+        "field_name": "work_authorization",
+        "field_type": "select",
+        "selector": "select[name='cards[Work Authorization]']",
+        "options": ["Yes", "No", "Require Sponsorship"]
+      }
+    ],
+    "eeo_fields": [
+      {
+        "name": "eeo[gender]",
+        "selector": "select[name='eeo[gender]']",
+        "field_type": "select",
+        "options": ["Male", "Female", "Non-binary", "Prefer not to answer"]
+      },
+      {
+        "name": "eeo[race]",
+        "selector": "select[name='eeo[race]']",
+        "field_type": "select",
+        "options": ["Asian", "Black or African American", "Hispanic or Latino", "White", "Prefer not to answer"]
+      }
+    ],
+    "submit_button": "button[type='submit'].template-btn-submit",
+    "captcha_selector": "iframe[src*='hcaptcha']"
+  },
+  "values": {
+    "contacts": {
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "phone": "+1-555-123-4567",
+      "location": "San Francisco, CA",
+      "location_hidden": "input[name='location'][type='hidden']"
+    },
+    "links": {
+      "portfolio_url": "https://johndoe.dev",
+      "github_url": "https://github.com/johndoe",
+      "linkedin_url": "https://linkedin.com/in/johndoe"
+    },
+    "dynamic_questions": [
+      {
+        "field_name": "salary_expectation",
+        "selector": "textarea[name='comments']",
+        "value": "Open to discussion based on total compensation package"
+      },
+      {
+        "field_name": "work_authorization",
+        "selector": "select[name='cards[Work Authorization]']",
+        "value": "Yes"
+      }
+    ],
+    "eeo": [
+      {
+        "name": "eeo[gender]",
+        "selector": "select[name='eeo[gender]']",
+        "value": "Prefer not to answer"
+      },
+      {
+        "name": "eeo[race]",
+        "selector": "select[name='eeo[race]']",
+        "value": "Prefer not to answer"
+      }
+    ],
+    "resume": {
+      "storage_id_len": 32,
+      "filename": "john_doe_resume.pdf",
+      "confirmed_attached": true
+    }
+  },
+  "labels": {
+    "name": "Full Name *",
+    "email": "Email Address *",
+    "phone": "Phone Number",
+    "location": "Location"
+  }
+}
