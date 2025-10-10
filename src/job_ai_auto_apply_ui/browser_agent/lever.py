@@ -996,7 +996,7 @@ class LeverApplyAgent:
         apply_url = item.details.apply_url if item.details and item.details.apply_url else item.url
         ensure_allowed_domain(apply_url, self._options.allowed_domains)
 
-        page = await session.new_page()
+        page = await session.get_current_page() or await session.new_page()
         # Robust navigate: event-bus -> CDP -> page.goto, with verification + logs
         await _robust_navigate(session, page, apply_url)
         # Re-focus active page in case navigation opened or switched tabs

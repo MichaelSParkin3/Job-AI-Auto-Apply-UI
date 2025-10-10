@@ -808,7 +808,7 @@ def resume_job(job_id: str, submit_after_prefill: bool = False) -> dict[str, obj
 
         try:
             # Navigate to saved URL
-            page = await session.new_page()
+            page = await session.get_current_page() or await session.new_page()
             apply_url = saved_form_state.get("apply_url") or saved_form_state.get("url")
             await page.goto(apply_url)
             log_event("resume.navigate", url=apply_url, job_id=job_id)
