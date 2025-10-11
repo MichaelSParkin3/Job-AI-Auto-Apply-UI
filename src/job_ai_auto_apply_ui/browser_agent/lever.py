@@ -1252,20 +1252,16 @@ class LeverApplyAgent:
                     )
                     if q.answer_selector:
                         try:
-                            # Check the checkbox
-                            js_code = f"""(sel) => {{
+                            # Check the checkbox - pass selector as argument to avoid escaping issues
+                            js_function = """(sel) => {
                                 const el = document.querySelector(sel);
-                                if (el && !el.checked) {{
+                                if (el && !el.checked) {
                                     el.checked = true;
-                                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                                }}
-                            }}({json.dumps(q.answer_selector)})"""
-                            log_event(
-                                "form.checkbox.debug_js",
-                                selector=q.answer_selector,
-                                js_full=js_code,
-                            )
-                            await page.evaluate(js_code)
+                                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                            }"""
+                            log_event("form.checkbox.will_evaluate", selector=q.answer_selector)
+                            await page.evaluate(js_function, q.answer_selector)
                             filled_values[q.answer_selector] = "checked"
                             log_event("form.checkbox.tracked", selector=q.answer_selector)
                         except Exception as exc:
