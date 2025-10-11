@@ -1283,8 +1283,11 @@ class LeverApplyAgent:
                     filled_values[q.answer_selector] = answer
 
         if plan.eeo_fields:
-            await _fill_eeo_fields(page, plan.eeo_fields, profile)
-            await _fill_disability_signature(page, profile)
+            eeo_values = await _fill_eeo_fields(page, plan.eeo_fields, profile)
+            filled_values.update(eeo_values)
+            disability_sig = await _fill_disability_signature(page, profile)
+            if disability_sig:
+                filled_values.update(disability_sig)
 
         # Cover letter (textarea[name='comments'] or #additional-information) via LLM
         try:
@@ -1345,6 +1348,7 @@ class LeverApplyAgent:
                 cover_text = profile.prompts.get("cover_letter")
             if cover_text:
                 await _fill_textarea(page, cover_selector, cover_text)
+                filled_values[cover_selector] = cover_text
 
         # Multiple-choice dynamic cards (checkboxes/radios) â€” simple heuristics
         try:
@@ -3601,7 +3605,9 @@ def _default_eeo_answer(profile: Profile, field: EeoField) -> str | None:
     return pick("eeo_default_response")
 
 
-async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> None:
+async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> dict[str, str]:
+    """Fill EEO fields and return a dict of filled values."""
+    filled = {}
     for eeo_field in fields:
         desired = _default_eeo_answer(profile, eeo_field)
         if not desired:
@@ -3619,8 +3625,11 @@ async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> No
             continue
         if eeo_field.field_type == "select":
             await _set_select_value(page, eeo_field.selector, value)
+            filled[eeo_field.selector] = value
         else:
             await _select_choice_option(page, eeo_field.name, value)
+            filled[eeo_field.name] = value
+    return filled
 
 
 async def _select_choice_option(page, field_name: str | None, value: str | None) -> None:
@@ -3694,8 +3703,8 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
         pass
 
 
-async def _fill_disability_signature(page, profile: Profile) -> None:
-    """Fill disability signature section if visible.
+async def _fill_disability_signature(page, profile: Profile) -> dict[str, str] | None:
+    """Fill disability signature section if visible and return filled values.
 
     Some Lever forms conditionally show a signature section when the user
     fills out the disability status field. This function checks for visibility
@@ -3704,6 +3713,9 @@ async def _fill_disability_signature(page, profile: Profile) -> None:
     Args:
         page: Playwright page instance.
         profile: User profile with name and defaults.
+
+    Returns:
+        Dict of filled values if section was visible, None otherwise.
     """
     try:
         # Check if signature section is visible
@@ -3718,18 +3730,22 @@ async def _fill_disability_signature(page, profile: Profile) -> None:
             """
         )
         if not section_visible:
-            return
+            return None
 
+        filled = {}
         # Fill signature name field
         name_value = profile.defaults.get("name") or profile.name
         if name_value:
             await _fill_if_available(page, "input[name='eeo[disabilitySignature]']", name_value)
+            filled["input[name='eeo[disabilitySignature]']"] = name_value
 
         # Fill signature date field with current date in MM/DD/YYYY format
         current_date = datetime.now().strftime("%m/%d/%Y")
         await _fill_if_available(page, "input[name='eeo[disabilitySignatureDate]']", current_date)
+        filled["input[name='eeo[disabilitySignatureDate]']"] = current_date
 
         log_event("eeo.disability_signature.filled", name=bool(name_value), date=current_date)
+        return filled
     except Exception as exc:
         log_event("eeo.disability_signature.failed", error=str(exc))
 
