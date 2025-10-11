@@ -1253,15 +1253,19 @@ class LeverApplyAgent:
                     if q.answer_selector:
                         try:
                             # Check the checkbox
-                            await page.evaluate(
-                                f"""(sel) => {{
-                                    const el = document.querySelector(sel);
-                                    if (el && !el.checked) {{
-                                        el.checked = true;
-                                        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                                    }}
-                                }}({json.dumps(q.answer_selector)})"""
+                            js_code = f"""(sel) => {{
+                                const el = document.querySelector(sel);
+                                if (el && !el.checked) {{
+                                    el.checked = true;
+                                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                }}
+                            }}({json.dumps(q.answer_selector)})"""
+                            log_event(
+                                "form.checkbox.debug_js",
+                                selector=q.answer_selector,
+                                js_snippet=js_code[:200],
                             )
+                            await page.evaluate(js_code)
                             filled_values[q.answer_selector] = "checked"
                             log_event("form.checkbox.tracked", selector=q.answer_selector)
                         except Exception as exc:
