@@ -1245,6 +1245,11 @@ class LeverApplyAgent:
                 if field_type == "checkbox":
                     # Handle checkbox fields (consent, agreements, optional preferences)
                     # Most required consents are auto-checked in JavaScript, but handle any that slip through
+                    log_event(
+                        "form.checkbox.start",
+                        prompt=q.prompt[:80] if q.prompt else None,
+                        selector=q.answer_selector,
+                    )
                     if q.answer_selector:
                         try:
                             # Check the checkbox
@@ -1258,8 +1263,13 @@ class LeverApplyAgent:
                                 }}('{q.answer_selector}')"""
                             )
                             filled_values[q.answer_selector] = "checked"
-                        except Exception:
-                            pass
+                            log_event("form.checkbox.tracked", selector=q.answer_selector)
+                        except Exception as exc:
+                            log_event(
+                                "form.checkbox.failed",
+                                selector=q.answer_selector,
+                                error=str(exc),
+                            )
                     continue
 
                 # Treat remaining questions as long-form text areas
