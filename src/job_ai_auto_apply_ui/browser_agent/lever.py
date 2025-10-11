@@ -1026,6 +1026,9 @@ class LeverApplyAgent:
 
         plan = await self.build_plan_in_browser(page)
 
+        # Track all filled values for saving to pre.json
+        filled_values: dict[str, str] = {}
+
         # Upload resume FIRST to prevent form resets from clearing fields filled earlier
         # (Lever's resume processing can trigger JavaScript that resets form state)
         resume_path = str(profile.resolve_resume_path())
@@ -1065,32 +1068,38 @@ class LeverApplyAgent:
                 pass
 
         # Fill contact fields from profile defaults (with sensible fallbacks)
-        await _fill_if_available(
-            page,
-            plan.contact_fields.get("name"),
-            profile.defaults.get("name") or profile.name,
-        )
-        await _fill_if_available(
-            page, plan.contact_fields.get("email"), profile.defaults.get("email")
-        )
-        await _fill_if_available(
-            page, plan.contact_fields.get("phone"), profile.defaults.get("phone")
-        )
+        name_value = profile.defaults.get("name") or profile.name
+        if plan.contact_fields.get("name"):
+            await _fill_if_available(page, plan.contact_fields.get("name"), name_value)
+            filled_values["name"] = name_value
+
+        email_value = profile.defaults.get("email")
+        if plan.contact_fields.get("email") and email_value:
+            await _fill_if_available(page, plan.contact_fields.get("email"), email_value)
+            filled_values["email"] = email_value
+
+        phone_value = profile.defaults.get("phone")
+        if plan.contact_fields.get("phone") and phone_value:
+            await _fill_if_available(page, plan.contact_fields.get("phone"), phone_value)
+            filled_values["phone"] = phone_value
+
         # Current company/org
-        await _fill_if_available(
-            page,
-            # detect common selector directly if planner didn't capture it
-            plan.contact_fields.get("org") or "input[data-qa='org-input'][name='org']",
-            profile.defaults.get("current_company") or profile.defaults.get("company"),
-        )
+        org_value = profile.defaults.get("current_company") or profile.defaults.get("company")
+        org_selector = plan.contact_fields.get("org") or "input[data-qa='org-input'][name='org']"
+        if org_value:
+            await _fill_if_available(page, org_selector, org_value)
+            filled_values["org"] = org_value
 
         # Fill location field AFTER resume upload to avoid being cleared by form resets
+        location_value = profile.defaults.get("location")
         location_valid = await _set_structured_location(
             page,
             input_selector=plan.contact_fields.get("location") or "#location-input",
             hidden_selector=plan.contact_fields.get("location_hidden") or "#selected-location",
-            value=profile.defaults.get("location"),
+            value=location_value,
         )
+        if location_valid and location_value:
+            filled_values["location"] = location_value
         if not location_valid and mode != "auto":
             log_event("form.location.needs_manual_selection", mode=mode)
             print(
@@ -1127,6 +1136,7 @@ class LeverApplyAgent:
                 )
             if value:
                 await _fill_if_available(page, selector, value)
+                filled_values[field_name] = value
 
         # Dynamic questions (text inputs, selects, radios, and long-form textareas)
         if plan.dynamic_questions:
@@ -1397,9 +1407,8 @@ class LeverApplyAgent:
         if review_mode:
             log_event("apply.review_mode.start", item_id=item.id, profile=profile.id)
             try:
-                values = _build_filled_values(profile, plan)
                 pre_json_path, pre_screenshot_path = await capture_pre_artifacts(
-                    session, page, profile, item, plan, values
+                    session, page, profile, item, plan, filled_values
                 )
                 log_event(
                     "review_mode.artifacts_captured",
@@ -1434,8 +1443,7 @@ class LeverApplyAgent:
                 log_event("captcha.blocking_visible", details=cstate)
                 # Capture pre-submission artifacts before failing
                 try:
-                    values = _build_filled_values(profile, plan)
-                    await capture_pre_artifacts(session, page, profile, item, plan, values)
+                    await capture_pre_artifacts(session, page, profile, item, plan, filled_values)
                     log_event("captcha.artifacts_captured", item_id=item.id)
                 except Exception as exc:
                     log_event("captcha.artifacts_failed", error=str(exc))
@@ -3788,7 +3796,7 @@ async def capture_pre_artifacts(
     profile: Profile,
     item: ApplicationItem,
     plan: LeverFormPlan,
-    values: dict[str, str],
+    filled_values: dict[str, str],
 ) -> tuple[Path, Path]:
     """Capture pre-submission artifacts: saved state JSON and full-page screenshot.
 
@@ -3798,7 +3806,7 @@ async def capture_pre_artifacts(
         profile: User profile for namespacing artifacts.
         item: Application item being processed.
         plan: Form plan with selectors.
-        values: Filled form values to persist.
+        filled_values: All filled form values to persist (including LLM answers).
 
     Returns:
         tuple[Path, Path]: Paths to (pre.json, pre-full.jpg).
@@ -3811,6 +3819,28 @@ async def capture_pre_artifacts(
     settings = load_settings()
     artifacts_dir = settings.artifacts_path(profile.id) / item.id
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Serialize dynamic questions for saving
+    dynamic_questions_data = [
+        {
+            "prompt": q.prompt,
+            "answer_selector": q.answer_selector,
+            "field_type": q.field_type,
+            "field_name": q.field_name,
+            "required": q.required,
+        }
+        for q in plan.dynamic_questions
+    ]
+
+    # Serialize EEO fields for saving
+    eeo_fields_data = [
+        {
+            "field_name": eeo.field_name,
+            "selector": eeo.selector,
+            "field_type": eeo.field_type,
+        }
+        for eeo in plan.eeo_fields
+    ]
 
     # Build SavedState v1 payload
     apply_url = item.details.apply_url if item.details and item.details.apply_url else item.url
@@ -3825,10 +3855,12 @@ async def capture_pre_artifacts(
             "resume_input": plan.resume_input,
             "contact_fields": plan.contact_fields,
             "link_fields": plan.link_fields,
+            "dynamic_questions": dynamic_questions_data,
+            "eeo_fields": eeo_fields_data,
             "submit_button": plan.submit_button,
             "captcha_selector": plan.captcha_selector,
         },
-        "values": values,
+        "values": filled_values,
         "labels": {
             "company": item.company,
             "title": item.title,
