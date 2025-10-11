@@ -3856,7 +3856,7 @@ async def capture_pre_artifacts(
     # Serialize EEO fields for saving
     eeo_fields_data = [
         {
-            "field_name": eeo.field_name,
+            "field_name": eeo.name,
             "selector": eeo.selector,
             "field_type": eeo.field_type,
         }
