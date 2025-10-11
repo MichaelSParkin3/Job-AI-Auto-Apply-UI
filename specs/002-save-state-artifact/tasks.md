@@ -86,6 +86,7 @@
   - File: src/job_ai_auto_apply_ui/browser_agent/lever.py
   - Add helpers: capture_pre_artifacts(session,page,profile,item,plan,values) → (pre_json_path, pre_screenshot_path); capture_post_screenshot(...) → post_screenshot_path
   - When captcha detected: return Reason('captcha_blocked', ...) after persisting pre artifacts
+  - Enhancement (commits 6709309, 8239079, 740460d, 3f31fb4): Track ALL filled values (contact, link, dynamic questions, EEO, cover letter) in filled_values dict; serialize dynamic_questions and eeo_fields to plan; update prefill_from_saved_state() to restore all field types (text, textarea, select, checkbox, multiple_choice)
 - [X] T016 Wire JSON events for saved_for_review, captcha_blocked, submitted(confirmation_id, screenshot_after_path)
   - Files: src/job_ai_auto_apply_ui/orchestrator.py, src/job_ai_auto_apply_ui/browser_agent/lever.py
   - Ensure queue.mark_captcha and queue.mark_submitted attach artifacts with new fields
