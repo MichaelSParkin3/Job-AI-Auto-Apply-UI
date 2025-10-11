@@ -1263,7 +1263,7 @@ class LeverApplyAgent:
                             log_event(
                                 "form.checkbox.debug_js",
                                 selector=q.answer_selector,
-                                js_snippet=js_code[:200],
+                                js_full=js_code,
                             )
                             await page.evaluate(js_code)
                             filled_values[q.answer_selector] = "checked"
