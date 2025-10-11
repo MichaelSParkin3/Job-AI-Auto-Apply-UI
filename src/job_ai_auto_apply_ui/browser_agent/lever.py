@@ -1195,6 +1195,7 @@ class LeverApplyAgent:
                                     break
                     if value is not None and q.field_name:
                         await _select_choice_option(page, q.field_name, value)
+                        filled_values[q.field_name] = value
                     continue
                 if field_type == "select":
                     # Handle select dropdowns (common in custom Lever cards)
@@ -1222,6 +1223,7 @@ class LeverApplyAgent:
                             desired = None
                     if desired and q.answer_selector:
                         await _set_select_value(page, q.answer_selector, desired)
+                        filled_values[q.answer_selector] = desired
                     continue
                 if field_type == "text":
                     text_answer = _default_text_answer(profile, q)
@@ -1238,6 +1240,7 @@ class LeverApplyAgent:
                             text_answer = None
                     if text_answer and q.answer_selector:
                         await _fill_if_available(page, q.answer_selector, text_answer)
+                        filled_values[q.answer_selector] = text_answer
                     continue
                 if field_type == "checkbox":
                     # Handle checkbox fields (consent, agreements, optional preferences)
@@ -1254,6 +1257,7 @@ class LeverApplyAgent:
                                     }}
                                 }}('{q.answer_selector}')"""
                             )
+                            filled_values[q.answer_selector] = "checked"
                         except Exception:
                             pass
                     continue
@@ -1276,6 +1280,7 @@ class LeverApplyAgent:
                     )
                 if answer and q.answer_selector:
                     await _fill_textarea(page, q.answer_selector, answer)
+                    filled_values[q.answer_selector] = answer
 
         if plan.eeo_fields:
             await _fill_eeo_fields(page, plan.eeo_fields, profile)
