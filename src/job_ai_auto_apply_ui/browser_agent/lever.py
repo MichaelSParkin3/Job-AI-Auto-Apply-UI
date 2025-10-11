@@ -1260,7 +1260,7 @@ class LeverApplyAgent:
                                         el.checked = true;
                                         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                                     }}
-                                }}('{q.answer_selector}')"""
+                                }}({json.dumps(q.answer_selector)})"""
                             )
                             filled_values[q.answer_selector] = "checked"
                             log_event("form.checkbox.tracked", selector=q.answer_selector)
