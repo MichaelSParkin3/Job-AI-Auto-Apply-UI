@@ -4067,4 +4067,124 @@ async def prefill_from_saved_state(page, saved_state: dict) -> None:
             except Exception as exc:
                 log_event("resume.prefill.link_failed", field=field_name, error=str(exc))
 
+    # Fill dynamic questions
+    dynamic_questions = plan.get("dynamic_questions", [])
+    for question in dynamic_questions:
+        answer_selector = question.get("answer_selector")
+        field_type = question.get("field_type", "text")
+        field_name = question.get("field_name")
+
+        if not answer_selector:
+            continue
+
+        # Get value using answer_selector or field_name as key
+        value = values.get(answer_selector) or values.get(field_name)
+        if not value:
+            continue
+
+        try:
+            if field_type in ("text", "textarea"):
+                # Use js_set_value for text and textarea fields
+                await page.evaluate(js_set_value, answer_selector, value)
+                log_event("resume.prefill.dynamic_question", field_type=field_type, selector=answer_selector)
+            elif field_type == "select":
+                # Set select dropdown value
+                js_set_select = (
+                    "(sel, val) => { const el = document.querySelector(sel); "
+                    "if (!el || el.tagName !== 'SELECT') return false; "
+                    "el.value = val; el.dispatchEvent(new Event('change', {bubbles:true})); return true; }"
+                )
+                await page.evaluate(js_set_select, answer_selector, value)
+                log_event("resume.prefill.dynamic_question", field_type="select", selector=answer_selector)
+            elif field_type == "checkbox" and value == "checked":
+                # Check checkbox
+                js_check = (
+                    "(sel) => { const el = document.querySelector(sel); "
+                    "if (!el || el.type !== 'checkbox') return false; "
+                    "el.checked = true; el.dispatchEvent(new Event('change', {bubbles:true})); return true; }"
+                )
+                await page.evaluate(js_check, answer_selector)
+                log_event("resume.prefill.dynamic_question", field_type="checkbox", selector=answer_selector)
+            elif field_type == "multiple_choice" and field_name:
+                # Select radio button by field name and value
+                js_select_radio = (
+                    "(name, val) => { const radios = document.querySelectorAll(`input[name='${name}']`); "
+                    "for (const r of radios) { if (r.value === val) { "
+                    "r.checked = true; r.dispatchEvent(new Event('change', {bubbles:true})); return true; }} "
+                    "return false; }"
+                )
+                await page.evaluate(js_select_radio, field_name, value)
+                log_event("resume.prefill.dynamic_question", field_type="multiple_choice", field_name=field_name)
+        except Exception as exc:
+            log_event("resume.prefill.dynamic_question_failed", field_type=field_type, error=str(exc))
+
+    # Fill EEO fields
+    eeo_fields = plan.get("eeo_fields", [])
+    for eeo_field in eeo_fields:
+        selector = eeo_field.get("selector")
+        field_type = eeo_field.get("field_type", "select")
+        field_name = eeo_field.get("field_name")
+
+        if not selector:
+            continue
+
+        # Get value using selector or field_name as key
+        value = values.get(selector) or values.get(field_name)
+        if not value:
+            continue
+
+        try:
+            if field_type == "select":
+                # Set select dropdown value
+                js_set_select = (
+                    "(sel, val) => { const el = document.querySelector(sel); "
+                    "if (!el || el.tagName !== 'SELECT') return false; "
+                    "el.value = val; el.dispatchEvent(new Event('change', {bubbles:true})); return true; }"
+                )
+                await page.evaluate(js_set_select, selector, value)
+                log_event("resume.prefill.eeo_field", field_type="select", selector=selector)
+            else:
+                # Multiple choice (radio buttons)
+                js_select_radio = (
+                    "(name, val) => { const radios = document.querySelectorAll(`input[name='${name}']`); "
+                    "for (const r of radios) { if (r.value === val) { "
+                    "r.checked = true; r.dispatchEvent(new Event('change', {bubbles:true})); return true; }} "
+                    "return false; }"
+                )
+                await page.evaluate(js_select_radio, field_name, value)
+                log_event("resume.prefill.eeo_field", field_type="multiple_choice", field_name=field_name)
+        except Exception as exc:
+            log_event("resume.prefill.eeo_field_failed", field_name=field_name, error=str(exc))
+
+    # Fill any remaining fields from values (e.g., cover letter, disability signature)
+    # These are fields with selectors as keys that weren't already handled above
+    handled_selectors = set()
+
+    # Collect all selectors we've already processed
+    for field_dict in [contact_fields, link_fields]:
+        handled_selectors.update(field_dict.values())
+
+    for question in dynamic_questions:
+        if question.get("answer_selector"):
+            handled_selectors.add(question.get("answer_selector"))
+
+    for eeo_field in eeo_fields:
+        if eeo_field.get("selector"):
+            handled_selectors.add(eeo_field.get("selector"))
+
+    # Fill any unhandled fields using their selector keys
+    for selector, value in values.items():
+        if selector in handled_selectors or not value:
+            continue
+
+        # Skip non-selector keys (like "name", "email", "phone", "location")
+        if not ("#" in selector or "[" in selector or "." in selector):
+            continue
+
+        try:
+            await page.evaluate(js_set_value, selector, value)
+            log_event("resume.prefill.additional_field", selector=selector)
+        except Exception as exc:
+            log_event("resume.prefill.additional_field_failed", selector=selector, error=str(exc))
+
     log_event("resume.prefill.complete")
