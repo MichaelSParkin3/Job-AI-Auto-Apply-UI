@@ -26,7 +26,17 @@ auto-apply replay-job 01HXYZ...
 - Resets status to `in_progress`
 - Does NOT open browser or prefill
 
-### 4. Control screenshots
+### 4. Apply to single specific job
+```bash
+# Retry single job with full browser workflow (auto-resets status if needed)
+auto-apply apply --profile my --id 01HXYZ... --review-mode
+```
+- Auto-resets status if FAILED/CAPTCHA_BLOCKED/SUBMITTED
+- Opens browser and fills form from scratch
+- Combines replay-job reset + apply execution
+- Works with all apply flags (--review-mode, --supervised, etc.)
+
+### 5. Control screenshots
 ```bash
 # Default: post-full.jpg captured on success
 auto-apply apply --profile my
@@ -35,7 +45,7 @@ auto-apply apply --profile my
 auto-apply apply --profile my --no-audit-after-submit
 ```
 
-### 5. Cleanup artifacts
+### 6. Cleanup artifacts
 ```bash
 # Delete artifacts older than 30 days
 auto-apply cleanup-artifacts --older-than 30

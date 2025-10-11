@@ -4,8 +4,14 @@
 
 ### apply (existing)
 - Flags (additive):
+  - `--id <job_id>` (process only this specific job; auto-resets status if FAILED/CAPTCHA_BLOCKED/SUBMITTED)
   - `--review-mode` (save pre artifacts, skip submit)
   - `--audit-after-submit` / `--no-audit-after-submit` (post-full.jpg)
+- Behavior with `--id`:
+  - If job ID not found, returns exit code `4`
+  - If job has terminal status (FAILED/CAPTCHA_BLOCKED/SUBMITTED), auto-resets to IN_PROGRESS
+  - Emits `apply.auto_reset` log event when status reset occurs
+  - Processes only the specified job instead of all pending items
 
 ### resume-job <id> (NEW semantics)
 - Behavior: open browser, apply saved state, pause by default; `--submit` to send.
@@ -44,7 +50,7 @@ These structured log events are emitted for telemetry (not part of JSON stream):
 - `cleanup.complete` - Cleanup operation finished
 
 ## Exit Codes
-- apply: `0` when all succeed; `3` when any fail
+- apply: `0` when all succeed; `3` when any fail; `4` when job ID not found (with `--id`)
 - resume-job: `0` on success; `4` when id not found; `6` when saved state is missing/corrupt (`invalid_state`)
 - replay-job: `0` on success; `4` when id not found
 - cleanup-artifacts: `0` on success; `2` when nothing matched; `5` on invalid args (e.g., missing `--older-than`)

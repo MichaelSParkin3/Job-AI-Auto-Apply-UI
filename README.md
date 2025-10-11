@@ -30,6 +30,8 @@ Examples
 - Apply in supervised mode with robust resume upload diagnostics:
   - `auto-apply apply --profile michael_scott_parkin_iii --use-llm-locator --debug-resume-widget --resume-wait-timeout-seconds 25`
   - Add `--save-logs` (optionally `--logs-dir logs/run-$(date +%s)`) to persist structured logs alongside stdout/stderr
+- Apply to a single specific job (auto-resets status if needed):
+  - `auto-apply apply --profile michael_scott_parkin_iii --id 0199a9b79cf7f4e39afef467030c --review-mode`
 - Resume a specific queued job by id:
   - `auto-apply resume-job 0199a9b79cf7f4e39afef467030c`
 
@@ -44,6 +46,7 @@ Examples
 - `auto-apply apply`
   - Mode: `--auto` or `--supervised` (default when neither is set: supervised)
   - `--profile` (required)
+  - `--id <job_id>`: Process only this specific job (auto-resets status if FAILED/CAPTCHA_BLOCKED/SUBMITTED)
   - `--json`: machine‑readable events
   - LLM overrides: `--llm-provider`, `--llm-model`
   - Resume widget helpers:
@@ -54,7 +57,7 @@ Examples
     - `--review-mode`: Fill forms and save state (`pre.json`, `pre-full.jpg`) without submitting; marks item as `pending_review`
     - `--audit-after-submit` / `--no-audit-after-submit`: Control post-submission screenshot capture (default: ON)
   - Logging: `--save-logs` writes structured JSON logs to `<logs-dir>/<timestamp>.log` (default `logs/`); override directory with `--logs-dir <path>`
-  - Exit codes: `0` when every item submits, `3` when any item fails
+  - Exit codes: `0` when every item submits, `3` when any item fails, `4` when job ID not found
 
 - `auto-apply resume-job`
   - `id` (required): application item id from `data/queues/<profile>.json`

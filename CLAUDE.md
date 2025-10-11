@@ -59,6 +59,9 @@ auto-apply discover --profile <id> --window 24h --cap 10
 # Apply to queued jobs (supervised mode is default)
 auto-apply apply --profile <id> --supervised
 
+# Apply to single specific job (auto-resets status if needed)
+auto-apply apply --profile <id> --id <job_id> --review-mode
+
 # Resume a blocked job
 auto-apply resume-job <application_id>
 
@@ -163,8 +166,8 @@ auto-apply apply --profile <id> --use-llm-locator --debug-resume-widget --resume
 
 **CLI Contract Compliance**
 - discover: JSON output with items array; exit codes 0/2/1
-- apply: JSON event stream (start/item/submitted/failed/end); exit codes 0/3/1
-- resume-job: JSON status payload; exit codes 0/4/1
+- apply: JSON event stream (start/item/submitted/failed/end); exit codes 0/3/4/1 (4 when job ID not found)
+- resume-job: JSON status payload; exit codes 0/4/6/1
 - Schemas in `specs/001-as-a-job/contracts/schemas/`
 
 ## Configuration
