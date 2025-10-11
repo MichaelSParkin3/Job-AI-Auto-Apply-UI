@@ -142,7 +142,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
         args: Parsed CLI arguments for the ``apply`` subcommand.
 
     Returns:
-        int: Exit code ``0`` when all items were submitted, ``3`` when any failed.
+        int: Exit code ``0`` when all items were submitted, ``3`` when any failed,
+            ``4`` when job ID not found.
 
     """
     try:
@@ -192,13 +193,24 @@ def cmd_apply(args: argparse.Namespace) -> int:
     # Extract review-mode and audit flags
     review_mode = getattr(args, "review_mode", False)
     audit_after_submit = not getattr(args, "no_audit_after_submit", False)
+    job_id = getattr(args, "id", None)
 
-    events = iter_apply_events(
-        _ensure_profile(profile_obj),
-        mode,
-        review_mode=review_mode,
-        audit_after_submit=audit_after_submit,
-    )
+    try:
+        events = iter_apply_events(
+            _ensure_profile(profile_obj),
+            mode,
+            review_mode=review_mode,
+            audit_after_submit=audit_after_submit,
+            job_id=job_id,
+        )
+    except LookupError as exc:
+        # Job ID not found in queue
+        if args.json:
+            _print_json({"error": str(exc)})
+        else:
+            print(f"Error: {exc}")
+        log_event("apply.job_not_found", profile=profile_id, job_id=job_id)
+        return 4
 
     submitted = 0
     failed = 0
@@ -398,6 +410,7 @@ def iter_apply_events(
     fetch_form: Callable[[str], str] | None = None,
     review_mode: bool = False,
     audit_after_submit: bool = True,
+    job_id: str | None = None,
 ) -> Iterator[dict[str, object]]:
     """Yield apply events for streaming to the CLI.
 
@@ -407,9 +420,13 @@ def iter_apply_events(
         fetch_form: Optional callable to retrieve HTML for a posting form.
         review_mode: If True, save pre-submit artifacts and skip submission.
         audit_after_submit: If True, capture post-submission screenshot (default).
+        job_id: If provided, process only this specific job (auto-resets if needed).
 
     Yields:
         dict[str, object]: Event payloads following the apply contract schema.
+
+    Raises:
+        LookupError: If job_id provided but not found in queue.
 
     """
     profile = _ensure_profile(profile)
@@ -420,7 +437,29 @@ def iter_apply_events(
     submitted = 0
     failed = 0
     yield {"event": "start", "profile": profile.id}
-    pending = queue.pending()
+
+    # Filter to specific job if requested
+    if job_id:
+        item = queue.get(job_id)
+        if not item:
+            raise LookupError(f"Job {job_id} not found in queue for profile {profile.id}")
+
+        # Auto-reset status if needed (like replay-job does)
+        if item.status in [
+            ApplicationStatus.FAILED,
+            ApplicationStatus.CAPTCHA_BLOCKED,
+            ApplicationStatus.SUBMITTED,
+        ]:
+            previous_status = item.status.value
+            item.status = ApplicationStatus.IN_PROGRESS
+            item.last_updated_at = datetime.now(UTC)
+            queue.update(item)
+            log_event("apply.auto_reset", job_id=job_id, previous_status=previous_status)
+
+        pending = [item]
+    else:
+        pending = queue.pending()
+
     log_event("apply.pending", profile=profile.id, count=len(pending))
 
     for item in pending:
@@ -1017,6 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--auto", action="store_true")
     mode.add_argument("--supervised", action="store_true")
     p_apply.add_argument("--profile", required=True)
+    p_apply.add_argument("--id", help="Process only this specific job ID (auto-resets if needed)")
     p_apply.add_argument("--json", action="store_true")
     p_apply.add_argument("--llm-provider", help="Override configured LLM provider")
     p_apply.add_argument("--llm-model", help="Override configured LLM model")
