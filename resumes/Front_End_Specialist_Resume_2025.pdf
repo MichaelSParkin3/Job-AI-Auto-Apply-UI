@@ -1,0 +1,57 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1866 >>
+stream
+BT /F1 18 Tf 72 760 Td (== Front End Specialist == ) Tj ET
+BT /F1 12 Tf 72 736 Td (Remote \(US\)) Tj ET
+BT /F1 12 Tf 72 722 Td (Portfolio: https://portfolio.example.com/, GitHub: https://github.com/example, LinkedIn: https://www.linkedin.com/in/front-end-specialist, Email: front.end.specialist@example.com) Tj ET
+BT /F1 12 Tf 72 708 Td () Tj ET
+BT /F1 12 Tf 72 694 Td (SUMMARY) Tj ET
+BT /F1 12 Tf 72 680 Td (Front-end specialist building accessible, performant React/Next.js apps; mentors) Tj ET
+BT /F1 12 Tf 72 666 Td (teams, scales design systems, and ships measurable business results.) Tj ET
+BT /F1 12 Tf 72 652 Td () Tj ET
+BT /F1 12 Tf 72 638 Td (SKILLS) Tj ET
+BT /F1 12 Tf 72 624 Td (React, Next.js, TypeScript, Node.js, Tailwind, GraphQL, REST API, Figma, Jest, React) Tj ET
+BT /F1 12 Tf 72 610 Td (Testing Library, Playwright, Cypress, Web Accessibility, Web Performance, PWAs) Tj ET
+BT /F1 12 Tf 72 596 Td () Tj ET
+BT /F1 12 Tf 72 582 Td (DOMAINS) Tj ET
+BT /F1 12 Tf 72 568 Td (SaaS, B2B, E-commerce, Fintech, Edtech, Healthcare, Real Estate Tech, Marketplace) Tj ET
+BT /F1 12 Tf 72 554 Td () Tj ET
+BT /F1 12 Tf 72 540 Td (TARGET ROLES) Tj ET
+BT /F1 12 Tf 72 526 Td (Front End Developer, Senior Front End Developer, Senior Frontend Engineer, Staff) Tj ET
+BT /F1 12 Tf 72 512 Td (Frontend Engineer, Principal Frontend Engineer) Tj ET
+BT /F1 12 Tf 72 498 Td () Tj ET
+BT /F1 12 Tf 72 484 Td (SELECTED ACHIEVEMENTS) Tj ET
+BT /F1 12 Tf 72 470 Td (- Led migration to Next.js App Router; improved TTFB by ~30%.) Tj ET
+BT /F1 12 Tf 72 456 Td (- Built accessible component library with 90%+ axe scores across flows.) Tj ET
+BT /F1 12 Tf 72 442 Td (- Introduced performance budgets and CI checks; reduced JS bundle ~40%.) Tj ET
+BT /F1 12 Tf 72 428 Td () Tj ET
+BT /F1 12 Tf 72 414 Td (NOTES) Tj ET
+BT /F1 12 Tf 72 400 Td (Authorized to work in the United States) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000002159 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2229
+%%EOF

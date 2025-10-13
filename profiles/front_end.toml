@@ -1,19 +1,67 @@
 id = "front_end"
 name = "Front End Specialist"
-resume_path = "resumes/front_end_specialist.pdf"
+resume_path = "resumes/Front_End_Specialist_Resume_2025.pdf"
+preferred_browser = "chromium"
+user_data_dir = "data/browser_profiles/front_end"
 
 [defaults]
-location = "Remote"
-work_authorization = "US Citizen"
+current_company = "Freelance"
+email = "front.end.specialist@example.com"
+phone = "+1-555-0100"
+location = "Remote (US)"
+portfolio_url = "https://portfolio.example.com/"
+github_url = "https://github.com/example"
+linkedin_url = "https://www.linkedin.com/in/front-end-specialist"
+work_authorization = "Authorized to work in the United States"
+work_authorized = "Yes"
+requires_visa_sponsorship = "No"
+worked_at_company_before = "No"
+zip_code = "00000"
+eeo_gender = "Prefer not to say"
+eeo_race = "Prefer not to say"
+eeo_veteran_status = "I am not a protected veteran"
+eeo_disability_status = "Prefer not to say"
+salary_expectation = "Open to discussion"
+pronouns = "They/them"
 
-[keywords.roles]
-primary = [
+[keywords]
+roles = [
+  "Front End Developer",
   "Senior Front End Developer",
+  "Senior Frontend Engineer",
   "Staff Frontend Engineer",
   "Principal Frontend Engineer",
 ]
-secondary = ["React", "TypeScript", "Next.js"]
+seniority = ["Mid", "Senior", "Staff", "Principal"]
+tech_stack = [
+  "React",
+  "Next.js",
+  "TypeScript",
+  "Node.js",
+  "Tailwind",
+  "GraphQL",
+  "REST API",
+  "Figma",
+  "Jest",
+  "React Testing Library",
+  "Playwright",
+  "Cypress",
+  "Web Accessibility",
+  "Web Performance",
+  "PWAs",
+]
+domains = [
+  "SaaS",
+  "B2B",
+  "E-commerce",
+  "Fintech",
+  "Edtech",
+  "Healthcare",
+  "Real Estate Tech",
+  "Marketplace",
+]
 
 [prompts]
-cover_letter = "Highlight large-scale front-end leadership, accessibility wins, and cross-team impact."
-portfolio = "Include latest React/Next.js case studies with metrics."
+cover_letter = "Highlight large-scale front-end leadership, accessibility and performance wins, and cross-team impact. Emphasize React/Next.js experience, design systems, and mentoring."
+resume_summary = "Front-end specialist building accessible, performant React/Next.js apps; mentors teams, scales design systems, and ships measurable business results."
+key_accomplishments = "- Led migration to Next.js App Router; improved TTFB by ~30%.\n- Built accessible component library with 90%+ axe scores across flows.\n- Introduced performance budgets and CI checks; reduced JS bundle ~40%."

@@ -65,6 +65,10 @@ playwright-report/
 profiles/*.local.*
 profiles/*.secret.*
 
+# PII profile and resume (explicitly untracked)
+profiles/michael_scott_parkin_iii.toml
+resumes/Michael_Parkin_Senior_Front_End_Developer_Resume_2025.pdf
+
 
 # External repos (do not track in Git)
 external/Job-AI-Auto-Apply/
