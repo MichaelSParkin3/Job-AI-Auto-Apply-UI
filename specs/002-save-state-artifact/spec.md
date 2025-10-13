@@ -131,6 +131,6 @@ As a job seeker running the CLI, I want the system to save the fully filled appl
 - [x] Entities identified
 - [x] Review checklist passed
 
----
-
-
+---
+
+

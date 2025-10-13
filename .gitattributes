@@ -1,0 +1,45 @@
+## Line ending normalization and binary detection
+
+# Auto-detect text files and ensure they are normalized in the repo
+# (stored as LF); platform-specific checkout is handled by Git.
+* text=auto
+
+# Source and config files: force LF on checkout everywhere
+*.py   text eol=lf
+*.sh   text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.ts   text eol=lf
+
+# Windows scripts: keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary files: never modify line endings
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.tgz  binary
+*.bz2  binary
+*.7z   binary
+*.wav  binary
+*.mp3  binary
+*.mp4  binary
+*.webm binary
+*.ogg  binary
+*.ttf  binary
+*.woff binary
+*.woff2 binary
+
