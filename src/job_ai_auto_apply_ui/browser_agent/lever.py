@@ -1364,7 +1364,7 @@ class LeverApplyAgent:
                 await _fill_textarea(page, cover_selector, cover_text)
                 filled_values[cover_selector] = cover_text
 
-        # Multiple-choice dynamic cards (checkboxes/radios) â€” simple heuristics
+        # Multiple-choice dynamic cards (checkboxes/radios) â€" simple heuristics
         try:
             await page.evaluate(
                 """
@@ -1391,6 +1391,59 @@ class LeverApplyAgent:
             )
         except Exception:
             pass
+
+        # Work authorization checkboxes (US-based) â€" fill based on profile defaults
+        try:
+            work_authorized = profile.defaults.get("work_authorized")
+            requires_visa = profile.defaults.get("requires_visa_sponsorship")
+            if work_authorized is not None or requires_visa is not None:
+                # Normalize boolean/string values
+                auth_str = str(work_authorized).lower() if work_authorized is not None else ""
+                visa_str = str(requires_visa).lower() if requires_visa is not None else ""
+                is_authorized = auth_str in ("yes", "true", "1")
+                needs_visa = visa_str in ("yes", "true", "1")
+
+                await page.evaluate(
+                    """
+                    (authorized, needsVisa) => {
+                      const blocks = Array.from(document.querySelectorAll("[data-qa='additional-cards'] .application-question.custom-question"));
+                      for (const b of blocks) {
+                        const labelTextEl = b.querySelector('.application-label .text');
+                        const labelText = labelTextEl ? labelTextEl.textContent.trim() : '';
+                        const lower = labelText.toLowerCase();
+                        // Look for US work authorization questions (not UK-specific)
+                        if ((lower.includes('work') && lower.includes('authorized')) ||
+                            (lower.includes('work') && lower.includes('authorization')) ||
+                            lower.includes('legal right to work')) {
+                          // Skip if it mentions UK (those are handled separately)
+                          if (lower.includes('united kingdom') || lower.includes('uk')) continue;
+
+                          const inputs = Array.from(b.querySelectorAll("input[type='checkbox'][name*='[field'], input[type='radio'][name*='[field']"));
+                          if (!inputs.length) continue;
+
+                          // If authorized and doesn't need visa, check US Citizen or Green Card options
+                          if (authorized && !needsVisa) {
+                            for (const inp of inputs) {
+                              const val = (inp.value || '').toLowerCase();
+                              if (val.includes('citizen') || val.includes('permanent resident') || val.includes('green card')) {
+                                if (typeof inp.click === 'function') {
+                                  inp.click();
+                                  break;
+                                }
+                              }
+                            }
+                          }
+                          // If authorized but needs visa, uncheck "need sponsorship" options if they exist
+                          // (most forms default to unchecked, so skip this for now)
+                        }
+                      }
+                    }
+                    """,
+                    is_authorized,
+                    needs_visa,
+                )
+        except Exception as exc:
+            log_event("form.work_auth.error", error=str(exc))
 
         # Validate before submit
         if not await _form_check_validity(page):
@@ -3638,12 +3691,87 @@ async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> di
         if value is None:
             continue
         if eeo_field.field_type == "select":
-            await _set_select_value(page, eeo_field.selector, value)
-            filled[eeo_field.selector] = value
+            # Try string matching first
+            matched = await _set_select_value(page, eeo_field.selector, value)
+            # If string matching failed, use LLM fallback
+            if not matched:
+                log_event(
+                    "eeo.string_match.failed",
+                    field=eeo_field.label,
+                    desired=value,
+                )
+                matched = await _llm_select_fallback(page, eeo_field, value, profile)
+            if matched:
+                filled[eeo_field.selector] = value
         else:
             await _select_choice_option(page, eeo_field.name, value)
             filled[eeo_field.name] = value
     return filled
+
+
+async def _llm_select_fallback(
+    page, field: EeoField, desired: str | None, profile: Profile
+) -> bool:
+    """Use LLM to choose best option when string matching fails.
+
+    Args:
+        page: Playwright page object.
+        field: EeoField with available options.
+        desired: Profile value that failed to match.
+        profile: Profile for LLM context.
+
+    Returns:
+        True if LLM successfully selected an option, False otherwise.
+    """
+    if not desired or not field.option_pairs or not field.selector:
+        return False
+    try:
+        client = OpenRouterClient.from_settings()
+        options_text = "\n".join(
+            [f"- {text}" for _val, text in field.option_pairs if text]
+        )
+        if not options_text:
+            return False
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"You are helping to fill out an EEO form field: {field.label}. "
+                "The user's stated preference could not be matched exactly to available options. "
+                "Choose the best matching option from the list provided. Respond with ONLY the exact text of the best matching option, nothing else.",
+            },
+            {
+                "role": "user",
+                "content": f"Profile preference: {desired}\n\nAvailable options:\n{options_text}",
+            },
+        ]
+
+        llm_choice = client.complete(messages, temperature=0.0)
+        if not llm_choice:
+            return False
+
+        log_event(
+            "eeo.llm_fallback.selected",
+            field=field.label,
+            desired=desired,
+            llm_choice=llm_choice,
+        )
+
+        matched = await _set_select_value(page, field.selector, llm_choice)
+        if matched:
+            log_event(
+                "eeo.llm_fallback.success", field=field.label, chosen_option=llm_choice
+            )
+        else:
+            log_event(
+                "eeo.llm_fallback.failed_to_set",
+                field=field.label,
+                llm_choice=llm_choice,
+            )
+        return matched
+    except Exception as exc:
+        log_event("eeo.llm_fallback.error", field=field.label, error=str(exc))
+        return False
 
 
 async def _select_choice_option(page, field_name: str | None, value: str | None) -> None:
@@ -3683,38 +3811,78 @@ async def _select_choice_option(page, field_name: str | None, value: str | None)
         pass
 
 
-async def _set_select_value(page, selector: str | None, desired: str | None) -> None:
+async def _set_select_value(page, selector: str | None, desired: str | None) -> bool:
     if not selector or desired is None:
-        return
+        return False
     try:
-        await page.evaluate(
+        result = await page.evaluate(
             """
             (sel, desired) => {
               const el = document.querySelector(sel);
               if (!el) return false;
-              const norm = (v) => String(v || '').trim().toLowerCase();
-              const desiredLower = norm(desired);
+
+              // Comprehensive normalization for EEO and other select fields
+              const normalize = (text) => {
+                let s = String(text || '').toLowerCase().trim();
+                // Remove parentheticals and their content: "(Not Hispanic or Latino)" -> ""
+                s = s.replace(/\\s*\\([^)]*\\)/g, ' ');
+                // Remove common qualifiers
+                s = s.replace(/\\b(protected|self-identify|self)\\b/g, '');
+                // Normalize punctuation: "/" -> " or ", "-" -> " "
+                s = s.replace(/\\//g, ' or ').replace(/-/g, ' ');
+                // Remove articles
+                s = s.replace(/\\b(a|an|the)\\b/g, '');
+                // Collapse whitespace
+                return s.replace(/\\s+/g, ' ').trim();
+              };
+
+              const normDesired = normalize(desired);
+
+              // Step 1: Try exact match first (fastest)
               for (const opt of Array.from(el.options)) {
-                const optVal = norm(opt.value);
-                const optText = norm(opt.textContent);
-                // Try exact match first, then partial match (startsWith)
-                if (optVal === desiredLower || optText === desiredLower ||
-                    optVal.startsWith(desiredLower) || optText.startsWith(desiredLower)) {
+                const optVal = normalize(opt.value);
+                const optText = normalize(opt.textContent);
+                if (optVal === normDesired || optText === normDesired) {
                   el.value = opt.value;
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                   return true;
                 }
               }
-              el.value = desired;
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-              return true;
+
+              // Step 2: Try startsWith (partial match at beginning)
+              for (const opt of Array.from(el.options)) {
+                const optVal = normalize(opt.value);
+                const optText = normalize(opt.textContent);
+                if (optVal.startsWith(normDesired) || optText.startsWith(normDesired) ||
+                    normDesired.startsWith(optVal) || normDesired.startsWith(optText)) {
+                  el.value = opt.value;
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  return true;
+                }
+              }
+
+              // Step 3: Try substring matching (for cases like "veteran" in "I am not a veteran")
+              for (const opt of Array.from(el.options)) {
+                const optVal = normalize(opt.value);
+                const optText = normalize(opt.textContent);
+                if (optVal.includes(normDesired) || normDesired.includes(optVal) ||
+                    optText.includes(normDesired) || normDesired.includes(optText)) {
+                  el.value = opt.value;
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  return true;
+                }
+              }
+
+              // No match found - return false instead of blind fallback
+              return false;
             }
             """,
             selector,
             desired,
         )
+        return bool(result)
     except Exception:
-        pass
+        return False
 
 
 async def _fill_disability_signature(page, profile: Profile) -> dict[str, str] | None:
