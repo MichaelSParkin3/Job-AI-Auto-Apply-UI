@@ -61,7 +61,56 @@ domains = [
   "Marketplace",
 ]
 
+[[experience]]
+company = "TechFlow Inc"
+role = "Senior Frontend Engineer"
+dates = "Jan 2022 – Present"
+location = "Remote, USA"
+highlights = [
+    "Led migration of legacy codebase to Next.js App Router, reducing TTFB by ~30% and improving Lighthouse scores",
+    "Built and maintained accessible component library achieving 90%+ axe audit scores across all flows",
+    "Introduced performance budgets and CI checks that reduced JavaScript bundle size by ~40%",
+    "Mentored 4 junior engineers on accessibility standards and performance optimization techniques"
+]
+tech_stack = ["React", "Next.js", "TypeScript", "Tailwind", "Testing Library", "Storybook"]
+metrics = {ttfb_improvement = "~30%", axe_score = "90%+", bundle_reduction = "~40%"}
+
+[[experience]]
+company = "DesignStack Studio"
+role = "Frontend Developer"
+dates = "Jun 2020 – Dec 2021"
+location = "Remote, USA"
+highlights = [
+    "Built reusable component library used across 8+ client projects, standardizing UI patterns",
+    "Implemented comprehensive E2E test coverage with Playwright, achieving 85% coverage across 50+ critical user flows",
+    "Optimized web app performance for accessibility-first SaaS platform, improving accessibility audit scores by 60%"
+]
+tech_stack = ["React", "JavaScript", "CSS", "Playwright", "Figma"]
+metrics = {coverage = "85%", projects = "8+", accessibility_improvement = "60%"}
+
 [prompts]
-cover_letter = "Highlight large-scale front-end leadership, accessibility and performance wins, and cross-team impact. Emphasize React/Next.js experience, design systems, and mentoring."
-resume_summary = "Front-end specialist building accessible, performant React/Next.js apps; mentors teams, scales design systems, and ships measurable business results."
-key_accomplishments = "- Led migration to Next.js App Router; improved TTFB by ~30%.\n- Built accessible component library with 90%+ axe scores across flows.\n- Introduced performance budgets and CI checks; reduced JS bundle ~40%."
+cover_letter = """Select 2-3 most relevant experiences based on job requirements:
+- If role emphasizes performance/optimization → highlight TechFlow Next.js migration (30% TTFB improvement)
+- If role emphasizes accessibility → highlight component library with 90%+ axe scores
+- If role emphasizes leadership/mentoring → highlight mentoring 4 junior engineers at TechFlow
+- If role emphasizes testing → highlight E2E test implementation at DesignStack (85% coverage)
+
+Structure: 1) Connect job mission to passion, 2) 2-3 concrete achievements with metrics, 3) Enthusiasm + call to action
+Tone: Confident, humble, specific metrics, avoid buzzwords. Length: 180-220 words."""
+
+resume_summary = """Craft 1-2 sentences emphasizing: Senior frontend expertise (React/Next.js), leadership (mentoring/cross-functional),
+impact-driven (specific metrics). Draw from all 2 companies - don't default to one unless performance/accessibility is key requirement."""
+
+key_accomplishments = """Select top 3 achievements matching job description:
+- Vary company sources when possible
+- Include specific metrics: 30% TTFB (TechFlow), 90% axe score (TechFlow), 85% test coverage (DesignStack), 60% a11y improvement (DesignStack)
+- Match technical stack when possible (Next.js/React for web, accessibility tools for a11y roles)
+Format: Action verb + specific achievement + measurable impact"""
+
+experience_selection = """When answering behavioral/experience questions, scan all companies for best match:
+- "Performance/optimization" → TechFlow Next.js migration (30% TTFB improvement)
+- "Accessibility/a11y" → TechFlow component library (90% axe) OR DesignStack optimization (60% improvement)
+- "Leadership/mentoring" → TechFlow senior role mentoring 4 engineers
+- "Testing/quality" → DesignStack E2E implementation (85% coverage)
+- "Design systems" → TechFlow component library
+Avoid over-rotating to single company - distribute across portfolio."""

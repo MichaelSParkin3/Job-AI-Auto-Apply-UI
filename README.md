@@ -102,14 +102,54 @@ linkedin_url = "https://linkedin.com/in/…"
 roles = ["Senior Frontend Engineer", "Staff Frontend Engineer"]
 tech_stack = ["React", "Next.js", "TypeScript"]
 
+[[experience]]
+company = "TechFlow Inc"
+role = "Senior Frontend Engineer"
+dates = "Jan 2022 – Present"
+highlights = [
+    "Led Next.js migration reducing TTFB by ~30%",
+    "Built accessible component library with 90%+ axe scores"
+]
+tech_stack = ["React", "Next.js", "TypeScript"]
+metrics = {ttfb_improvement = "~30%", axe_score = "90%+"}
+
+[[experience]]
+company = "DesignStack Studio"
+role = "Frontend Developer"
+dates = "Jun 2020 – Dec 2021"
+highlights = [
+    "Implemented E2E test coverage achieving 85% across critical flows",
+    "Optimized accessibility, improving audit scores by 60%"
+]
+tech_stack = ["React", "JavaScript", "Playwright"]
+metrics = {coverage = "85%", accessibility_improvement = "60%"}
+
 [prompts]
-cover_letter = "Tailored guidance for cover letters…"
+cover_letter = """Select 2-3 most relevant experiences based on job requirements:
+- If performance/optimization emphasized → highlight Next.js migration (30% TTFB)
+- If accessibility emphasized → highlight component library (90% axe scores)
+- If leadership/mentoring emphasized → highlight senior role
+Structure: 1) Job mission connection, 2) 2-3 achievements with metrics, 3) Enthusiasm + call to action"""
+
+resume_summary = """Craft 1-2 sentences from all experiences - don't default to one.
+Emphasize: Senior expertise, leadership, impact-driven metrics."""
+
+key_accomplishments = """Vary company sources. Include specific metrics.
+Format: Action verb + achievement + measurable impact"""
+
+experience_selection = """When answering behavioral questions, select best company match:
+- Performance/optimization → TechFlow Next.js (30% TTFB)
+- Accessibility → TechFlow component library (90% axe)
+- Testing/quality → DesignStack E2E (85% coverage)
+Distribute across portfolio."""
 ```
 
 Notes
 - `preferred_browser` chooses the launch channel: `chrome`, `chromium`, `msedge` (Edge)
 - `user_data_dir` enables persistent browser profiles per user
 - `resume_path` can be relative to repo or absolute
+- **`[[experience]]` section** provides structured work history with highlights, tech_stack, and metrics that the LLM references when answering questions. Multiple entries help LLM intelligently select relevant experiences per job
+- **`[prompts]` section** contains dynamic AI guidance (not static templates) instructing the LLM when to use each company's achievements based on job requirements
 
 ## Environment Variables (.env)
 

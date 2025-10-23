@@ -55,7 +55,91 @@ domains = [
   "Real Estate Tech",
 ]
 
+[[experience]]
+company = "Lampros Labs"
+role = "Front End Developer"
+dates = "Feb 2024 – Aug 2024"
+location = "Remote, USA"
+context = "Restructure & Budget Constraints"
+highlights = [
+    "Overhauled Ocusell.AI validation system, reducing MLS listing submission errors by 45%",
+    "Transformed Color ConneXion 2.0 into cross-platform Flutter/Dart application for 720k+ users",
+    "Designed enterprise-adopted RESO Unique License Identifier UI/UX workflows in Figma",
+    "Built headless WordPress site with ACF fields and Vitest unit tests",
+    "Led end-to-end WordPress development for celebrity beverage expert, 100% client approval"
+]
+tech_stack = ["React", "Next.js", "Flutter", "Dart", "WordPress", "Figma", "Vitest"]
+metrics = {error_reduction = "45%", platform_reach = "720k+ users"}
+
+[[experience]]
+company = "GameStar Exchange"
+role = "Lead Front End Engineer"
+dates = "Jul 2022 – May 2023"
+location = "Remote, USA"
+context = "Project-Based Contract"
+highlights = [
+    "Architected and launched desktop crypto trading app (React/Next.js), boosting PC user engagement",
+    "Led technical discovery initiatives, presenting data-driven solutions directly to CEO",
+    "Established component library standards with designers/PMs, reducing UI inconsistency by 60%",
+    "Revamped trade creation flow with step-by-step guidance, cutting user drop-off by 25%"
+]
+tech_stack = ["React", "Next.js", "Web3", "TypeScript"]
+metrics = {ui_inconsistency_reduction = "60%", drop_off_reduction = "25%"}
+
+[[experience]]
+company = "Sangcate Trading"
+role = "Front End Web Developer"
+dates = "Mar 2022 – May 2022"
+location = "Remote, USA"
+context = "Project-Based Contract"
+highlights = [
+    "Developed 3 phased versions of NFT minting website, successfully delivering profitable mint"
+]
+tech_stack = ["React", "Web3", "NFT", "Blockchain"]
+
+[[experience]]
+company = "Shane Company"
+role = "Front End Web Developer"
+dates = "Aug 2018 – Aug 2020"
+location = "Remote, USA"
+highlights = [
+    "Created 3 reusable interactive product recommendation quizzes for $200M jewelry company, increasing sales",
+    "Built component library serving 720k+ monthly users, still powering 80% of ShaneCo.com pages"
+]
+tech_stack = ["JavaScript", "HTML", "CSS", "Component Architecture"]
+metrics = {monthly_users = "720k+", page_coverage = "80%", company_revenue = "$200M"}
+
 [prompts]
-cover_letter = "Highlight React/Next.js leadership, cross-platform Flutter builds, and the 45% error reduction on Ocusell.AI. Emphasize remote collaboration, component systems, and mentoring designers/PMs."
-resume_summary = "Senior frontend leader who ships polished, resilient UIs, mentors cross-functional teams, and translates product goals into scalable component systems."
-key_accomplishments = "- Cut MLS listing submission errors by 45% with Ocusell.AI validation tooling.\n- Drove adoption of standardized licensee data workflows across enterprise real-estate platforms.\n- Built cross-platform Color ConneXion 2.0 app and reusable quiz systems serving 720k+ monthly users."
+cover_letter = """Select 2-3 most relevant experiences based on job requirements:
+- If role emphasizes validation/quality/testing → highlight Ocusell.AI error reduction (45%)
+- If role emphasizes leadership/mentorship → highlight GameStar component library collaboration (60% UI improvement)
+- If role emphasizes scale/traffic → highlight Shane Company 720k users, 80% page coverage
+- If role emphasizes crypto/web3 → highlight GameStar crypto trading app and Sangcate NFT minting
+- If role emphasizes cross-platform → highlight Flutter/Color ConneXion transformation
+
+Structure: 1) Connect job mission to passion, 2) 2-3 concrete achievements with metrics, 3) Enthusiasm + call to action
+Tone: Confident, humble, specific metrics, avoid buzzwords. Length: 180-220 words."""
+
+resume_summary = """Craft 1-2 sentences emphasizing: Senior frontend expertise (React/Next.js/Flutter), leadership (mentoring/cross-functional), impact-driven (specific metrics).
+Draw from all 4 companies - don't default to Ocusell unless validation/quality is key job requirement."""
+
+key_accomplishments = """Select top 3 achievements matching job description:
+- Vary company sources (don't use Ocusell for all 3)
+- Include specific metrics: 45% (Ocusell), 60% (GameStar), 25% (GameStar), 720k users (Shane/Lampros)
+- Match technical stack when possible (Flutter for mobile, React for web, Web3 for crypto)
+Format: Action verb + specific achievement + measurable impact"""
+
+experience_selection = """When answering behavioral/experience questions, scan all 4 companies for best match:
+- "Quality/testing/validation" → Ocusell 45% error reduction
+- "Leadership/mentorship" → GameStar component library (60% UI improvement)
+- "Working at scale" → Shane Company 720k users OR Color ConneXion 720k users
+- "Client-facing" → WordPress celebrity client (100% approval)
+- "Cross-platform development" → Flutter Color ConneXion transformation
+- "Web3/crypto" → GameStar crypto trading OR Sangcate NFT minting
+Avoid over-rotating to Ocusell - distribute across portfolio."""
+
+ai_tools_response = """When asked about AI tool usage:
+- Primary: AI-powered validation tooling at Ocusell (45% error reduction, dynamic error resolution)
+- Secondary: Automated testing generation, code quality analysis
+- Acknowledge: Complex business logic, edge cases, contextual decisions require human judgment
+- Stick to concrete validation tooling example - don't invent new AI experience"""

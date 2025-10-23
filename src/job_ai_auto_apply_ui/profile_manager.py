@@ -37,6 +37,7 @@ class Profile:
     prompts: Mapping[str, str]
     user_data_dir: Path | None = None
     preferred_browser: str | None = None
+    experience: list[Mapping[str, object]] | None = None
 
     def discovery_terms(self) -> list[str]:
         """Flatten keyword categories into a list of discovery search terms."""
@@ -74,6 +75,16 @@ class Profile:
         user_data_dir = _maybe_path(payload.get("user_data_dir"))
         preferred_browser = _maybe_str(payload.get("preferred_browser"))
 
+        # Load experience array from [[experience]] sections
+        experience_raw = payload.get("experience", [])
+        experience: list[Mapping[str, object]] = []
+        if isinstance(experience_raw, list):
+            experience = [
+                {key: value for key, value in item.items() if isinstance(item, MutableMapping)}
+                for item in experience_raw
+                if isinstance(item, MutableMapping)
+            ]
+
         return cls(
             id=profile_id,
             name=name,
@@ -83,6 +94,7 @@ class Profile:
             prompts=prompts,
             user_data_dir=user_data_dir,
             preferred_browser=preferred_browser,
+            experience=experience if experience else None,
         )
 
 

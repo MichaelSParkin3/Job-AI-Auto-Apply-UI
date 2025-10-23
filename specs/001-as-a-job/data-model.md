@@ -10,9 +10,10 @@ Date: 2025-10-01
 - resume_path: string (file path)
 - defaults: object (key/value)
 - keywords: list[string]
-- prompts: object
+- prompts: object (dynamic AI guidance instructions)
 - user_data_dir: string|null
 - preferred_browser: string (e.g., chromium) | null
+- experience: list[Mapping[str, object]] | null (optional structured work history with company, role, dates, highlights, tech_stack, metrics; enables LLM portfolio diversity)
 
 ### ApplicationItem
 - id: string (ulid)

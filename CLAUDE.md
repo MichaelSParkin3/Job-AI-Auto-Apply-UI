@@ -81,8 +81,9 @@ auto-apply apply --profile <id> --use-llm-locator --debug-resume-widget --resume
 
 **profile_manager.py** — Profile loading and validation
 - Loads TOML profiles from `profiles/` directory (override via `AUTO_APPLY_PROFILES_DIR`)
-- Profile dataclass: id, name, resume_path, defaults, keywords, prompts, user_data_dir, preferred_browser
+- Profile dataclass: id, name, resume_path, defaults, keywords, prompts, user_data_dir, preferred_browser, experience
 - Validates required fields (id, resume_path) and coerces mappings
+- experience field: optional array of work history objects (company, role, dates, highlights, tech_stack, metrics) for structured portfolio representation in LLM prompts
 
 **application_queue.py** — Persistent queue management
 - Stores ApplicationItem records in `data/queues/<profile>.json`
@@ -193,9 +194,44 @@ linkedin_url = "https://linkedin.com/in/..."
 roles = ["Frontend Engineer", "Staff Engineer"]
 tech_stack = ["React", "TypeScript", "Next.js"]
 
+[[experience]]
+company = "Company Name"
+role = "Position Title"
+dates = "Start – End"
+highlights = [
+    "Achievement with metrics",
+    "Another achievement with impact"
+]
+tech_stack = ["React", "TypeScript"]
+metrics = {key_metric = "value", another_metric = "value"}
+
+[[experience]]
+company = "Another Company"
+role = "Previous Role"
+dates = "Start – End"
+highlights = ["Achievement 1", "Achievement 2"]
+tech_stack = ["JavaScript", "HTML/CSS"]
+metrics = {metric_1 = "10%", metric_2 = "500k"}
+
 [prompts]
-cover_letter = "Guidance for LLM-generated answers..."
+cover_letter = """Select 2-3 most relevant experiences based on job requirements.
+If role emphasizes [topic] → highlight [company] [specific metric].
+Structure: 1) Job mission, 2) 2-3 achievements with metrics, 3) Enthusiasm."""
+
+resume_summary = """Craft 1-2 sentences from all experiences, don't default to one."""
+
+key_accomplishments = """Vary company sources, include specific metrics."""
+
+experience_selection = """When answering behavioral questions, match question to best company:
+- [Topic 1] → [Company] [metric]
+- [Topic 2] → [Company] [metric]
+Distribute across portfolio."""
 ```
+
+**Key Notes:**
+- `[[experience]]` section provides structured work history. Multiple entries enable LLM to intelligently select relevant examples per job instead of over-relying on a single company
+- Each experience should include: company name, role title, dates, 2-3 highlights with metrics, tech stack, and key metrics object
+- `[prompts]` contains dynamic AI guidance (not static templates) that instructs the LLM when to use each company's achievements based on job characteristics
 
 ### Environment Variables (.env)
 

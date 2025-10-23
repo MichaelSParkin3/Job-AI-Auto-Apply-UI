@@ -136,8 +136,43 @@ def _format_profile(profile: Profile) -> str:
         sections.append("Defaults:\n" + defaults)
     if keywords_line:
         sections.append("Keywords: " + keywords_line)
+
+    # Add experience data if available
+    if profile.experience:
+        experience_lines: list[str] = []
+        for exp in profile.experience:
+            company = exp.get("company", "Unknown")
+            role = exp.get("role", "")
+            dates = exp.get("dates", "")
+            role_line = f"{company}"
+            if role:
+                role_line += f" - {role}"
+            if dates:
+                role_line += f" ({dates})"
+            experience_lines.append(role_line)
+
+            highlights = exp.get("highlights")
+            if highlights and isinstance(highlights, list):
+                for highlight in highlights:
+                    experience_lines.append(f"  • {highlight}")
+
+            tech_stack = exp.get("tech_stack")
+            if tech_stack and isinstance(tech_stack, list):
+                tech_line = ", ".join(str(t) for t in tech_stack)
+                experience_lines.append(f"  Tech: {tech_line}")
+
+            metrics = exp.get("metrics")
+            if metrics and isinstance(metrics, dict):
+                metric_strs = [f"{k}={v}" for k, v in metrics.items()]
+                experience_lines.append(f"  Metrics: {', '.join(metric_strs)}")
+
+            experience_lines.append("")  # Blank line between experiences
+
+        if experience_lines:
+            sections.append("Professional Experience:\n" + "\n".join(experience_lines).rstrip())
+
     if prompts:
-        sections.append("Prompt notes:\n" + prompts)
+        sections.append("Guidance:\n" + prompts)
     return "\n\n".join(sections)
 
 
