@@ -75,6 +75,7 @@ class LeverBrowserOptions:
     viewport_width: int = 1280
     viewport_height: int = 800
     disable_default_extensions: bool = True
+    chrome_args: list[str] = field(default_factory=list)
 
     @classmethod
     def from_settings(
@@ -121,16 +122,19 @@ class LeverBrowserOptions:
             disable_default_extensions=bool(
                 getattr(resolved_settings, "disable_default_extensions", True)
             ),
+            chrome_args=list(getattr(resolved_settings, "chrome_args", [])),
         )
 
     def to_browser_use_kwargs(self) -> dict[str, object]:
         """Return only BrowserSession-supported kwargs.
 
-        Note: The upstream BrowserSession in this project does not accept
-        env/headers/args/window_size/artifacts_dir. We limit to allowed_domains
-        and record_* flags that have been supported historically.
+        Includes allowed_domains, Chrome args for stealth/behavior control,
+        and diagnostic recording flags.
         """
-        return {"allowed_domains": list(self.allowed_domains)}
+        return {
+            "allowed_domains": list(self.allowed_domains),
+            "args": self.chrome_args,
+        }
 
     def apply_stealth_environment(self) -> None:
         """Apply locale/timezone to process env before launching the browser.

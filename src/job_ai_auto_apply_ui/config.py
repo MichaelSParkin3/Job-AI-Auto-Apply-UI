@@ -31,6 +31,22 @@ def _get_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "on", "yes"}
 
 
+def _get_chrome_args(name: str, defaults: list[str]) -> list[str]:
+    """Parse semicolon-separated Chrome args from env var, or return defaults.
+
+    Args:
+        name: Environment variable name.
+        defaults: Default list of Chrome args if not set.
+
+    Returns:
+        list[str]: Chrome command-line arguments.
+    """
+    value = os.getenv(name)
+    if not value:
+        return defaults
+    return [arg.strip() for arg in value.split(";") if arg.strip()]
+
+
 @dataclass
 class Settings:
     """Application configuration loaded from environment variables."""
@@ -103,6 +119,16 @@ class Settings:
     )
     disable_default_extensions: bool = field(
         default_factory=lambda: _get_bool("AUTO_APPLY_DISABLE_DEFAULT_EXTENSIONS", True)
+    )
+    chrome_args: list[str] = field(
+        default_factory=lambda: _get_chrome_args(
+            "AUTO_APPLY_CHROME_ARGS",
+            [
+                "--disable-autofill",
+                "--disable-autofill-keyboard-accessory-view",
+                "--disable-features=Autofill,AutofillServerCommunication",
+            ],
+        )
     )
 
     def artifacts_path(self, profile: str | None = None) -> Path:

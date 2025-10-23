@@ -677,7 +677,10 @@ def _default_browser_factory(profile: Profile) -> BrowserSession:
         "jobs.lever.co",
     ]
     options.apply_stealth_environment()
-    kwargs = {"allowed_domains": discovery_domains}
+    kwargs = {
+        "allowed_domains": discovery_domains,
+        "args": options.chrome_args,
+    }
     return BrowserSession(
         headless=False,
         channel=channel,

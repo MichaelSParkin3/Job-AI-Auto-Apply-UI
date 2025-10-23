@@ -2,7 +2,7 @@ id = "michael_scott_parkin_iii"
 name = "Michael Scott Parkin III"
 resume_path = "resumes/Michael_Parkin_Senior_Front_End_Developer_Resume_2025.pdf"
 preferred_browser = "chromium"
-user_data_dir = "G:/Github_Repos/Job-AI-Auto-Apply-UI/Job-AI-Auto-Apply-UI/data/browser_profiles/michael_scott_parkin_iii"
+user_data_dir = "data/browser_profiles/michael_scott_parkin_iii"
 
 [defaults]
 current_company = "Freelance"
