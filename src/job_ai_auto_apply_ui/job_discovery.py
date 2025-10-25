@@ -277,8 +277,23 @@ def _quote_query_term(term: str) -> str:
 
 
 def build_search_query(profile: Profile, *, max_terms: int = 6) -> str:
-    """Return the discovery search query for the profile."""
+    """Return the discovery search query for the profile.
 
+    If the profile has a custom search_query, use it as-is.
+    Otherwise, auto-generate from keywords.
+
+    Args:
+        profile: User profile with keywords and optional custom search_query.
+        max_terms: Maximum number of keyword terms to use if auto-generating.
+
+    Returns:
+        str: Complete Google search query string.
+    """
+    # If profile has a custom search query, use it verbatim
+    if profile.search_query:
+        return profile.search_query
+
+    # Otherwise, auto-generate from keywords
     seen: dict[str, None] = {}
     for term in profile.discovery_terms():
         if term and term not in seen:
