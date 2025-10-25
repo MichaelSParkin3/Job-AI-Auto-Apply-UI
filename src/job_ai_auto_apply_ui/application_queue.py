@@ -33,6 +33,7 @@ class ApplicationStatus(str, Enum):
     PENDING_REVIEW = "pending_review"
     SUBMITTED = "submitted"
     FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 @dataclass(slots=True)
@@ -470,6 +471,32 @@ class ApplicationQueue:
         )
         return item
 
+    def mark_skipped(
+        self,
+        item_id: str,
+        reason: Reason,
+    ) -> ApplicationItem:
+        """Mark item as skipped (user chose not to apply).
+
+        Args:
+            item_id: Application item identifier.
+            reason: Reason for skipping (typically user_skipped).
+
+        Returns:
+            ApplicationItem: Updated item with SKIPPED status.
+
+        """
+        item = self._require(item_id)
+        item.update_status(ApplicationStatus.SKIPPED, reason)
+        self.update(item)
+        log_event(
+            "queue.skipped",
+            profile=self.profile_id,
+            item=item_id,
+            reason_code=reason.code,
+        )
+        return item
+
     def resume(self, item_id: str) -> ApplicationItem:
         item = self._require(item_id)
         item.update_status(ApplicationStatus.IN_PROGRESS)
@@ -540,12 +567,14 @@ def _is_valid_transition(old: ApplicationStatus, new: ApplicationStatus) -> bool
             ApplicationStatus.IN_PROGRESS,
             ApplicationStatus.SUBMITTED,
             ApplicationStatus.FAILED,
+            ApplicationStatus.SKIPPED,
         },
         ApplicationStatus.IN_PROGRESS: {
             ApplicationStatus.SUBMITTED,
             ApplicationStatus.FAILED,
             ApplicationStatus.CAPTCHA_BLOCKED,
             ApplicationStatus.PENDING_REVIEW,
+            ApplicationStatus.SKIPPED,
         },
         ApplicationStatus.CAPTCHA_BLOCKED: {
             ApplicationStatus.IN_PROGRESS,
@@ -558,6 +587,7 @@ def _is_valid_transition(old: ApplicationStatus, new: ApplicationStatus) -> bool
         },
         ApplicationStatus.SUBMITTED: set(),
         ApplicationStatus.FAILED: set(),
+        ApplicationStatus.SKIPPED: set(),
     }
     return new in allowed[old]
 

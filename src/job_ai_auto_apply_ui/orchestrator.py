@@ -215,6 +215,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     submitted = 0
     failed = 0
     saved_for_review = 0
+    skipped = 0
     if args.json:
         for event in events:
             _print_json(event)
@@ -226,6 +227,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 failed += 1
             if event["event"] == "saved_for_review":
                 saved_for_review += 1
+            if event["event"] == "skipped":
+                skipped += 1
             if event["event"] == "end":
                 summary = event.get("summary", {})
                 submitted = summary.get("submitted", submitted)
@@ -242,6 +245,11 @@ def cmd_apply(args: argparse.Namespace) -> int:
             elif event["event"] == "saved_for_review":
                 saved_for_review += 1
                 print(f"Saved for review {event['id']}: Form filled, review and submit manually.")
+            elif event["event"] == "skipped":
+                skipped += 1
+                reason = event.get("reason", {})
+                msg = reason.get("message", "User chose to skip")
+                print(f"Skipped {event['id']}: {msg}")
             elif event["event"] == "captcha_blocked":
                 failed += 1
                 reason = event.get("reason", {})
@@ -251,13 +259,14 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 failed += 1
                 reason = event.get("reason", {})
                 print(f"Failed {event['id']}: {reason.get('message', 'Unknown reason')}")
+        # Build summary message
+        summary_parts = [f"{submitted} submitted"]
+        if skipped > 0:
+            summary_parts.append(f"{skipped} skipped")
         if saved_for_review > 0:
-            print(
-                f"Session complete: {submitted} submitted, "
-                f"{saved_for_review} saved for review, {failed} failed."
-            )
-        else:
-            print(f"Session complete: {submitted} submitted, {failed} failed.")
+            summary_parts.append(f"{saved_for_review} saved for review")
+        summary_parts.append(f"{failed} failed")
+        print(f"Session complete: {', '.join(summary_parts)}.")
 
     exit_code = 0 if failed == 0 else 3
     log_event("apply.complete", profile=profile_id, submitted=submitted, failed=failed)
@@ -541,15 +550,21 @@ def iter_apply_events(
                 event_payload["screenshot_after_path"] = artifacts.screenshot_after_path
             yield event_payload
         else:
-            failed += 1
             reason_code = reason.get("code", "failed")
             reason_obj = Reason(
                 code=reason_code,
                 message=reason.get("message", "Failed"),
             )
 
+            # Handle user_skipped - mark as skipped without counting as failed
+            if reason_code == "user_skipped":
+                queue.mark_skipped(item.id, reason_obj)
+                timeline.info("item.skipped", reason=reason)
+                yield {"event": "skipped", "id": item.id, "reason": reason}
+
             # Handle saved_for_review - build artifacts from known paths
-            if reason_code == "saved_for_review":
+            elif reason_code == "saved_for_review":
+                failed += 1
                 settings = load_settings()
                 artifact_dir = settings.artifacts_path(profile.id) / item.id
                 pre_json_path = artifact_dir / "pre.json"
@@ -585,6 +600,7 @@ def iter_apply_events(
 
             # Handle captcha_blocked specially - build artifacts from known paths
             elif reason_code == "captcha_blocked":
+                failed += 1
                 settings = load_settings()
                 artifact_dir = settings.artifacts_path(profile.id) / item.id
                 pre_json_path = artifact_dir / "pre.json"

@@ -1504,7 +1504,7 @@ class LeverApplyAgent:
 
         # Supervised pause before submit (robust to non-interactive stdin)
         if mode != "auto":
-            pause_reason = await _supervised_pause()
+            pause_reason = await _supervised_pause(allow_skip=True)
             if pause_reason is not None:
                 return pause_reason
 
@@ -3463,32 +3463,54 @@ async def _supervised_pause(
     timeout_seconds: int | None = None,
     *,
     prompt: str | None = None,
+    allow_skip: bool = False,
 ) -> Reason | None:
     """Pause for human review; be robust to non-interactive stdin.
 
-    Returns a Reason if the user aborts (Ctrl+C), otherwise None.
+    Args:
+        timeout_seconds: Seconds to wait before auto-continuing (ignored if allow_skip=True).
+        prompt: Custom prompt message. Defaults based on allow_skip.
+        allow_skip: If True, wait indefinitely for user input and support S to skip.
+
+    Returns:
+        Reason if user skips (S) or aborts (Ctrl+C), otherwise None to continue.
     """
-    if timeout_seconds is None:
+    # Determine default timeout (only used if not allow_skip)
+    if timeout_seconds is None and not allow_skip:
         try:
             import os
 
             timeout_seconds = int(os.getenv("AUTO_APPLY_SUPERVISED_TIMEOUT", "15"))
         except Exception:
             timeout_seconds = 15
-    message = (
-        prompt
-        or "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
-    )
+
+    # Build message based on mode
+    if prompt:
+        message = prompt
+    elif allow_skip:
+        message = "Review filled form. Press Enter to submit, S to skip this job, or Ctrl+C to abort."
+    else:
+        message = "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
+
     print(message)
     try:
-        input()
+        user_input = input().strip().lower()
+        # Check for skip
+        if allow_skip and user_input == "s":
+            return Reason(code="user_skipped", message="User chose to skip this job")
+        # Any other input or Enter: continue
         return None
     except KeyboardInterrupt:
         return Reason(code="user_aborted", message="User declined to submit in supervised mode")
     except Exception:
-        # Non-interactive stdin; auto-continue after timeout
-        await asyncio.sleep(max(0, timeout_seconds))
-        return None
+        # Non-interactive stdin
+        if allow_skip:
+            # In skip-enabled mode, don't auto-continue - wait indefinitely (should not reach here in interactive terminal)
+            return None
+        else:
+            # In normal mode, auto-continue after timeout
+            await asyncio.sleep(max(0, timeout_seconds))
+            return None
 
 
 def _selector_for(tag: str, attrs: Mapping[str, str | None]) -> str:
