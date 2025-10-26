@@ -1522,6 +1522,7 @@ class LeverApplyAgent:
                 timeout_seconds=10.0,
                 vision_enabled=settings.captcha_visual_check,
                 settings=settings if settings.captcha_visual_check else None,
+                session=session if settings.captcha_visual_check else None,
             )
             if cstate.get("blocking"):
                 log_event(
@@ -3283,6 +3284,7 @@ async def _poll_for_captcha(
     *,
     vision_enabled: bool = False,
     settings: "Settings | None" = None,
+    session: "BrowserSession | None" = None,
 ) -> dict:
     """Poll for captcha visibility over time with optional vision fallback.
 
@@ -3294,6 +3296,7 @@ async def _poll_for_captcha(
         timeout_seconds: How long to poll DOM (default 10s).
         vision_enabled: Whether to use vision fallback if DOM finds nothing.
         settings: Application settings (required if vision_enabled=True).
+        session: Browser session for CDP connection in vision fallback.
 
     Returns:
         dict: Final captcha state.
@@ -3374,7 +3377,7 @@ async def _poll_for_captcha(
     final_state = last_state or {"present": False, "visible": False, "blocking": False}
 
     # Phase 2: Vision fallback (optional)
-    if vision_enabled and not final_state.get("blocking") and settings:
+    if vision_enabled and not final_state.get("blocking") and settings and session:
         try:
             log_event(
                 "captcha.vision_fallback.start",
@@ -3383,7 +3386,7 @@ async def _poll_for_captcha(
             # Wait for slow-loading captchas to render
             await asyncio.sleep(settings.captcha_visual_delay_seconds)
 
-            vision_state = await _vision_detect_captcha(page, settings)
+            vision_state = await _vision_detect_captcha(page, settings, session)
 
             if vision_state.get("blocking"):
                 log_event("captcha.vision_fallback.detected", state=vision_state)
@@ -3518,12 +3521,17 @@ async def _hcaptcha_state(page) -> dict:
 async def _vision_detect_captcha(
     page,
     settings: "Settings",
+    session: "BrowserSession",
 ) -> dict:
     """Use vision model to detect captcha by analyzing screenshot.
 
+    Uses CDP to connect Playwright to the same Chrome instance as browser-use,
+    captures a screenshot, and sends it to a vision model for analysis.
+
     Args:
-        page: Playwright page object.
+        page: Browser-use page object.
         settings: Application settings with vision config.
+        session: Active browser session for CDP connection.
 
     Returns:
         dict: Captcha state with detection_method="vision" if found.
@@ -3531,8 +3539,57 @@ async def _vision_detect_captcha(
     from ..llm.openrouter_client import OpenRouterClient, OpenRouterError
 
     try:
-        # Take screenshot
-        screenshot_bytes = await page.screenshot(type="png")
+        # Get current URL from browser-use page
+        current_url = await page.get_url()
+
+        # Connect Playwright to the same Chrome instance as browser-use
+        from playwright.async_api import async_playwright
+
+        cdp_url = session.cdp_url
+        playwright = await async_playwright().start()
+        playwright_browser = await playwright.chromium.connect_over_cdp(cdp_url)
+
+        # Find the correct page by URL
+        playwright_page = None
+        if playwright_browser.contexts:
+            for context in playwright_browser.contexts:
+                for p in context.pages:
+                    page_url = p.url
+                    if page_url == current_url:
+                        playwright_page = p
+                        break
+                if playwright_page:
+                    break
+
+        # Fallback: use the last page if URL match not found
+        if not playwright_page and playwright_browser.contexts:
+            pages = playwright_browser.contexts[0].pages
+            if pages:
+                playwright_page = pages[-1]
+
+        # Take screenshot via Playwright (returns bytes when no path specified)
+        screenshot_bytes = None
+        if playwright_page:
+            screenshot_bytes = await playwright_page.screenshot(
+                full_page=True, type="png"
+            )
+            log_event("captcha.vision_screenshot.captured", size_bytes=len(screenshot_bytes))
+        else:
+            log_event("captcha.vision_screenshot.failed", reason="no_page_found")
+
+        # Cleanup Playwright connection
+        await playwright_browser.close()
+        await playwright.stop()
+
+        # If screenshot failed, return safe default
+        if not screenshot_bytes:
+            return {
+                "present": False,
+                "visible": False,
+                "blocking": False,
+                "type": None,
+                "detection_method": "vision_failed",
+            }
 
         # Build vision client
         client = OpenRouterClient.from_settings(
