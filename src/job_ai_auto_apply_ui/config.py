@@ -120,7 +120,7 @@ class Settings:
         default_factory=lambda: _get_float("CAPTCHA_VISUAL_DELAY_SECONDS", 3.0)
     )
     captcha_timeout_seconds: int = field(
-        default_factory=lambda: _get_int("AUTO_APPLY_CAPTCHA_TIMEOUT_SECONDS", 30)
+        default_factory=lambda: _get_int("AUTO_APPLY_CAPTCHA_TIMEOUT_SECONDS", 60)
     )
 
     # Stealth / anti-detection
