@@ -119,6 +119,9 @@ class Settings:
     captcha_visual_delay_seconds: float = field(
         default_factory=lambda: _get_float("CAPTCHA_VISUAL_DELAY_SECONDS", 3.0)
     )
+    captcha_timeout_seconds: int = field(
+        default_factory=lambda: _get_int("AUTO_APPLY_CAPTCHA_TIMEOUT_SECONDS", 30)
+    )
 
     # Stealth / anti-detection
     browser_locale: str = field(default_factory=lambda: os.getenv("BROWSER_LOCALE", "en-US"))

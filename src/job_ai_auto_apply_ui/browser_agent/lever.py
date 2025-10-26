@@ -1531,12 +1531,46 @@ class LeverApplyAgent:
                     detection_method=cstate.get("detection_method", "dom"),
                     details=cstate,
                 )
-                # Capture pre-submission artifacts before failing
+                # Capture pre-submission artifacts
                 try:
                     await capture_pre_artifacts(session, page, profile, item, plan, filled_values)
                     log_event("captcha.artifacts_captured", item_id=item.id)
                 except Exception as exc:
                     log_event("captcha.artifacts_failed", error=str(exc))
+
+                # Handle captcha blocking with optional user interaction in supervised mode
+                resolved_settings = load_settings()
+                captcha_status, was_validated = await _handle_captcha_blocking(
+                    page,
+                    captcha_state=cstate,
+                    mode=mode,
+                    timeout_seconds=resolved_settings.captcha_timeout_seconds,
+                )
+
+                # If user claims submission or it was validated, try to capture as artifacts
+                if captcha_status == "submitted" and was_validated:
+                    try:
+                        # Capture post-submission artifacts
+                        confirmation_text = await _extract_confirmation_text(page)
+                        post_screenshot_path = await capture_post_screenshot(
+                            session, page, profile, item
+                        )
+                        confirmation_json = item.id  # or extract ID from page if available
+                        log_event("captcha.user_validated_submission", item_id=item.id)
+                        return Artifacts(
+                            dom_snapshot_path=None,
+                            screenshot_path=None,
+                            video_path=None,
+                            har_path=None,
+                            confirmation_text=confirmation_text,
+                            confirmation_id=confirmation_json,
+                        )
+                    except Exception as exc:
+                        log_event("captcha.user_submission_artifacts_failed", error=str(exc))
+                        # Continue to mark as blocked if artifacts fail
+                        pass
+
+                # Captcha blocked (either timeout or user chose block)
                 return Reason(
                     code="captcha_blocked",
                     message=f"{cstate.get('type', 'Unknown')} captcha visible and blocking submission",
@@ -3665,6 +3699,175 @@ Answer with only YES or NO."""
             "type": None,
             "detection_method": "vision_failed",
         }
+
+
+async def _handle_captcha_blocking(
+    page,
+    captcha_state: dict,
+    mode: str = "supervised",
+    timeout_seconds: int = 30,
+) -> tuple[str, bool]:
+    """Handle captcha blocking with user interaction in supervised mode.
+
+    In supervised mode, gives user 30 seconds to solve captcha manually.
+    User can press 'S' to mark as submitted or 'B' to mark as blocked.
+    Auto-blocks after timeout if no response.
+
+    In auto mode, immediately returns blocked status.
+
+    Args:
+        page: Browser page for validation.
+        captcha_state: Result from captcha detection.
+        mode: "supervised" or "auto".
+        timeout_seconds: Seconds to wait for user input (default 30).
+
+    Returns:
+        tuple: (status, validated) where status is "submitted" or "blocked"
+               and validated indicates if submission was confirmed.
+    """
+    import asyncio
+    import sys
+    import time
+
+    # In auto mode, immediately block without user interaction
+    if mode != "supervised":
+        log_event(
+            "captcha.auto_block",
+            mode=mode,
+            captcha_type=captcha_state.get("type", "unknown"),
+        )
+        return ("blocked", False)
+
+    # Supervised mode: show interactive prompt
+    print("\n" + "=" * 60)
+    print("⚠️  CAPTCHA DETECTED - ACTION REQUIRED")
+    print("=" * 60)
+    print("\nA captcha is blocking form submission.")
+    print(f"You have {timeout_seconds} seconds to respond:\n")
+    print("  [S] Mark as SUBMITTED (you solved it manually)")
+    print("  [B] Mark as BLOCKED and move to next job")
+    print(f"\nAuto-blocking in {timeout_seconds} seconds...\n")
+    print("=" * 60 + "\n")
+
+    start_time = time.time()
+    last_countdown = timeout_seconds
+    user_response = None
+
+    # Non-blocking read with timeout
+    # We'll check for input every second and show countdown updates every 5 seconds
+    while time.time() - start_time < timeout_seconds:
+        elapsed = time.time() - start_time
+        remaining = timeout_seconds - elapsed
+
+        # Show countdown every 5 seconds
+        countdown_int = int(remaining)
+        if countdown_int < last_countdown and countdown_int % 5 == 0:
+            print(f"⏱️  Auto-blocking in {countdown_int} seconds...")
+            last_countdown = countdown_int
+
+        # Check for user input (non-blocking)
+        # Use a very short sleep and check stdin
+        try:
+            # Try to read from stdin with short timeout using select (Unix) or Windows equivalent
+            # For now, we'll use a simple approach with asyncio
+            if sys.stdin.isatty():
+                # Only works in interactive terminal
+                try:
+                    # Use asyncio wait_for with very short timeout
+                    import select
+
+                    # Check if stdin has data ready (Unix/Linux/macOS)
+                    readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+                    if readable:
+                        user_input = sys.stdin.readline().strip().upper()
+                        if user_input in ("S", "B"):
+                            user_response = user_input
+                            break
+                except (AttributeError, ImportError):
+                    # Fallback for Windows or when select not available
+                    await asyncio.sleep(0.1)
+            else:
+                await asyncio.sleep(0.1)
+        except Exception:
+            await asyncio.sleep(0.1)
+
+    # Clear the countdown line
+    elapsed_total = time.time() - start_time
+    if elapsed_total >= timeout_seconds:
+        print("Auto-blocking due to timeout.\n")
+
+    # Process user response
+    if user_response == "B":
+        log_event(
+            "captcha.user_blocked",
+            elapsed_seconds=round(elapsed_total, 1),
+        )
+        return ("blocked", False)
+
+    if user_response == "S":
+        # User claims to have solved captcha
+        # Validate by checking for confirmation page or form disappearance
+        try:
+            print("Validating submission...")
+            await asyncio.sleep(1)  # Give page time to load confirmation
+
+            # Check for confirmation indicators
+            has_form = await page.evaluate(
+                "() => !!document.querySelector('form#application-form')"
+            )
+            has_success_text = await page.evaluate(
+                """() => {
+                  const body = document.body.innerText.toLowerCase();
+                  return body.includes('success') ||
+                         body.includes('submitted') ||
+                         body.includes('confirmation') ||
+                         body.includes('thanks for applying');
+                }"""
+            )
+
+            # If form is gone or success text appeared, consider it submitted
+            if not has_form or has_success_text:
+                log_event(
+                    "captcha.user_submitted_validated",
+                    elapsed_seconds=round(elapsed_total, 1),
+                    form_gone=not has_form,
+                    success_text=has_success_text,
+                )
+                print("✓ Submission validated. Moving to next job.\n")
+                return ("submitted", True)
+            else:
+                # Form still present, no success indicators
+                log_event(
+                    "captcha.user_submitted_unvalidated",
+                    elapsed_seconds=round(elapsed_total, 1),
+                )
+                print(
+                    "⚠️  Could not confirm submission (form still visible)."
+                )
+                print("Please try again or press [B] to mark as blocked.\n")
+                # Re-ask user
+                user_input = input(
+                    "  [S] Confirm submitted, [B] Mark as blocked: "
+                ).strip().upper()
+                if user_input == "S":
+                    return ("submitted", False)  # User confirmed despite validation failure
+                else:
+                    return ("blocked", False)
+        except Exception as exc:
+            log_event(
+                "captcha.validation_error",
+                error=str(exc),
+            )
+            print(f"Validation error: {exc}")
+            return ("submitted", False)  # Assume submitted on error
+
+    # Timeout reached, no user input
+    log_event(
+        "captcha.timeout_blocked",
+        timeout_seconds=timeout_seconds,
+        elapsed_seconds=round(elapsed_total, 1),
+    )
+    return ("blocked", False)
 
 
 async def _collect_invalid_fields(page) -> list[dict]:
