@@ -1519,7 +1519,7 @@ class LeverApplyAgent:
             settings = load_settings()
             cstate = await _poll_for_captcha(
                 page,
-                timeout_seconds=10.0,
+                timeout_seconds=2.5,
                 vision_enabled=settings.captcha_visual_check,
                 settings=settings if settings.captcha_visual_check else None,
                 session=session if settings.captcha_visual_check else None,
