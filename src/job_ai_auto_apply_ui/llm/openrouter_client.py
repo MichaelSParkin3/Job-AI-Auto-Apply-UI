@@ -154,6 +154,91 @@ class OpenRouterClient:
         with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
             return client.post("/chat/completions", json=payload, headers=headers)
 
+    def complete_with_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        *,
+        image_format: str = "png",
+        temperature: float | None = None,
+        extra_headers: Iterable[tuple[str, str]] | None = None,
+    ) -> str:
+        """Send text prompt + image to OpenRouter vision model.
+
+        Args:
+            prompt: Text question about the image.
+            image_bytes: Raw image bytes (PNG/JPEG/WEBP).
+            image_format: Image format (png, jpeg, webp, gif).
+            temperature: Optional sampling temperature.
+            extra_headers: Additional headers.
+
+        Returns:
+            str: Assistant response analyzing the image.
+
+        Raises:
+            OpenRouterError: On API failure or invalid response.
+        """
+        import base64
+
+        # Encode image to base64 data URL
+        b64_data = base64.b64encode(image_bytes).decode("utf-8")
+        data_url = f"data:image/{image_format};base64,{b64_data}"
+
+        # Construct multimodal message per OpenRouter API format
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ]
+
+        # Reuse existing complete() logic with multimodal messages
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else 0.0,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.referer:
+            headers["HTTP-Referer"] = self.referer
+        if self.user_agent:
+            headers["X-Title"] = self.user_agent
+        if extra_headers:
+            headers.update(dict(extra_headers))
+
+        last_error: OpenRouterError | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self._post(payload, headers=headers)
+            except httpx.HTTPError as exc:
+                last_error = OpenRouterError(f"Vision API network error: {exc}")
+            else:
+                if response.status_code == 200:
+                    return self._parse_response(response)
+                if response.status_code in {429} or response.status_code >= 500:
+                    last_error = OpenRouterError(
+                        "Vision API unavailable. Retry later.",
+                        status_code=response.status_code,
+                    )
+                else:
+                    raise OpenRouterError(
+                        f"Vision API failed with {response.status_code}.",
+                        status_code=response.status_code,
+                    )
+            if attempt < self.max_retries:
+                time.sleep(self.backoff_seconds * (2**attempt))
+
+        if last_error is not None:
+            raise last_error
+        raise OpenRouterError("Vision API request failed without response.")
+
     @staticmethod
     def _parse_response(response: httpx.Response) -> str:
         """Extract the assistant message from the API response."""

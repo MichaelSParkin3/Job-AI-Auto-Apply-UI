@@ -1510,13 +1510,26 @@ class LeverApplyAgent:
 
         # Submit and capture confirmation
         await _click(page, plan.submit_button)
-        await asyncio.sleep(2.0)
-        # hCaptcha check after click
-        # Detect blocking captcha only after submit attempt, using visibility/overlay heuristics
+
+        # Poll for blocking captcha over 10 seconds (checks every 0.5s)
+        # This handles slow-loading captchas and multiple types (hCaptcha, reCAPTCHA, Turnstile)
         try:
-            cstate = await _hcaptcha_state(page)
+            from ..config import load_settings
+
+            settings = load_settings()
+            cstate = await _poll_for_captcha(
+                page,
+                timeout_seconds=10.0,
+                vision_enabled=settings.captcha_visual_check,
+                settings=settings if settings.captcha_visual_check else None,
+            )
             if cstate.get("blocking"):
-                log_event("captcha.blocking_visible", details=cstate)
+                log_event(
+                    "captcha.blocking_detected_final",
+                    captcha_type=cstate.get("type", "unknown"),
+                    detection_method=cstate.get("detection_method", "dom"),
+                    details=cstate,
+                )
                 # Capture pre-submission artifacts before failing
                 try:
                     await capture_pre_artifacts(session, page, profile, item, plan, filled_values)
@@ -1524,10 +1537,11 @@ class LeverApplyAgent:
                 except Exception as exc:
                     log_event("captcha.artifacts_failed", error=str(exc))
                 return Reason(
-                    code="captcha_blocked", message="hCaptcha visible and blocking submission"
+                    code="captcha_blocked",
+                    message=f"{cstate.get('type', 'Unknown')} captcha visible and blocking submission",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event("captcha.polling_error", error=str(exc))
 
         # Post-submit sanity: page should either navigate or hide form
         still_has_form = await page.evaluate(
@@ -2484,6 +2498,7 @@ async def _wait_for_resume_upload(page, selector: str, *, timeout: float = 10.0)
     if debug:
         try:
             snapshot = await _evaluate_quiet(
+                page,
                 """
                 (sel) => {
                   const el = document.querySelector(sel);
@@ -2840,6 +2855,7 @@ async def _log_resume_postmortem(page, selector: str) -> None:
     """Emit a compact diagnostic snapshot regardless of debug flags."""
     try:
         snapshot = await _evaluate_quiet(
+            page,
             """
             (sel) => {
               const el = document.querySelector(sel);
@@ -3261,61 +3277,337 @@ async def _form_report_validity(page) -> None:
         pass
 
 
-async def _hcaptcha_state(page) -> dict:
-    """Return presence/visibility/blocking state of hCaptcha on the page.
+async def _poll_for_captcha(
+    page,
+    timeout_seconds: float = 10.0,
+    *,
+    vision_enabled: bool = False,
+    settings: "Settings | None" = None,
+) -> dict:
+    """Poll for captcha visibility over time with optional vision fallback.
 
-    Heuristics:
-    - present: div#h-captcha exists in DOM
-    - visible: any hCaptcha iframe (or container) is displayed/visible with non-trivial size
-    - blocking: visible and either covers notable viewport area or has pointer events enabled
+    Phase 1: DOM polling for up to timeout_seconds.
+    Phase 2 (optional): Vision-based screenshot analysis if DOM finds nothing.
+
+    Args:
+        page: Playwright page object.
+        timeout_seconds: How long to poll DOM (default 10s).
+        vision_enabled: Whether to use vision fallback if DOM finds nothing.
+        settings: Application settings (required if vision_enabled=True).
+
+    Returns:
+        dict: Final captcha state.
+    """
+    import time
+
+    # Phase 1: DOM polling
+    start = time.time()
+    last_state: dict | None = None
+    iteration = 0
+
+    while (time.time() - start) < timeout_seconds:
+        iteration += 1
+        elapsed = time.time() - start
+
+        try:
+            state = await _hcaptcha_state(page)
+        except Exception as exc:
+            try:
+                log_event(
+                    "captcha.polling_iteration_error",
+                    iteration=iteration,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    elapsed_seconds=round(elapsed, 2),
+                )
+            except Exception:
+                pass
+            # Return default state on error after 2+ iterations
+            if iteration > 1:
+                return last_state or {"present": False, "visible": False, "blocking": False}
+            # On first iteration, allow one retry
+            await asyncio.sleep(0.5)
+            continue
+
+        # Log if state changed
+        if state != last_state:
+            log_event("captcha.state_polled", state=state, elapsed_seconds=round(elapsed, 2), iteration=iteration)
+            last_state = state
+        elif iteration % 5 == 0:
+            # Heartbeat: log every 5th iteration even if state unchanged (shows polling is active)
+            try:
+                log_event(
+                    "captcha.polling_heartbeat",
+                    state=state,
+                    elapsed_seconds=round(elapsed, 2),
+                    iteration=iteration,
+                )
+            except Exception:
+                pass
+
+        # Return immediately if blocking captcha found
+        if state.get("blocking"):
+            log_event(
+                "captcha.blocking_detected",
+                captcha_type=state.get("type", "unknown"),
+                elapsed_seconds=round(elapsed, 2),
+                iteration=iteration,
+            )
+            return state
+
+        # Sleep before next check
+        try:
+            await asyncio.sleep(0.5)
+        except Exception as exc:
+            try:
+                log_event(
+                    "captcha.polling_sleep_error",
+                    iteration=iteration,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+            except Exception:
+                pass
+            # On sleep error, still return current state
+            return last_state or {"present": False, "visible": False, "blocking": False}
+
+    final_state = last_state or {"present": False, "visible": False, "blocking": False}
+
+    # Phase 2: Vision fallback (optional)
+    if vision_enabled and not final_state.get("blocking") and settings:
+        try:
+            log_event(
+                "captcha.vision_fallback.start",
+                delay_seconds=settings.captcha_visual_delay_seconds,
+            )
+            # Wait for slow-loading captchas to render
+            await asyncio.sleep(settings.captcha_visual_delay_seconds)
+
+            vision_state = await _vision_detect_captcha(page, settings)
+
+            if vision_state.get("blocking"):
+                log_event("captcha.vision_fallback.detected", state=vision_state)
+                return vision_state
+            else:
+                log_event("captcha.vision_fallback.not_found")
+        except Exception as exc:
+            log_event(
+                "captcha.vision_fallback.error",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
+    return final_state
+
+
+async def _hcaptcha_state(page) -> dict:
+    """Return presence/visibility/blocking state of captcha on the page.
+
+    Simplified detection focusing on core functionality:
+    - present: captcha element exists in DOM
+    - visible: captcha is displayed with non-trivial size
+    - blocking: visible and has pointer-events enabled
+    - type: captcha type (hcaptcha, recaptcha, turnstile, or unknown)
     """
     try:
         state = await _evaluate_quiet(
+            page,
             """
             () => {
-              const res = { present: false, visible: false, blocking: false, iframes: 0, cover: 0 };
-              const c = document.querySelector('div#h-captcha');
-              if (!c) return res;
+              const res = {
+                present: false,
+                visible: false,
+                blocking: false,
+                type: null
+              };
+
+              let captchaEl = null;
+              let captchaType = null;
+
+              // Check for standard captcha selectors first
+              captchaEl = document.querySelector('div#h-captcha');
+              if (captchaEl) {
+                captchaType = 'hcaptcha';
+              } else {
+                captchaEl = document.querySelector('div.g-recaptcha');
+                if (captchaEl) {
+                  captchaType = 'recaptcha';
+                }
+              }
+
+              // Check for dynamically-injected captcha iframes if standard selectors failed
+              if (!captchaEl) {
+                const allIframes = Array.from(document.querySelectorAll('iframe'));
+                for (const f of allIframes) {
+                  const src = f.getAttribute('src') || '';
+                  const title = f.getAttribute('title') || '';
+
+                  if (src.includes('hcaptcha.com') || src.includes('newassets.hcaptcha.com') ||
+                      title.toLowerCase().includes('hcaptcha')) {
+                    // Walk up DOM tree to find the modal container
+                    let parent = f.parentElement;
+                    while (parent && parent !== document.body) {
+                      const zIndex = window.getComputedStyle(parent).zIndex;
+                      const zNum = parseInt(zIndex, 10);
+                      if (zNum > 1000000) {
+                        captchaEl = parent;
+                        captchaType = 'hcaptcha';
+                        break;
+                      }
+                      parent = parent.parentElement;
+                    }
+                    if (!captchaEl) {
+                      captchaEl = f;
+                      captchaType = 'hcaptcha';
+                    }
+                    break;
+                  } else if (src.includes('recaptcha') || src.includes('google.com/recaptcha') ||
+                             title.toLowerCase().includes('recaptcha')) {
+                    captchaEl = f;
+                    captchaType = 'recaptcha';
+                    break;
+                  } else if (src.includes('challenges.cloudflare') || title.toLowerCase().includes('turnstile')) {
+                    captchaEl = f;
+                    captchaType = 'turnstile';
+                    break;
+                  }
+                }
+              }
+
+              // No captcha found
+              if (!captchaEl) return res;
+
               res.present = true;
-              const rectC = c.getBoundingClientRect();
-              const styleC = window.getComputedStyle(c);
-              const visC = (styleC.display !== 'none' && styleC.visibility !== 'hidden' && rectC.width > 1 && rectC.height > 1 && parseFloat(styleC.opacity || '1') > 0.01);
-              let visibleIFrame = false;
-              let maxCover = 0;
-              const iframes = c.querySelectorAll('iframe');
-              res.iframes = iframes.length;
-              const vw = Math.max(1, window.innerWidth || 1);
-              const vh = Math.max(1, window.innerHeight || 1);
-              for (const f of iframes) {
-                const r = f.getBoundingClientRect();
-                const s = window.getComputedStyle(f);
-                const v = (s.display !== 'none' && s.visibility !== 'hidden' && r.width > 20 && r.height > 20 && parseFloat(s.opacity || '1') > 0.01);
-                if (v) {
-                  visibleIFrame = true;
-                  const cover = Math.min(1, (r.width * r.height) / (vw * vh));
-                  if (cover > maxCover) maxCover = cover;
+              res.type = captchaType;
+
+              // Check visibility of captcha element
+              const rect = captchaEl.getBoundingClientRect();
+              const style = window.getComputedStyle(captchaEl);
+              const isVisible = (style.display !== 'none' && style.visibility !== 'hidden' &&
+                                 rect.width > 1 && rect.height > 1 &&
+                                 parseFloat(style.opacity || '1') > 0.01);
+
+              if (isVisible) {
+                res.visible = true;
+
+                // Check if pointer-events is enabled
+                const pointerEvents = style.pointerEvents;
+                if (pointerEvents && pointerEvents !== 'none') {
+                  res.blocking = true;
                 }
               }
-              res.visible = visC || visibleIFrame;
-              res.cover = Number(maxCover.toFixed(3));
-              // Blocking if visible and either large overlay or pointer-events enabled
-              let pe = false;
-              if (visibleIFrame) {
-                for (const f of iframes) {
-                  const s = window.getComputedStyle(f);
-                  if (s.pointerEvents && s.pointerEvents !== 'none') { pe = true; break; }
-                }
-              }
-              res.blocking = res.visible && (res.cover >= 0.2 || pe);
+
               return res;
             }
             """
         )
         if state and isinstance(state, dict):
             return state
-    except Exception:
-        pass
-    return {"present": False, "visible": False, "blocking": False}
+    except Exception as exc:
+        try:
+            log_event(
+                "captcha.detection_error",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+        except Exception:
+            pass
+    return {"present": False, "visible": False, "blocking": False, "type": None}
+
+
+async def _vision_detect_captcha(
+    page,
+    settings: "Settings",
+) -> dict:
+    """Use vision model to detect captcha by analyzing screenshot.
+
+    Args:
+        page: Playwright page object.
+        settings: Application settings with vision config.
+
+    Returns:
+        dict: Captcha state with detection_method="vision" if found.
+    """
+    from ..llm.openrouter_client import OpenRouterClient, OpenRouterError
+
+    try:
+        # Take screenshot
+        screenshot_bytes = await page.screenshot(type="png")
+
+        # Build vision client
+        client = OpenRouterClient.from_settings(
+            settings, model=settings.captcha_vision_model
+        )
+
+        # Vision prompt
+        prompt = """Is there a visible captcha blocking this form? Look for:
+- hCaptcha puzzle grids (9-16 images to select)
+- reCAPTCHA checkboxes ("I'm not a robot")
+- Cloudflare Turnstile challenges
+- Any other captcha verification UI
+
+Answer with only YES or NO."""
+
+        # Call vision API
+        response = client.complete_with_image(
+            prompt=prompt, image_bytes=screenshot_bytes, image_format="png", temperature=0.0
+        )
+
+        # Parse response
+        answer = response.strip().upper()
+        has_captcha = "YES" in answer
+
+        log_event(
+            "captcha.vision_check",
+            model=settings.captcha_vision_model,
+            response=response[:100],  # Truncate for logs
+            detected=has_captcha,
+        )
+
+        if has_captcha:
+            return {
+                "present": True,
+                "visible": True,
+                "blocking": True,
+                "type": "unknown_visual",
+                "detection_method": "vision",
+            }
+        else:
+            return {
+                "present": False,
+                "visible": False,
+                "blocking": False,
+                "type": None,
+                "detection_method": "vision",
+            }
+
+    except OpenRouterError as exc:
+        log_event(
+            "captcha.vision_error",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        # On vision failure, assume no captcha (safer than false positive)
+        return {
+            "present": False,
+            "visible": False,
+            "blocking": False,
+            "type": None,
+            "detection_method": "vision_failed",
+        }
+    except Exception as exc:
+        log_event(
+            "captcha.vision_unexpected_error",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return {
+            "present": False,
+            "visible": False,
+            "blocking": False,
+            "type": None,
+            "detection_method": "vision_failed",
+        }
 
 
 async def _collect_invalid_fields(page) -> list[dict]:

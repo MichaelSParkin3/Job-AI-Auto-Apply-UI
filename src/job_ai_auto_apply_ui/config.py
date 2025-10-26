@@ -106,6 +106,20 @@ class Settings:
         default_factory=lambda: _get_int("AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS", 25)
     )
 
+    # Captcha detection - vision fallback
+    captcha_visual_check: bool = field(
+        default_factory=lambda: _get_bool("AUTO_APPLY_CAPTCHA_VISUAL_CHECK", False)
+    )
+    captcha_vision_model: str = field(
+        default_factory=lambda: os.getenv(
+            "AUTO_APPLY_CAPTCHA_VISION_MODEL",
+            "google/gemini-2.0-flash-exp:free"
+        )
+    )
+    captcha_visual_delay_seconds: float = field(
+        default_factory=lambda: _get_float("CAPTCHA_VISUAL_DELAY_SECONDS", 3.0)
+    )
+
     # Stealth / anti-detection
     browser_locale: str = field(default_factory=lambda: os.getenv("BROWSER_LOCALE", "en-US"))
     browser_timezone: str = field(
