@@ -681,6 +681,11 @@ class LeverApplyAgent:
                   seenNames.add('additional-information');
                 }
 
+                // IMPORTANT: Reserve disability signature fields for dedicated handler (runs later in Python)
+                // This prevents universal scanner from filling them with generic answers
+                seenNames.add('eeo[disabilitySignature]');
+                seenNames.add('eeo[disabilitySignatureDate]');
+
                 // Helper to extract label text for any field
                 const extractLabel = (el) => {
                   const questionContainer = el.closest('.application-question');
@@ -964,6 +969,17 @@ class LeverApplyAgent:
                     option_pairs=option_pairs,
                 )
             )
+        # Log form analysis results
+        try:
+            log_event(
+                "form.analysis.complete",
+                contact_fields_count=len(contact_fields),
+                link_fields_count=len(link_fields),
+                dynamic_questions_count=len(dynamic_questions),
+                eeo_fields_count=len(eeo_fields),
+            )
+        except Exception:
+            pass
         return LeverFormPlan(
             resume_input=resume_input,
             contact_fields={str(k): str(v) for k, v in contact_fields.items()},
@@ -1205,7 +1221,25 @@ class LeverApplyAgent:
                     # Handle select dropdowns (common in custom Lever cards)
                     # Try to match from profile defaults first, then use LLM if needed
                     desired = _default_choice_answer(profile, q)
+                    if desired:
+                        try:
+                            log_event(
+                                "form.question.answered_from_profile",
+                                prompt=q.prompt[:80] if q.prompt else None,
+                                answer=desired[:80] if desired else None,
+                                field_type="select",
+                            )
+                        except Exception:
+                            pass
                     if not desired and client:
+                        try:
+                            log_event(
+                                "form.question.using_llm_fallback",
+                                prompt=q.prompt[:80] if q.prompt else None,
+                                field_type="select",
+                            )
+                        except Exception:
+                            pass
                         # Build prompt with options for LLM to choose from
                         options_text = (
                             "\n".join([f"- {opt[1]}" for opt in q.option_pairs])
@@ -1231,8 +1265,26 @@ class LeverApplyAgent:
                     continue
                 if field_type == "text":
                     text_answer = _default_text_answer(profile, q)
+                    if text_answer:
+                        try:
+                            log_event(
+                                "form.question.answered_from_profile",
+                                prompt=q.prompt[:80] if q.prompt else None,
+                                answer=text_answer[:80] if text_answer else None,
+                                field_type="text",
+                            )
+                        except Exception:
+                            pass
                     # LLM fallback if no profile match found
                     if not text_answer and client:
+                        try:
+                            log_event(
+                                "form.question.using_llm_fallback",
+                                prompt=q.prompt[:80] if q.prompt else None,
+                                field_type="text",
+                            )
+                        except Exception:
+                            pass
                         plan_msg = prompt_builder.build_question_prompt(
                             question=Question(id=q.cache_key, text=q.prompt, required=q.required),
                             job=item.details or JobDetails(),
@@ -4182,6 +4234,34 @@ def _default_text_answer(profile: Profile, question: DynamicQuestion) -> str | N
 def _default_choice_answer(profile: Profile, question: DynamicQuestion) -> str | None:
     defaults = profile.defaults
     prompt_lower = question.prompt.lower()
+
+    # Helper to safely extract and convert values (handles lists/tuples)
+    def pick(*keys: str) -> str | None:
+        for key in keys:
+            if key in defaults and defaults[key] is not None:
+                val = defaults[key]
+                if isinstance(val, (list, tuple)):
+                    if val:
+                        return str(val[0])
+                else:
+                    return str(val)
+        return None
+
+    # Check for EEO fields (handles non-standard naming like cards[UUID][fieldX])
+    if "gender" in prompt_lower or "gender identity" in prompt_lower:
+        return pick("eeo_gender", "gender", "gender_identity")
+    if "race" in prompt_lower or "ethnicity" in prompt_lower or "origin" in prompt_lower:
+        return pick("eeo_race", "race_ethnicity", "race", "ethnicity")
+    if "veteran" in prompt_lower or "military" in prompt_lower:
+        return pick("eeo_veteran_status", "veteran_status", "veteran")
+    if "disability" in prompt_lower or "disabilities" in prompt_lower:
+        return pick("eeo_disability_status", "disability_status", "disability")
+
+    # Check for notice period / availability
+    if "notice" in prompt_lower or "availability" in prompt_lower or "start date" in prompt_lower or "start immediately" in prompt_lower:
+        return pick("notice_period", "availability_date", "start_date", "availability")
+
+    # Check for work authorization
     if "legally authorized" in prompt_lower or "authorized to work" in prompt_lower:
         raw = defaults.get("work_authorized") or defaults.get("work_authorization")
         normalized = _normalize_yes_no_value(raw)
@@ -4251,8 +4331,10 @@ async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> di
     filled = {}
     for eeo_field in fields:
         desired = _default_eeo_answer(profile, eeo_field)
+        source = "profile"
         if not desired:
             desired = _eeo_opt_out_value(eeo_field)
+            source = "opt_out"
         value = None
         if desired:
             value = eeo_field.options.get(_normalize_choice_key(desired)) or desired
@@ -4262,8 +4344,27 @@ async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> di
                 if candidate:
                     value = candidate
                     break
+            source = "fallback"
         if value is None:
+            try:
+                log_event(
+                    "eeo.field.skipped",
+                    field=eeo_field.label,
+                    reason="no_matching_value",
+                )
+            except Exception:
+                pass
             continue
+        # Log the EEO field being filled
+        try:
+            log_event(
+                "eeo.field.filling",
+                field=eeo_field.label,
+                source=source,
+                value=value[:80] if isinstance(value, str) else str(value),
+            )
+        except Exception:
+            pass
         if eeo_field.field_type == "select":
             # Try string matching first
             matched = await _set_select_value(page, eeo_field.selector, value)
@@ -4277,9 +4378,25 @@ async def _fill_eeo_fields(page, fields: list[EeoField], profile: Profile) -> di
                 matched = await _llm_select_fallback(page, eeo_field, value, profile)
             if matched:
                 filled[eeo_field.selector] = value
+                try:
+                    log_event(
+                        "eeo.field.filled",
+                        field=eeo_field.label,
+                        value=value[:80] if isinstance(value, str) else str(value),
+                    )
+                except Exception:
+                    pass
         else:
             await _select_choice_option(page, eeo_field.name, value)
             filled[eeo_field.name] = value
+            try:
+                log_event(
+                    "eeo.field.filled",
+                    field=eeo_field.label,
+                    value=value[:80] if isinstance(value, str) else str(value),
+                )
+            except Exception:
+                pass
     return filled
 
 
@@ -4393,7 +4510,7 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
             """
             (sel, desired) => {
               const el = document.querySelector(sel);
-              if (!el) return false;
+              if (!el) return { success: false, reason: 'element_not_found' };
 
               // Comprehensive normalization for EEO and other select fields
               const normalize = (text) => {
@@ -4410,6 +4527,42 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
                 return s.replace(/\\s+/g, ' ').trim();
               };
 
+              const emitEvents = (el) => {
+                // Emit full event sequence for custom select widgets (Select2, Chosen, React, etc)
+                // Events must fire AFTER index/value changes for widget state to update
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch {}
+                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch {}
+                try { el.dispatchEvent(new Event('blur', { bubbles: true })); } catch {}
+              };
+
+              const setSelectValue = (el, opt) => {
+                // Force custom select widgets to update by manipulating selectedIndex
+                const optionIndex = Array.from(el.options).indexOf(opt);
+                if (optionIndex === -1) return false;
+
+                // Set focus first
+                el.focus();
+                try { el.dispatchEvent(new Event('focus', { bubbles: true })); } catch {}
+
+                // Set selectedIndex (triggers custom widget state machine)
+                el.selectedIndex = optionIndex;
+                // Also set value (backup for standard selects)
+                el.value = opt.value;
+
+                // Emit events after changes
+                emitEvents(el);
+
+                // Verify both index and value stuck (more reliable than value alone)
+                return el.selectedIndex === optionIndex && el.value === opt.value;
+              };
+
+              // Collect all available options for debugging
+              const availableOptions = Array.from(el.options).map((opt, idx) => ({
+                index: idx,
+                value: opt.value,
+                text: opt.textContent.trim()
+              }));
+
               const normDesired = normalize(desired);
 
               // Step 1: Try exact match first (fastest)
@@ -4417,9 +4570,16 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
                 const optVal = normalize(opt.value);
                 const optText = normalize(opt.textContent);
                 if (optVal === normDesired || optText === normDesired) {
-                  el.value = opt.value;
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  return true;
+                  if (setSelectValue(el, opt)) {
+                    return {
+                      success: true,
+                      method: 'exact_match',
+                      selected: { value: opt.value, text: opt.textContent.trim() },
+                      optionCount: availableOptions.length,
+                      usedSelectedIndex: true
+                    };
+                  }
+                  return { success: false, reason: 'value_did_not_stick', method: 'exact_match' };
                 }
               }
 
@@ -4429,9 +4589,16 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
                 const optText = normalize(opt.textContent);
                 if (optVal.startsWith(normDesired) || optText.startsWith(normDesired) ||
                     normDesired.startsWith(optVal) || normDesired.startsWith(optText)) {
-                  el.value = opt.value;
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  return true;
+                  if (setSelectValue(el, opt)) {
+                    return {
+                      success: true,
+                      method: 'startswith_match',
+                      selected: { value: opt.value, text: opt.textContent.trim() },
+                      optionCount: availableOptions.length,
+                      usedSelectedIndex: true
+                    };
+                  }
+                  return { success: false, reason: 'value_did_not_stick', method: 'startswith_match' };
                 }
               }
 
@@ -4441,21 +4608,59 @@ async def _set_select_value(page, selector: str | None, desired: str | None) -> 
                 const optText = normalize(opt.textContent);
                 if (optVal.includes(normDesired) || normDesired.includes(optVal) ||
                     optText.includes(normDesired) || normDesired.includes(optText)) {
-                  el.value = opt.value;
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  return true;
+                  if (setSelectValue(el, opt)) {
+                    return {
+                      success: true,
+                      method: 'substring_match',
+                      selected: { value: opt.value, text: opt.textContent.trim() },
+                      optionCount: availableOptions.length,
+                      usedSelectedIndex: true
+                    };
+                  }
+                  return { success: false, reason: 'value_did_not_stick', method: 'substring_match' };
                 }
               }
 
-              // No match found - return false instead of blind fallback
-              return false;
+              // No match found - return detailed failure info
+              return {
+                success: false,
+                reason: 'no_matching_option',
+                desired: desired,
+                availableOptions: availableOptions
+              };
             }
             """,
             selector,
             desired,
         )
-        return bool(result)
-    except Exception:
+
+        # Log detailed matching information if available
+        if isinstance(result, dict):
+            if result.get("reason") == "no_matching_option":
+                log_event(
+                    "select_value.no_match_found",
+                    selector=selector,
+                    desired_value=desired,
+                    available_options_count=len(result.get("availableOptions", [])),
+                )
+            elif not result.get("success") and result.get("reason") == "value_did_not_stick":
+                log_event(
+                    "select_value.value_did_not_stick",
+                    selector=selector,
+                    desired_value=desired,
+                    match_method=result.get("method"),
+                )
+            elif result.get("success"):
+                log_event(
+                    "select_value.success",
+                    selector=selector,
+                    match_method=result.get("method"),
+                    option_count=result.get("optionCount"),
+                )
+
+        return bool(result.get("success") if isinstance(result, dict) else result)
+    except Exception as exc:
+        log_event("select_value.exception", selector=selector, error=str(exc))
         return False
 
 

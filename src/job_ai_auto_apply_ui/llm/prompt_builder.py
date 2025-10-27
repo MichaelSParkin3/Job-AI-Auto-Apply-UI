@@ -83,14 +83,22 @@ class PromptBuilder:
         system_content = (
             "You are filling out a job application form on behalf of a candidate. "
             "Your goal is to provide suitable, professional answers that allow the "
-            "application to proceed. Answer each question thoughtfully based on the "
-            "profile information provided. For location/geography questions, use the "
-            "profile's location. "
-            "IMPORTANT: For multiple choice or select dropdown questions with a list of options, "
-            "you MUST respond with ONLY the exact text of ONE option from the provided list. "
-            "Do not add explanations, elaborations, or additional context—just the option "
-            "text itself. For open-ended text questions, keep responses concise (2-3 sentences "
-            "unless more detail is clearly needed)."
+            "application to proceed.\n\n"
+            "FIELD MAPPING RULES - Match these question types to profile fields:\n"
+            "- Gender / gender identity questions → use Gender from EEO/Demographic Information section\n"
+            "- Race / ethnicity / origin questions → use Race/Ethnicity from EEO/Demographic Information section\n"
+            "- Veteran status questions → use Veteran Status from EEO/Demographic Information section\n"
+            "- Disability / disabilities questions → use Disability Status from EEO/Demographic Information section\n"
+            "- Notice period / availability / start date questions → use notice_period field from Work Authorization section\n"
+            "- Salary expectations / compensation questions → use salary_expectation field\n"
+            "- Location / geography questions → use location from Contact Information section\n"
+            "- LinkedIn / GitHub / portfolio questions → use corresponding URL fields from Contact Information\n\n"
+            "RESPONSE FORMAT RULES:\n"
+            "- For multiple choice or select dropdown questions with a list of options: "
+            "respond with ONLY the exact text of ONE option from the provided list. "
+            "Do not add explanations, elaborations, or additional context—just the option text itself.\n"
+            "- For open-ended text questions: keep responses concise (2-3 sentences unless more detail is clearly needed).\n"
+            "- Always match your answer to the corresponding profile field when a match exists."
         )
         if self.provider:
             system_content += f" Target provider: {self.provider}."
@@ -125,15 +133,80 @@ class PromptBuilder:
 
 
 def _format_profile(profile: Profile) -> str:
-    defaults = "\n".join(f"- {key}: {value}" for key, value in profile.defaults.items())
+    """Format profile with organized sections for better LLM context."""
+    defaults = profile.defaults
+
+    # Organize defaults into logical sections
+    contact_fields = {}
+    eeo_fields = {}
+    work_fields = {}
+    other_fields = {}
+
+    # EEO field keys
+    eeo_keys = {
+        'eeo_gender', 'gender', 'gender_identity',
+        'eeo_race', 'eeo_ethnicity', 'race', 'race_ethnicity', 'ethnicity',
+        'eeo_veteran_status', 'veteran_status', 'veteran',
+        'eeo_disability_status', 'disability_status', 'disability',
+    }
+
+    # Contact field keys
+    contact_keys = {
+        'name', 'email', 'phone', 'location', 'org', 'organization',
+        'linkedin_url', 'linkedin', 'github_url', 'github',
+        'portfolio_url', 'portfolio', 'website',
+    }
+
+    # Work-related field keys
+    work_keys = {
+        'work_authorized', 'work_authorization',
+        'requires_visa_sponsorship', 'needs_visa_sponsorship', 'visa_sponsorship', 'sponsorship_required',
+        'notice_period', 'availability_date', 'start_date', 'availability',
+        'worked_at_company_before', 'previously_employed_at_company', 'previously_employed',
+        'salary_expectation', 'pronouns',
+    }
+
+    for key, value in defaults.items():
+        if key in eeo_keys:
+            eeo_fields[key] = value
+        elif key in contact_keys:
+            contact_fields[key] = value
+        elif key in work_keys:
+            work_fields[key] = value
+        else:
+            other_fields[key] = value
+
     keywords: list[str] = []
     for values in profile.keywords.values():
         keywords.extend(values)
     keywords_line = ", ".join(sorted(set(keywords)))
     prompts = "\n".join(f"- {key}: {value}" for key, value in profile.prompts.items())
     sections = [f"Profile: {profile.name}"]
-    if defaults:
-        sections.append("Defaults:\n" + defaults)
+
+    # Contact Information
+    if contact_fields:
+        contact_lines = "\n".join(f"- {key}: {value}" for key, value in contact_fields.items())
+        sections.append("Contact Information:\n" + contact_lines)
+
+    # Work Authorization & Notice Period
+    if work_fields:
+        work_lines = "\n".join(f"- {key}: {value}" for key, value in work_fields.items())
+        sections.append("Work Authorization & Availability:\n" + work_lines)
+
+    # EEO/Demographic Information
+    if eeo_fields:
+        eeo_formatted = []
+        for key, value in eeo_fields.items():
+            # Convert keys to human-readable labels
+            label = key.replace('eeo_', '').replace('_', ' ').title()
+            eeo_formatted.append(f"- {label}: {value}")
+        sections.append("EEO/Demographic Information:\n" + "\n".join(eeo_formatted))
+
+    # Other defaults
+    if other_fields:
+        other_lines = "\n".join(f"- {key}: {value}" for key, value in other_fields.items())
+        sections.append("Other Details:\n" + other_lines)
+
     if keywords_line:
         sections.append("Keywords: " + keywords_line)
 
