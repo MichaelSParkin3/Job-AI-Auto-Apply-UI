@@ -3,6 +3,7 @@ name = "Front End Specialist"
 resume_path = "resumes/Front_End_Specialist_Resume_2025.pdf"
 preferred_browser = "chromium"
 user_data_dir = "data/browser_profiles/front_end"
+search_query = "site:jobs.lever.co intitle:remote (\"Front End\" OR \"Frontend\") -\"hybrid\" -\"on-site\" -\"onsite\""
 
 [defaults]
 current_company = "Freelance"
