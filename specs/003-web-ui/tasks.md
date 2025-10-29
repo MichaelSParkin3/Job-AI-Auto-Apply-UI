@@ -1583,9 +1583,11 @@ Enhance accessibility:
 - Errors displayed with user-friendly messages
 - Options persist per profile
 
-### T066: Create backend Apply API endpoints [P]
+### T066: Create backend Apply API endpoints [P] [X]
 
 **Story**: US5 | **Files**: `web_ui/backend/src/api/v1/apply.py`
+
+**Status**: ✅ COMPLETED
 
 Implement endpoints:
 - `POST /api/v1/apply/single` - Apply to single job
@@ -1606,9 +1608,11 @@ Uses CLIService for apply execution and QueueService for status updates
 
 ---
 
-### T067: Create ApplyPanel component for single job application [P]
+### T067: Create ApplyPanel component for single job application [P] [X]
 
 **Story**: US5 | **Files**: `web_ui/frontend/src/components/ApplyPanel.tsx`
+
+**Status**: ✅ COMPLETED
 
 Implement panel UI:
 - Panel dialog (shadcn/ui Dialog or Drawer)
@@ -1640,9 +1644,11 @@ Implement panel UI:
 
 ---
 
-### T068: Create BulkApplyPanel component for bulk application [P]
+### T068: Create BulkApplyPanel component for bulk application [P] [X]
 
 **Story**: US5 | **Files**: `web_ui/frontend/src/components/BulkApplyPanel.tsx`
+
+**Status**: ✅ COMPLETED
 
 Implement panel UI:
 - Panel dialog (shadcn/ui Dialog or Drawer)
@@ -1671,9 +1677,11 @@ Implement panel UI:
 
 ---
 
-### T069: Create progress display for bulk application [P]
+### T069: Create progress display for bulk application [P] [X]
 
-**Story**: US5 | **Files**: `web_ui/frontend/src/components/BulkApplyProgress.tsx`
+**Story**: US5 | **Files**: `web_ui/frontend/src/components/BulkApplyPanel.tsx` (integrated)
+
+**Status**: ✅ COMPLETED - Integrated into BulkApplyPanel component
 
 Implement progress UI:
 - Progress bar showing % complete
@@ -1816,9 +1824,11 @@ Add stop button:
 
 ---
 
-### T077: Create contract tests for Apply API [P]
+### T077: Create contract tests for Apply API [P] [X]
 
-**Story**: US5 | **Files**: `web_ui/backend/tests/contract/test_api_contracts.py` (enhance)
+**Story**: US5 | **Files**: `web_ui/backend/tests/contract/test_apply_contracts.py`
+
+**Status**: ✅ COMPLETED - 18 comprehensive contract tests
 
 Write tests:
 - POST /api/v1/apply/single schema
@@ -1835,9 +1845,11 @@ Write tests:
 
 ---
 
-### T078: Add accessibility features to apply panels [P]
+### T078: Add accessibility features to apply panels [P] [X]
 
-**Story**: US5 | **Files**: `web_ui/frontend/src/components/ApplyPanel.tsx`, `web_ui/frontend/src/components/BulkApplyPanel.tsx` (enhance)
+**Story**: US5 | **Files**: `web_ui/frontend/src/components/ApplyPanel.tsx`, `web_ui/frontend/src/components/BulkApplyPanel.tsx`
+
+**Status**: ✅ COMPLETED
 
 Enhance accessibility:
 - Proper form labeling
