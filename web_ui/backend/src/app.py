@@ -125,8 +125,9 @@ async def api_health_check() -> Dict[str, Any]:
     ]}
 
 
-# API v1 route inclusion placeholder
-# Routes will be registered in T011
+# API v1 routes
+from src.api.routes import router as api_router
+app.include_router(api_router)
 
 
 if __name__ == "__main__":

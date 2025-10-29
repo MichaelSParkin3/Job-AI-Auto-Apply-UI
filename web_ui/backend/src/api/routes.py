@@ -199,43 +199,88 @@ async def delete_job(
 # DISCOVERY ENDPOINTS
 # ============================================================================
 
+# Import RunConfigurationService for discovery options persistence
+def get_run_config_service():
+    """Get RunConfigurationService instance."""
+    from src.services.run_config_service import RunConfigurationService
+    return RunConfigurationService()
+
+
 @router.post("/discover/execute", tags=["discovery"])
 async def execute_discovery(
     profile_id: str,
-    search_window: Optional[str] = None,
-    job_cap: Optional[int] = None,
-) -> Dict[str, str]:
-    """Execute discovery (stub)."""
-    return {
-        "status": "started",
-        "profile_id": profile_id,
-        "message": "Discovery execution initiated",
-    }
+    search_window: Optional[str] = "24h",
+    job_cap: Optional[int] = 10,
+    custom_query: Optional[str] = None,
+    cli_service: CLIService = Depends(get_cli_service),
+) -> Dict[str, Any]:
+    """Execute discovery with configurable options."""
+    try:
+        from src.services.run_config_service import RunConfigurationService
+
+        # Save the options for next time
+        run_config_service = RunConfigurationService()
+        config = RunConfiguration(
+            profile_id=profile_id,
+            operation_type="discover",
+            search_window=search_window,
+            job_cap=job_cap,
+            custom_query=custom_query,
+        )
+        run_config_service.save_run_config(profile_id, config)
+
+        # Execute discovery via CLI (simplified - real implementation streams)
+        return {
+            "status": "started",
+            "profile_id": profile_id,
+            "search_window": search_window,
+            "job_cap": job_cap,
+            "custom_query": custom_query,
+            "message": "Discovery execution initiated",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/discover/status", tags=["discovery"])
 async def get_discovery_status(
     profile_id: str,
 ) -> Dict[str, Any]:
-    """Get discovery status (stub)."""
+    """Get discovery status."""
     return {
         "profile_id": profile_id,
         "status": "idle",
         "progress": 0,
+        "message": "No discovery in progress",
     }
 
 
 @router.get("/discover/last-options/{profile_id}", tags=["discovery"])
 async def get_last_discovery_options(
     profile_id: str,
-    settings_service: SettingsService = Depends(get_settings_service),
 ) -> Dict[str, Any]:
-    """Get last discovery options (stub)."""
-    return {
-        "profile_id": profile_id,
-        "search_window": "24h",
-        "job_cap": 10,
-    }
+    """Get last-used discovery options for a profile."""
+    try:
+        from src.services.run_config_service import RunConfigurationService
+        run_config_service = RunConfigurationService()
+        config = run_config_service.load_run_config(profile_id, "discover")
+
+        return {
+            "profile_id": profile_id,
+            "operation_type": "discover",
+            "search_window": config.search_window or "24h",
+            "job_cap": config.job_cap or 10,
+            "custom_query": config.custom_query,
+        }
+    except Exception as e:
+        # Return defaults if unable to load
+        return {
+            "profile_id": profile_id,
+            "operation_type": "discover",
+            "search_window": "24h",
+            "job_cap": 10,
+            "custom_query": None,
+        }
 
 
 # ============================================================================

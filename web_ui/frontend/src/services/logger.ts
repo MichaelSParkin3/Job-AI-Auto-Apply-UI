@@ -1,4 +1,6 @@
-"""Frontend logging service with structured JSON logging."""
+/**
+ * Frontend logging service with structured JSON logging.
+ */
 
 interface LogEvent {
   timestamp: string

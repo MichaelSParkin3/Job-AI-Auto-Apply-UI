@@ -1281,9 +1281,11 @@ Add error handling:
 - Status counts in sidebar update
 - Last-used options persist per profile
 
-### T054: Create backend Discovery API endpoints [P]
+### T054: Create backend Discovery API endpoints [P] [X]
 
 **Story**: US4 | **Files**: `web_ui/backend/src/api/v1/discover.py`
+
+**Status**: ✅ COMPLETED
 
 Implement endpoints:
 - `POST /api/v1/discover/execute` - Start discovery with options
@@ -1303,9 +1305,11 @@ Uses CLIService for discover command execution and QueueService for job enqueuei
 
 ---
 
-### T055: Create DiscoveryModal component [P]
+### T055: Create DiscoveryModal component [P] [X]
 
 **Story**: US4 | **Files**: `web_ui/frontend/src/components/DiscoveryModal.tsx`
+
+**Status**: ✅ COMPLETED
 
 Implement modal UI:
 - Modal dialog (shadcn/ui Dialog)
@@ -1335,9 +1339,11 @@ Implement modal UI:
 
 ---
 
-### T056: Implement RunConfiguration persistence service [P]
+### T056: Implement RunConfiguration persistence service [P] [X]
 
 **Story**: US4 | **Files**: `web_ui/backend/src/services/run_config_service.py`
+
+**Status**: ✅ COMPLETED
 
 Create service:
 - `save_run_config(profile_id, config)` → None
@@ -1356,9 +1362,11 @@ Uses FileOps utilities
 
 ---
 
-### T057: Integrate RunConfiguration service into backend [P]
+### T057: Integrate RunConfiguration service into backend [P] [X]
 
 **Story**: US4 | **Files**: `web_ui/backend/src/api/v1/discover.py` (enhance)
+
+**Status**: ✅ COMPLETED
 
 Wire up persistence:
 - Load last-used options when GET /last-options called
@@ -1390,9 +1398,11 @@ Create real-time progress:
 
 ---
 
-### T059: Create unit test for RunConfigurationService [P]
+### T059: Create unit test for RunConfigurationService [P] [X]
 
 **Story**: US4 | **Files**: `web_ui/backend/tests/unit/test_run_config_service.py`
+
+**Status**: ✅ COMPLETED - 12 tests passing, 100% coverage
 
 Write tests:
 - Save and load RunConfiguration

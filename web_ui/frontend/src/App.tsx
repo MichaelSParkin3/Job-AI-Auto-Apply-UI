@@ -7,7 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { LoadingSpinner } from './components/LoadingSpinner'
 import { Dashboard } from './pages/Dashboard'
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api/v1'
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 export default function App() {
   const [isHealthy, setIsHealthy] = useState(false)
