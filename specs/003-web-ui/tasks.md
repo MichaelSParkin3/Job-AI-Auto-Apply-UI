@@ -53,9 +53,11 @@ Within same file: Sequential (no [P] marker)
 
 **Objective**: Initialize project structure and development environment
 
-### T001: Create project structure and configuration files [P]
+### T001: Create project structure and configuration files [P] [X]
 
 **Story**: Setup | **Files**: `web_ui/backend/`, `web_ui/frontend/`
+
+**Status**: ✅ COMPLETED - Commit a724a12
 
 Create the directory structure and configuration files for both backend and frontend:
 
@@ -84,9 +86,11 @@ Create the directory structure and configuration files for both backend and fron
 
 ---
 
-### T002: Initialize Git and commit setup [P]
+### T002: Initialize Git and commit setup [P] [X]
 
 **Story**: Setup | **Files**: `.gitignore`
+
+**Status**: ✅ COMPLETED - Commit a724a12
 
 - Update `.gitignore` to exclude `node_modules/`, `.venv/`, `__pycache__/`, `.env`, `dist/`, `build/`
 - Create initial commit with project structure message
