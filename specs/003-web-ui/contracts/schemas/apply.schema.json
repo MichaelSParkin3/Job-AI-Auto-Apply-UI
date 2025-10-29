@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Apply API Schema",
+  "description": "JSON Schema for job application-related API endpoints",
+  "definitions": {
+    "ApplicationMode": {
+      "type": "string",
+      "enum": ["supervised", "auto"],
+      "description": "Application execution mode"
+    },
+    "ApplySingleRequest": {
+      "type": "object",
+      "required": ["profile", "job_id"],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "description": "Profile ID to apply from"
+        },
+        "job_id": {
+          "type": "string",
+          "description": "ULID of job to apply to"
+        },
+        "mode": {
+          "$ref": "#/definitions/ApplicationMode",
+          "description": "Application mode (default: supervised)"
+        },
+        "review_mode": {
+          "type": "boolean",
+          "description": "Pause after form analysis before submit"
+        },
+        "llm_provider_override": {
+          "type": ["string", "null"],
+          "description": "Override default LLM provider"
+        },
+        "llm_model_override": {
+          "type": ["string", "null"],
+          "description": "Override default LLM model"
+        },
+        "use_llm_locator": {
+          "type": "boolean",
+          "description": "Enable LLM-powered element finding"
+        },
+        "debug_resume_widget": {
+          "type": "boolean",
+          "description": "Capture snapshots on resume upload failure"
+        },
+        "resume_wait_timeout": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Resume upload timeout in seconds"
+        }
+      }
+    },
+    "ApplyBulkRequest": {
+      "type": "object",
+      "required": ["profile"],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "description": "Profile ID to apply from"
+        },
+        "mode": {
+          "$ref": "#/definitions/ApplicationMode",
+          "description": "Application mode (default: supervised)"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Max concurrent applications (default: 1)"
+        },
+        "stop_on_failure": {
+          "type": "boolean",
+          "description": "Stop if any application fails (default: false)"
+        },
+        "llm_provider_override": {
+          "type": ["string", "null"],
+          "description": "LLM provider override for all applications"
+        },
+        "llm_model_override": {
+          "type": ["string", "null"],
+          "description": "LLM model override for all applications"
+        },
+        "save_logs": {
+          "type": "boolean",
+          "description": "Save detailed logs"
+        },
+        "logs_dir": {
+          "type": ["string", "null"],
+          "description": "Directory for saved logs"
+        }
+      }
+    },
+    "ApplyStartResponse": {
+      "type": "object",
+      "required": ["job_id", "status", "message"],
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "batch_id": {
+          "type": ["string", "null"],
+          "description": "Batch ID for bulk applications"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["IN_PROGRESS"]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ApplyBulkStartResponse": {
+      "type": "object",
+      "required": ["batch_id", "status", "jobs_count", "message"],
+      "properties": {
+        "batch_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "completed", "failed"]
+        },
+        "jobs_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ApplyProgress": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string",
+          "description": "Current step identifier",
+          "enum": [
+            "analyzing_form",
+            "filling_form",
+            "uploading_resume",
+            "answering_questions",
+            "submitting",
+            "complete"
+          ]
+        },
+        "step_description": {
+          "type": "string",
+          "description": "Human-readable step description"
+        },
+        "elapsed_seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "ApplyStatusResponse": {
+      "type": "object",
+      "required": ["job_id", "status"],
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["NEW", "IN_PROGRESS", "SUBMITTED", "FAILED", "CAPTCHA_BLOCKED"]
+        },
+        "progress": {
+          "$ref": "#/definitions/ApplyProgress"
+        }
+      }
+    },
+    "LogEntry": {
+      "type": "object",
+      "required": ["timestamp", "event", "message"],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "event": {
+          "type": "string",
+          "description": "Event type identifier"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable log message"
+        },
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warning", "error"],
+          "description": "Log level"
+        },
+        "context": {
+          "type": ["object", "null"],
+          "description": "Additional context data",
+          "additionalProperties": true
+        }
+      }
+    },
+    "LogsStreamResponse": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LogEntry"
+      },
+      "description": "Array of log entries (streamed as Server-Sent Events or JSON Lines)"
+    }
+  }
+}

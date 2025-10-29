@@ -4,6 +4,7 @@ Auto-generated from all feature plans. Last updated: 2025-10-01
 
 ## Active Technologies
 - Python 3.11 + browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog (001-as-a-job)
+- File-based (TOML profiles, JSON queue files, .env settings, artifacts in filesystem) (003-web-ui)
 
 ## Project Structure
 ```
@@ -25,8 +26,9 @@ tests/
 Python 3.11: Follow standard conventions
 
 ## Recent Changes
+- 003-web-ui: Added File-based (TOML profiles, JSON queue files, .env settings, artifacts in filesystem)
+- 003-web-ui: Added File-based (TOML profiles, JSON queue files, .env settings, artifacts in filesystem)
 - 001-as-a-job: Added Python 3.11 + browser-use 0.7.x (CDP-first), Playwright (browsers), httpx, pydantic, structlog
-- 001-as-a-job: Apply CLI exposes LLM overrides and resume diagnostics flags; supervised remains default mode.
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

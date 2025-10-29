@@ -1,0 +1,300 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Profiles API Schema",
+  "description": "JSON Schema for Profile-related API endpoints",
+  "definitions": {
+    "Profile": {
+      "type": "object",
+      "required": ["id", "name", "email", "resume_path"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique profile identifier (alphanumeric + underscore)",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of job seeker",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "description": "Primary email address",
+          "format": "email"
+        },
+        "phone": {
+          "type": ["string", "null"],
+          "description": "Phone number (optional)",
+          "pattern": "^\\+?[0-9\\-\\s()]+$"
+        },
+        "location": {
+          "type": ["string", "null"],
+          "description": "City, State or region (optional)",
+          "maxLength": 200
+        },
+        "resume_path": {
+          "type": "string",
+          "description": "Path to resume PDF (relative or absolute)",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "preferred_browser": {
+          "type": ["string", "null"],
+          "description": "Preferred browser channel",
+          "enum": ["chrome", "chromium", "msedge", null]
+        },
+        "user_data_dir": {
+          "type": ["string", "null"],
+          "description": "Path to persistent browser profile (optional)",
+          "maxLength": 500
+        },
+        "defaults": {
+          "type": ["object", "null"],
+          "description": "Default form values",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "phone": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "portfolio_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "github_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "linkedin_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        },
+        "keywords": {
+          "type": ["object", "null"],
+          "description": "Job search preferences",
+          "properties": {
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "tech_stack": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "experience": {
+          "type": ["array", "null"],
+          "description": "Work history objects",
+          "items": {
+            "type": "object",
+            "required": ["company", "role"],
+            "properties": {
+              "company": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "dates": {
+                "type": "string"
+              },
+              "highlights": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tech_stack": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "metrics": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "prompts": {
+          "type": ["object", "null"],
+          "description": "LLM prompt templates",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ProfileListResponse": {
+      "type": "object",
+      "required": ["profiles"],
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/Profile"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "queue_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "queue_counts": {
+                    "type": "object",
+                    "properties": {
+                      "NEW": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "IN_PROGRESS": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "SUBMITTED": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "FAILED": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "CAPTCHA_BLOCKED": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "ProfileUpdateRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "phone": {
+          "type": ["string", "null"]
+        },
+        "location": {
+          "type": ["string", "null"]
+        },
+        "resume_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preferred_browser": {
+          "type": ["string", "null"],
+          "enum": ["chrome", "chromium", "msedge", null]
+        },
+        "defaults": {
+          "type": ["object", "null"]
+        },
+        "keywords": {
+          "type": ["object", "null"]
+        },
+        "experience": {
+          "type": ["array", "null"]
+        },
+        "prompts": {
+          "type": ["object", "null"]
+        }
+      }
+    },
+    "ProfileUpdateResponse": {
+      "type": "object",
+      "required": ["id", "message"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ProfileQueueResponse": {
+      "type": "object",
+      "required": ["profile_id", "total", "items"],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "jobs.schema.json#/definitions/ApplicationItem"
+          }
+        }
+      }
+    },
+    "SwitchProfileRequest": {
+      "type": "object",
+      "description": "Empty object or null body"
+    },
+    "SwitchProfileResponse": {
+      "type": "object",
+      "required": ["active_profile", "message"],
+      "properties": {
+        "active_profile": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

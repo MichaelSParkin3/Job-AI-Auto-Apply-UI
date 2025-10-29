@@ -417,3 +417,9 @@ Distribute across portfolio."""
 - Browser sessions are ephemeral per item (fresh launch each time)
 - Artifacts are namespaced per profile in subdirectories
 - CLI exit codes follow contract: 0 success, 2 no results, 3 partial failure, 4 not found, 1 fatal error
+
+## Active Technologies
+- File-based (TOML profiles, JSON queue files, .env settings, artifacts in filesystem) (003-web-ui)
+
+## Recent Changes
+- 003-web-ui: Added File-based (TOML profiles, JSON queue files, .env settings, artifacts in filesystem)

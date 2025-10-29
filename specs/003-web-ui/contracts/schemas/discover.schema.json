@@ -1,0 +1,222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Discovery API Schema",
+  "description": "JSON Schema for job discovery-related API endpoints",
+  "definitions": {
+    "DiscoveryExecuteRequest": {
+      "type": "object",
+      "required": ["profile", "search_window", "job_cap"],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "description": "Profile ID to execute discovery for"
+        },
+        "search_window": {
+          "type": "string",
+          "description": "Time filter for discovery (24h, 7d, 30d, etc.)",
+          "minLength": 1
+        },
+        "job_cap": {
+          "type": "integer",
+          "description": "Maximum number of jobs to discover",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "custom_query": {
+          "type": ["string", "null"],
+          "description": "Additional custom search query to append"
+        }
+      }
+    },
+    "DiscoveryExecuteResponse": {
+      "type": "object",
+      "required": ["discovery_id", "status", "message"],
+      "properties": {
+        "discovery_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "completed", "failed"]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "DiscoveryStatusResponse": {
+      "type": "object",
+      "required": ["discovery_id", "status"],
+      "properties": {
+        "discovery_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "completed", "failed"],
+          "description": "Current status of discovery operation"
+        },
+        "discovered_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of jobs discovered so far"
+        },
+        "total_to_discover": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Target number of jobs to discover (job_cap)"
+        },
+        "progress_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Progress percentage (0-100)"
+        },
+        "elapsed_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Elapsed time in seconds"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "RunConfiguration": {
+      "type": "object",
+      "required": ["profile_id", "operation_type", "last_updated"],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "operation_type": {
+          "type": "string",
+          "enum": ["discover", "apply_single", "apply_bulk"]
+        },
+        "search_window": {
+          "type": ["string", "null"],
+          "description": "Discovery time window"
+        },
+        "job_cap": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Discovery job cap"
+        },
+        "custom_query": {
+          "type": ["string", "null"],
+          "description": "Custom search query"
+        },
+        "mode": {
+          "type": ["string", "null"],
+          "enum": ["supervised", "auto", null],
+          "description": "Application mode"
+        },
+        "review_mode": {
+          "type": ["boolean", "null"],
+          "description": "Pause after form analysis"
+        },
+        "llm_provider_override": {
+          "type": ["string", "null"]
+        },
+        "llm_model_override": {
+          "type": ["string", "null"]
+        },
+        "use_llm_locator": {
+          "type": ["boolean", "null"]
+        },
+        "debug_resume_widget": {
+          "type": ["boolean", "null"]
+        },
+        "resume_wait_timeout": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "audit_after_submit": {
+          "type": ["boolean", "null"]
+        },
+        "save_logs": {
+          "type": ["boolean", "null"]
+        },
+        "logs_dir": {
+          "type": ["string", "null"]
+        },
+        "max_concurrent": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 10,
+          "description": "For apply_bulk only"
+        },
+        "stop_on_failure": {
+          "type": ["boolean", "null"],
+          "description": "For apply_bulk only"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "LastOptionsResponse": {
+      "type": "object",
+      "required": ["profile_id", "operation_type", "last_updated"],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "operation_type": {
+          "type": "string",
+          "enum": ["discover", "apply_single", "apply_bulk"]
+        },
+        "search_window": {
+          "type": ["string", "null"]
+        },
+        "job_cap": {
+          "type": ["integer", "null"]
+        },
+        "custom_query": {
+          "type": ["string", "null"]
+        },
+        "mode": {
+          "type": ["string", "null"]
+        },
+        "review_mode": {
+          "type": ["boolean", "null"]
+        },
+        "llm_provider_override": {
+          "type": ["string", "null"]
+        },
+        "llm_model_override": {
+          "type": ["string", "null"]
+        },
+        "use_llm_locator": {
+          "type": ["boolean", "null"]
+        },
+        "debug_resume_widget": {
+          "type": ["boolean", "null"]
+        },
+        "resume_wait_timeout": {
+          "type": ["integer", "null"]
+        },
+        "audit_after_submit": {
+          "type": ["boolean", "null"]
+        },
+        "save_logs": {
+          "type": ["boolean", "null"]
+        },
+        "logs_dir": {
+          "type": ["string", "null"]
+        },
+        "max_concurrent": {
+          "type": ["integer", "null"]
+        },
+        "stop_on_failure": {
+          "type": ["boolean", "null"]
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

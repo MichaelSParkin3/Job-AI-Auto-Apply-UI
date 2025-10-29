@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Settings API Schema",
+  "description": "JSON Schema for application settings/configuration API endpoints",
+  "definitions": {
+    "SettingCategory": {
+      "type": "string",
+      "enum": ["llm", "behavior", "resume_upload", "stealth", "networking", "diagnostics"],
+      "description": "Setting category for grouping"
+    },
+    "InputType": {
+      "type": "string",
+      "enum": ["text", "password", "number", "checkbox", "dropdown", "directory"],
+      "description": "UI input type for setting"
+    },
+    "Setting": {
+      "type": "object",
+      "required": ["key", "description", "category", "input_type"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Environment variable name",
+          "pattern": "^[A-Z_0-9]+$"
+        },
+        "value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "boolean"},
+            {"type": "null"}
+          ],
+          "description": "Current setting value (null if unset, masked if secret)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable setting description"
+        },
+        "category": {
+          "$ref": "#/definitions/SettingCategory"
+        },
+        "input_type": {
+          "$ref": "#/definitions/InputType"
+        },
+        "default_value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "boolean"},
+            {"type": "null"}
+          ],
+          "description": "Default value if not set"
+        },
+        "options": {
+          "type": ["array", "null"],
+          "items": {"type": "string"},
+          "description": "Valid options for dropdown input_type"
+        },
+        "min": {
+          "type": ["number", "null"],
+          "description": "Minimum value for number input_type"
+        },
+        "max": {
+          "type": ["number", "null"],
+          "description": "Maximum value for number input_type"
+        },
+        "is_secret": {
+          "type": "boolean",
+          "description": "Whether value should be masked (API keys, passwords)"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether setting must have a value"
+        }
+      }
+    },
+    "SettingListResponse": {
+      "type": "object",
+      "required": ["settings"],
+      "properties": {
+        "settings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Setting"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grouped_by_category": {
+          "type": "object",
+          "description": "Settings optionally grouped by category",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Setting"
+            }
+          }
+        }
+      }
+    },
+    "SettingDetailResponse": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Setting"
+        }
+      ]
+    },
+    "UpdateSettingsRequest": {
+      "type": "object",
+      "description": "Key-value pairs of settings to update",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {"type": "number"},
+          {"type": "boolean"},
+          {"type": "null"}
+        ]
+      },
+      "minProperties": 1,
+      "examples": [
+        {
+          "LLM_PROVIDER": "google",
+          "LLM_TEMPERATURE": 0.5,
+          "DWELL_SECONDS": 1.0
+        }
+      ]
+    },
+    "UpdateSettingsResponse": {
+      "type": "object",
+      "required": ["updated", "message"],
+      "properties": {
+        "updated": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of updated setting keys"
+        },
+        "failed": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {"type": "string"},
+              "error": {"type": "string"}
+            }
+          },
+          "description": "Settings that failed to update"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ResetSettingResponse": {
+      "type": "object",
+      "required": ["key", "message"],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ResetAllSettingsResponse": {
+      "type": "object",
+      "required": ["reset_count", "message"],
+      "properties": {
+        "reset_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": ["error", "message"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "enum": [
+            "not_found",
+            "validation_error",
+            "permission_denied",
+            "internal_error",
+            "invalid_value"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "Additional error details"
+        }
+      }
+    }
+  }
+}

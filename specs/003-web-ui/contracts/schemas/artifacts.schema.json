@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Artifacts API Schema",
+  "description": "JSON Schema for artifact file management API endpoints",
+  "definitions": {
+    "ArtifactFile": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Filename with extension",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "description": "MIME type",
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "text/plain",
+            "text/html",
+            "video/webm",
+            "video/mp4",
+            "application/json",
+            "application/x-gzip"
+          ]
+        },
+        "size_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "File size in bytes"
+        },
+        "created_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "File creation timestamp"
+        },
+        "url": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "description": "URL to download file"
+        }
+      }
+    },
+    "ArtifactListResponse": {
+      "type": "object",
+      "required": ["profile_id", "job_id", "artifacts"],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ArtifactFile"
+          },
+          "description": "List of available artifact files (empty if none)"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ArtifactMetadata": {
+      "type": "object",
+      "properties": {
+        "screenshot": {
+          "type": "object",
+          "description": "Pre-submit form screenshot",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "dom_snapshot": {
+          "type": "object",
+          "description": "DOM HTML snapshot at submission",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            }
+          }
+        },
+        "video": {
+          "type": "object",
+          "description": "Browser recording (if enabled)",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            },
+            "duration_seconds": {
+              "type": "number"
+            }
+          }
+        },
+        "har": {
+          "type": "object",
+          "description": "HTTP Archive network recording (if enabled)",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            },
+            "request_count": {
+              "type": "integer"
+            }
+          }
+        },
+        "logs": {
+          "type": "object",
+          "description": "Application execution logs",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            },
+            "line_count": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

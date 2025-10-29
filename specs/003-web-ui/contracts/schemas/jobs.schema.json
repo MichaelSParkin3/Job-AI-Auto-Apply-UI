@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Jobs API Schema",
+  "description": "JSON Schema for Job/ApplicationItem-related API endpoints",
+  "definitions": {
+    "ApplicationStatus": {
+      "type": "string",
+      "enum": ["NEW", "IN_PROGRESS", "SUBMITTED", "FAILED", "CAPTCHA_BLOCKED"],
+      "description": "Job application status"
+    },
+    "JobDetails": {
+      "type": ["object", "null"],
+      "description": "Extracted job posting information",
+      "properties": {
+        "location": {
+          "type": ["string", "null"]
+        },
+        "work_model": {
+          "type": ["string", "null"],
+          "description": "Remote, On-site, Hybrid, etc."
+        },
+        "employment_type": {
+          "type": ["string", "null"],
+          "description": "Full-time, Part-time, Contract, Temporary, etc."
+        },
+        "department": {
+          "type": ["string", "null"]
+        },
+        "compensation": {
+          "type": ["object", "null"],
+          "properties": {
+            "min": {
+              "type": ["number", "null"]
+            },
+            "max": {
+              "type": ["number", "null"]
+            },
+            "currency": {
+              "type": ["string", "null"]
+            },
+            "bonus": {
+              "type": ["string", "null"]
+            },
+            "equity": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "posting_text": {
+          "type": ["string", "null"]
+        },
+        "tech_tags": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string"
+          }
+        },
+        "apply_url": {
+          "type": ["string", "null"],
+          "format": "uri"
+        },
+        "posting_date": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "company_description": {
+          "type": ["string", "null"]
+        },
+        "qualifications": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Artifacts": {
+      "type": ["object", "null"],
+      "description": "Captured files and metadata from application process",
+      "properties": {
+        "screenshot_path": {
+          "type": ["string", "null"]
+        },
+        "dom_snapshot_path": {
+          "type": ["string", "null"]
+        },
+        "video_path": {
+          "type": ["string", "null"]
+        },
+        "har_path": {
+          "type": ["string", "null"]
+        },
+        "confirmation_text": {
+          "type": ["string", "null"]
+        },
+        "confirmation_id": {
+          "type": ["string", "null"]
+        },
+        "paths": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string"
+          }
+        },
+        "capture_timestamp": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "FailureReason": {
+      "type": ["object", "null"],
+      "description": "Failure details if status is FAILED",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ApplicationItem": {
+      "type": "object",
+      "required": ["id", "url", "company", "title", "status", "date_discovered", "hash"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ULID unique identifier",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "company": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "status": {
+          "$ref": "#/definitions/ApplicationStatus"
+        },
+        "details": {
+          "$ref": "#/definitions/JobDetails"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/Artifacts"
+        },
+        "reason": {
+          "$ref": "#/definitions/FailureReason"
+        },
+        "date_discovered": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "date_applied": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "source_query": {
+          "type": ["string", "null"]
+        },
+        "source_rank": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "hash": {
+          "type": "string",
+          "description": "SHA256 hash for deduplication",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "ApplicationItemSummary": {
+      "type": "object",
+      "required": ["id", "url", "company", "title", "status", "date_discovered"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "company": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ApplicationStatus"
+        },
+        "date_discovered": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "JobListResponse": {
+      "type": "object",
+      "required": ["profile_id", "total", "items"],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ApplicationItemSummary"
+          }
+        }
+      }
+    },
+    "JobDetailResponse": {
+      "type": "object",
+      "required": ["id", "url", "company", "title", "status"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "company": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ApplicationStatus"
+        },
+        "date_discovered": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "date_applied": {
+          "type": ["string", "null"]
+        },
+        "source_query": {
+          "type": ["string", "null"]
+        },
+        "source_rank": {
+          "type": ["integer", "null"]
+        },
+        "details": {
+          "$ref": "#/definitions/JobDetails"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/Artifacts"
+        }
+      }
+    },
+    "UpdateStatusRequest": {
+      "type": "object",
+      "required": ["profile", "status"],
+      "properties": {
+        "profile": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ApplicationStatus"
+        }
+      }
+    },
+    "UpdateStatusResponse": {
+      "type": "object",
+      "required": ["id", "status", "message"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ApplicationStatus"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
