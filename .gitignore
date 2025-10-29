@@ -9,6 +9,14 @@ venv/
 env/
 ENV/
 
+# Node.js (web_ui frontend)
+web_ui/frontend/node_modules/
+web_ui/frontend/dist/
+web_ui/frontend/.eslintcache
+web_ui/frontend/package-lock.json
+web_ui/frontend/pnpm-lock.yaml
+web_ui/frontend/yarn.lock
+
 # Packaging / build
 build/
 dist/
