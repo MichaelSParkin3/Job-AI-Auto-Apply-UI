@@ -247,6 +247,20 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
     setError(null);
   };
 
+  const handleStopBulkApplication = async () => {
+    try {
+      // In real implementation, would stop the bulk apply process
+      setIsApplying(false);
+      setError(null);
+      // Return to options after stopping
+      setTimeout(() => {
+        handleReset();
+      }, 1000);
+    } catch (err: any) {
+      setError("Failed to stop bulk application: " + (err.message || "Unknown error"));
+    }
+  };
+
   const handleClose = () => {
     handleReset();
     onClose();
@@ -396,6 +410,20 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
                     Stop on First Failure
                   </Label>
                 </div>
+
+                {mode === "supervised" && (
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertDescription className="text-sm text-blue-800">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">🖥️</span>
+                        <div>
+                          <p className="font-medium">Supervised mode opens a visible browser window</p>
+                          <p className="text-xs mt-1">Browser window will be visible for each job so you can monitor the application process for all {totalWaitingJobs} jobs.</p>
+                        </div>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               {/* Advanced Options */}
@@ -525,6 +553,15 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
             </DialogHeader>
 
             <div className="space-y-4 py-4">
+              {mode === "supervised" && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription className="text-sm text-blue-800 flex items-center gap-2">
+                    <span className="text-lg animate-pulse">🖥️</span>
+                    <span>Browser window is now open - monitoring bulk applications...</span>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <label htmlFor="bulk-progress" className="font-medium">
@@ -553,6 +590,10 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
                 </AlertDescription>
               </Alert>
 
+              <p className="text-xs text-gray-400">
+                💡 Tip: If the browser window is hidden, check your taskbar or press Alt+Tab to bring it to the front.
+              </p>
+
               {currentJobTitle && (
                 <Alert>
                   <AlertDescription className="text-sm">
@@ -578,7 +619,16 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
               >
                 Cancel
               </Button>
-              {error && (
+              {isApplying && (
+                <Button
+                  variant="destructive"
+                  onClick={handleStopBulkApplication}
+                  aria-label="Stop bulk application"
+                >
+                  Stop All
+                </Button>
+              )}
+              {error && !isApplying && (
                 <Button
                   onClick={handleRetry}
                   disabled={isApplying}

@@ -252,6 +252,35 @@ export const ApplyPanel: React.FC<ApplyPanelProps> = ({
     onClose();
   };
 
+  const handleMarkCaptcha = async () => {
+    try {
+      await apiClient.post(`/api/v1/apply/captcha/${jobId}`, {}, {
+        params: { profile_id: profileId }
+      });
+      setStatusMessage("CAPTCHA detected. Job marked for manual resolution.");
+      setError(null);
+      // Keep in progress state to allow user to handle CAPTCHA
+    } catch (err: any) {
+      setError("Failed to mark CAPTCHA: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleStopApplication = async () => {
+    try {
+      await apiClient.post(`/api/v1/apply/stop/${jobId}`, {}, {
+        params: { profile_id: profileId }
+      });
+      setStatusMessage("Application stopped. Job returned to waiting queue.");
+      setIsApplying(false);
+      setProgress(0);
+      setTimeout(() => {
+        handleReset();
+      }, 2000);
+    } catch (err: any) {
+      setError("Failed to stop application: " + (err.message || "Unknown error"));
+    }
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -327,6 +356,20 @@ export const ApplyPanel: React.FC<ApplyPanelProps> = ({
                     Review Mode (fill form but don't submit)
                   </Label>
                 </div>
+
+                {mode === "supervised" && (
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertDescription className="text-sm text-blue-800">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">🖥️</span>
+                        <div>
+                          <p className="font-medium">Supervised mode opens a visible browser window</p>
+                          <p className="text-xs mt-1">A browser window will open so you can monitor the form filling process and ensure everything works correctly.</p>
+                        </div>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               {/* Advanced Options */}
@@ -541,11 +584,24 @@ export const ApplyPanel: React.FC<ApplyPanelProps> = ({
             </DialogHeader>
 
             <div className="space-y-4 py-4">
+              {mode === "supervised" && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription className="text-sm text-blue-800 flex items-center gap-2">
+                    <span className="text-lg animate-pulse">🖥️</span>
+                    <span>Browser window is now open - monitoring form filling...</span>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Alert>
                 <AlertDescription aria-live="polite" aria-atomic="true">
                   {statusMessage || "Processing application..."}
                 </AlertDescription>
               </Alert>
+
+              <p className="text-xs text-gray-400">
+                💡 Tip: If the browser window is hidden, check your taskbar or press Alt+Tab to bring it to the front.
+              </p>
 
               {error && (
                 <Alert variant="destructive" role="alert">
@@ -563,7 +619,26 @@ export const ApplyPanel: React.FC<ApplyPanelProps> = ({
               >
                 Cancel
               </Button>
-              {error && (
+              {isApplying && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleMarkCaptcha}
+                    className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                    aria-label="Mark job as CAPTCHA blocked"
+                  >
+                    🤖 CAPTCHA Detected
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleStopApplication}
+                    aria-label="Stop application"
+                  >
+                    Stop
+                  </Button>
+                </>
+              )}
+              {error && !isApplying && (
                 <Button
                   onClick={handleRetry}
                   disabled={isApplying}

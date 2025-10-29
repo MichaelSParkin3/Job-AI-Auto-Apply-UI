@@ -1,15 +1,16 @@
 """Apply API endpoints for single and bulk job application workflows."""
 
+import os
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
 from src.models.config import (
     RunConfiguration,
     OperationType,
     ApplyMode as ApplyModeEnum,
 )
-from src.models.application import ApplicationStatus
+from src.models.application import ApplicationStatus, ApplicationReason
 from src.services.cli_service import CLIService
 from src.services.queue_service import QueueService
 from src.services.run_config_service import RunConfigurationService
@@ -20,6 +21,64 @@ router = APIRouter(prefix="/apply", tags=["apply"])
 cli_service = CLIService()
 queue_service = QueueService()
 run_config_service = RunConfigurationService()
+
+
+def validate_resume_timeout(timeout: Optional[int]) -> None:
+    """Validate resume wait timeout is in valid range (5-120 seconds).
+
+    Args:
+        timeout: Resume wait timeout in seconds
+
+    Raises:
+        HTTPException: If timeout is out of valid range
+    """
+    if timeout is not None and (timeout < 5 or timeout > 120):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="resume_wait_timeout must be between 5 and 120 seconds",
+        )
+
+
+def validate_max_concurrent(max_concurrent: Optional[int]) -> None:
+    """Validate max concurrent jobs is in valid range (1-10).
+
+    Args:
+        max_concurrent: Maximum concurrent jobs
+
+    Raises:
+        HTTPException: If max_concurrent is out of valid range
+    """
+    if max_concurrent is not None and (max_concurrent < 1 or max_concurrent > 10):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="max_concurrent must be between 1 and 10",
+        )
+
+
+def validate_logs_directory(save_logs: bool, logs_dir: Optional[str]) -> None:
+    """Validate logs directory if save_logs is enabled.
+
+    Args:
+        save_logs: Whether to save logs
+        logs_dir: Directory to save logs
+
+    Raises:
+        HTTPException: If save_logs is True but logs_dir is invalid
+    """
+    if save_logs:
+        if not logs_dir:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="logs_dir is required when save_logs is enabled",
+            )
+        # Check if directory exists or can be created
+        try:
+            os.makedirs(logs_dir, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unable to create or access logs directory: {str(e)}",
+            )
 
 
 @router.post("/single", response_model=Dict[str, Any])
@@ -48,7 +107,7 @@ async def apply_single(
         llm_model_override: LLM model override
         use_llm_locator: Use LLM for element finding
         debug_resume_widget: Debug resume upload widget
-        resume_wait_timeout: Resume upload timeout in seconds
+        resume_wait_timeout: Resume upload timeout in seconds (5-120)
         audit_after_submit: Audit page after submit
         save_logs: Save execution logs
         logs_dir: Directory to save logs
@@ -57,22 +116,41 @@ async def apply_single(
         Dict with job_id, status, and streaming log info
 
     Raises:
-        HTTPException: If job not found or apply fails
+        HTTPException: If job not found or validation fails
     """
     try:
+        # Validate parameters
+        if not profile_id or not job_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_id and job_id are required",
+            )
+
+        validate_resume_timeout(resume_wait_timeout)
+        validate_logs_directory(save_logs or False, logs_dir)
+
         # Validate job exists
         job = queue_service.get_job(profile_id, job_id)
         if not job:
             raise HTTPException(
-                status_code=404,
-                detail=f"Job {job_id} not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found in profile {profile_id}",
+            )
+
+        # Validate mode is valid
+        try:
+            ApplyModeEnum(mode) if mode else ApplyModeEnum.SUPERVISED
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid mode '{mode}'. Must be 'supervised' or 'automated'",
             )
 
         # Update job status to IN_PROGRESS
         queue_service.update_item_status(
             profile_id,
             job_id,
-            ApplicationStatus.IN_PROGRESS
+            ApplicationStatus.IN_PROGRESS,
         )
 
         # Save the options for next time
@@ -104,7 +182,10 @@ async def apply_single(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during apply setup: {str(e)}",
+        )
 
 
 @router.post("/bulk", response_model=Dict[str, Any])
@@ -125,7 +206,7 @@ async def apply_bulk(
         profile_id: Profile ID to apply with
         mode: supervised or automated
         review_mode: Review form before submit
-        max_concurrent: Max concurrent applications
+        max_concurrent: Max concurrent applications (1-10)
         stop_on_failure: Stop on first failure
         llm_provider_override: LLM provider override
         llm_model_override: LLM model override
@@ -136,9 +217,28 @@ async def apply_bulk(
         Dict with total jobs and streaming progress info
 
     Raises:
-        HTTPException: If profile not found or apply fails
+        HTTPException: If profile not found or validation fails
     """
     try:
+        # Validate parameters
+        if not profile_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_id is required",
+            )
+
+        validate_max_concurrent(max_concurrent)
+        validate_logs_directory(save_logs or False, logs_dir)
+
+        # Validate mode is valid
+        try:
+            ApplyModeEnum(mode) if mode else ApplyModeEnum.SUPERVISED
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid mode '{mode}'. Must be 'supervised' or 'automated'",
+            )
+
         # Load queue for profile
         items = queue_service.load_queue(profile_id)
 
@@ -153,7 +253,7 @@ async def apply_bulk(
                 "status": "no_jobs",
                 "profile_id": profile_id,
                 "total_jobs": 0,
-                "message": "No waiting jobs to apply to",
+                "message": "No waiting jobs to apply to in profile {profile_id}",
             }
 
         # Save the options for next time
@@ -176,7 +276,7 @@ async def apply_bulk(
             queue_service.update_item_status(
                 profile_id,
                 item.id,
-                ApplicationStatus.IN_PROGRESS
+                ApplicationStatus.IN_PROGRESS,
             )
 
         # Execute bulk apply via CLI (simplified - real implementation streams)
@@ -189,8 +289,13 @@ async def apply_bulk(
             "message": f"Bulk application initiated for {len(waiting_jobs)} jobs",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during bulk apply setup: {str(e)}",
+        )
 
 
 @router.get("/status/{job_id}", response_model=Dict[str, Any])
@@ -352,3 +457,126 @@ async def get_last_apply_options(profile_id: str) -> Dict[str, Any]:
                 "save_logs": False,
             },
         }
+
+
+@router.post("/captcha/{job_id}", response_model=Dict[str, Any])
+async def mark_captcha_blocked(
+    profile_id: str,
+    job_id: str,
+) -> Dict[str, Any]:
+    """Mark a job as CAPTCHA blocked and allow for later resumption.
+
+    Args:
+        profile_id: Profile ID
+        job_id: Job ID to mark as CAPTCHA blocked
+
+    Returns:
+        Dict with updated job status
+
+    Raises:
+        HTTPException: If job not found
+    """
+    try:
+        # Validate parameters
+        if not profile_id or not job_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_id and job_id are required",
+            )
+
+        # Get job and verify it exists
+        job = queue_service.get_job(profile_id, job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found in profile {profile_id}",
+            )
+
+        # Update job status to CAPTCHA_BLOCKED
+        queue_service.update_item_status(
+            profile_id,
+            job_id,
+            ApplicationStatus.CAPTCHA_BLOCKED,
+        )
+
+        return {
+            "status": "captcha_blocked",
+            "profile_id": profile_id,
+            "job_id": job_id,
+            "company": job.company,
+            "title": job.title,
+            "message": "Job marked as CAPTCHA blocked. You can resume after solving the CAPTCHA manually.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error marking CAPTCHA: {str(e)}",
+        )
+
+
+@router.post("/stop/{job_id}", response_model=Dict[str, Any])
+async def stop_application(
+    profile_id: str,
+    job_id: str,
+) -> Dict[str, Any]:
+    """Stop or cancel a job application in progress.
+
+    Args:
+        profile_id: Profile ID
+        job_id: Job ID to stop
+
+    Returns:
+        Dict with stopped job status
+
+    Raises:
+        HTTPException: If job not found or cannot be stopped
+    """
+    try:
+        # Validate parameters
+        if not profile_id or not job_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_id and job_id are required",
+            )
+
+        # Get job and verify it exists
+        job = queue_service.get_job(profile_id, job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found in profile {profile_id}",
+            )
+
+        # Check if job is in a stoppable state (IN_PROGRESS)
+        if job.status != ApplicationStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot stop job with status '{job.status.value}'. Job must be IN_PROGRESS.",
+            )
+
+        # Update job status back to NEW so it can be reapplied later
+        queue_service.update_item_status(
+            profile_id,
+            job_id,
+            ApplicationStatus.NEW,
+        )
+
+        return {
+            "status": "stopped",
+            "profile_id": profile_id,
+            "job_id": job_id,
+            "company": job.company,
+            "title": job.title,
+            "message": "Application stopped and job returned to waiting queue.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error stopping application: {str(e)}",
+        )
