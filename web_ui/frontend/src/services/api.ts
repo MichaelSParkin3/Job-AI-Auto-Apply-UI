@@ -11,23 +11,75 @@ import type {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api/v1'
 
+interface RetryConfig {
+  maxRetries: number
+  initialDelayMs: number
+  backoffMultiplier: number
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  backoffMultiplier: 2,
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,
+  timeout: 15000,
 })
 
-// Error interceptor
+// Error interceptor with retry logic
+let retryCount = 0
+
+const shouldRetry = (error: AxiosError): boolean => {
+  if (!error.response) {
+    // Network error
+    return true
+  }
+
+  const status = error.response.status
+  // Retry on network errors, server errors, and timeout
+  return status >= 500 || status === 408 || status === 429
+}
+
+const sleep = (ms: number): Promise<void> => {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiError>) => {
-    if (error.response?.status === 401) {
-      // Handle auth error if needed
-      console.error('Unauthorized')
+  async (error: AxiosError<ApiError>) => {
+    const config = error.config as any
+
+    if (!config || !shouldRetry(error) || retryCount >= DEFAULT_RETRY_CONFIG.maxRetries) {
+      // Build user-friendly error message
+      if (error.response?.status === 401) {
+        console.error('Unauthorized access')
+      } else if (error.response?.status === 404) {
+        console.error('Resource not found')
+      } else if (error.response?.status === 400) {
+        console.error('Bad request:', error.response.data)
+      } else if (!error.response) {
+        console.error('Network error - check your connection')
+      }
+
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+
+    retryCount++
+    const delayMs =
+      DEFAULT_RETRY_CONFIG.initialDelayMs *
+      Math.pow(DEFAULT_RETRY_CONFIG.backoffMultiplier, retryCount - 1)
+
+    console.log(
+      `Retrying request (attempt ${retryCount}/${DEFAULT_RETRY_CONFIG.maxRetries}) after ${delayMs}ms`
+    )
+
+    await sleep(delayMs)
+    return api(config)
   }
 )
 

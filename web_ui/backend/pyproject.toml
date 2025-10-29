@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-apply-web-ui-backend"
+version = "0.1.0"
+description = "Backend API for Job-AI-Auto-Apply Web UI Dashboard"
+requires-python = ">=3.10"
+
+[tool.ruff]
+# Line length matching the project standard
+line-length = 100
+target-version = "py310"
+
+# Ruff linting configuration
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # Pyflakes
+  "I",    # isort
+  "N",    # pep8-naming
+  "UP",   # pyupgrade
+  "A",    # flake8-builtins
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "D",    # pydocstyle
+  "PIE",  # flake8-pie
+  "RET",  # flake8-return
+  "SIM",  # flake8-simplify
+  "TID",  # flake8-tidy-imports
+  "TCH",  # flake8-type-checking
+  "ARG",  # flake8-unused-arguments
+  "PTH",  # flake8-use-pathlib
+  "RUF",  # Ruff-specific rules
+]
+
+ignore = [
+  "D101", # Missing docstring in public class
+  "D102", # Missing docstring in public method
+  "D104", # Missing docstring in public package
+  "D202", # No blank lines allowed after function docstring
+  "D203", # 1 blank line required before class docstring
+  "D213", # Multi-line docstring summary should start at the second line
+  "D413", # Missing blank line after last section
+  "E501", # Line too long (black handles this)
+]
+
+# Per-file ignores
+[tool.ruff.per-file-ignores]
+"web_ui/backend/src/utils/file_ops.py" = ["E501"]
+"web_ui/backend/src/services/*.py" = ["E501"]
+"web_ui/backend/src/api/routes.py" = ["E501"]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+known-third-party = ["fastapi", "pydantic", "uvicorn", "structlog"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.git
+  | \.venv
+  | venv
+  | __pycache__
+  | \.pytest_cache
+  | \.mypy_cache
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+follow_imports = "silent"
+ignore_missing_imports = true
