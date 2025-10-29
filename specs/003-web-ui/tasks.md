@@ -101,6 +101,15 @@ Create the directory structure and configuration files for both backend and fron
 
 **Blocking**: These tasks must complete before any user story implementation begins
 
+**Test-First Discipline**: For all Phase 2 tasks (T003-T017):
+1. **Write tests first** (contract/unit/integration)
+2. **Then implement** the feature to make tests pass
+3. **Verify** all tests pass before task completion
+4. **Coverage target**: 95%+ code coverage on backend models and services
+5. **Frontend**: Write component tests before implementing component logic
+
+This ensures foundational services are reliable and well-tested before user stories depend on them.
+
 ### T003: Implement backend app initialization with CORS [P]
 
 **Story**: Foundational | **Files**: `web_ui/backend/src/app.py`
@@ -165,7 +174,15 @@ Create file operations utilities:
 - Can load/save TOML profiles
 - Can load/save JSON queue files (handles UTF-8 BOM)
 - Can load/save .env files (preserves comments and structure)
-- Atomic writes prevent corruption
+- **Atomic Writes**: All `save_*` functions use atomic write pattern:
+  - Write to temporary file in same directory
+  - Verify write success (fsync)
+  - Atomic rename (platform-aware: os.replace for Windows, os.rename for POSIX)
+  - On failure, rollback without corrupting original
+- **Corruption Prevention Tests**:
+  - Test: Simulate write failure during save → original file unchanged
+  - Test: Simulate process crash during write → file recoverable from temp
+  - Test: Verify atomic rename on all platforms (Windows/Linux/macOS)
 
 ---
 
@@ -2050,24 +2067,82 @@ Uses pytest (backend), Playwright or Cypress (frontend)
 
 **Story**: Polish | **Files**: Various optimizations across codebase
 
-Optimize:
-- Frontend bundle size (code splitting, lazy loading)
-- Backend query performance (caching, pagination)
-- Asset loading (minification, compression)
-- Network requests (batching, caching)
-- Database queries (if any)
-- Memory usage monitoring
-- Performance metrics collection
-- Monitor against performance targets:
-  - Dashboard <2s initial load
-  - Queue refresh <3s
-  - Options modals <1s interactive
-  - Artifact load <5s
+Implement comprehensive performance optimization and monitoring:
+
+**Frontend Optimizations**:
+- Code splitting: Lazy load components per route (React.lazy + Suspense)
+- Bundle analysis: Use `vite-plugin-visualizer` to identify large dependencies
+- Asset loading: Enable Vite minification, CSS minification, gzip compression
+- Image optimization: Use WebP with JPEG fallback, responsive images
+
+**Backend Optimizations**:
+- Queue pagination: Load 50 items per page (virtual scrolling on frontend)
+- Profile caching: Cache in-memory, invalidate on write
+- Settings caching: 60-second TTL for .env reads
+- API response compression: Enable gzip on all JSON responses
+
+**Performance Metrics & Monitoring**:
+- **Telemetry Library**: Integrate web-vitals (frontend) + prometheus (backend)
+- **Metrics Collection**:
+  - Frontend: Core Web Vitals (LCP, FID, CLS), custom timing marks
+  - Backend: Request latency histograms, queue operation timings
+- **Real-Time Dashboard**: `/metrics` endpoint showing current performance stats
+- **Logging Integration**: Store performance events alongside application logs
+
+**Performance Targets** (concrete):
+- Dashboard <2s initial load (LCP)
+- Queue refresh <3s (API response time)
+- Options modals <1s interactive (TTI)
+- Artifact load <5s (image decoding + display)
+- Frontend bundle <500KB (gzipped)
+- Backend response time p99 <1s (excluding discovery/apply operations)
 
 **Acceptance**:
-- Performance targets met
-- Bundle size < 500KB (gzipped)
-- Monitoring in place
+- All performance targets met (verified with performance tests)
+- Bundle size < 500KB (gzipped) verified with vite-plugin-visualizer
+- Telemetry: web-vitals on frontend, prometheus on backend collecting and exposing metrics
+- `/api/v1/metrics/` endpoint returns current performance stats
+- Performance monitoring logs stored alongside application events
+- Load test passes: 100 concurrent users, 50 jobs per queue, <3s response time p95
+
+---
+
+### T091: Accessibility audit and WCAG 2.1 Level AA compliance [P]
+
+**Story**: Polish | **Files**: Various frontend components, tests
+
+Conduct comprehensive accessibility audit and ensure WCAG 2.1 Level AA compliance across all pages:
+
+**Audit Scope**:
+- Run axe-core automated accessibility tests on all pages
+- Manual keyboard navigation testing (Tab, Enter, Escape)
+- Screen reader testing (VoiceOver on macOS, NVDA on Windows, JAWS where available)
+- Color contrast verification (WCAG AA: 4.5:1 for text, 3:1 for UI components)
+- Focus indicators visibility and clarity
+- Form label associations and error messages
+
+**Fixes Required**:
+- Accessible headings hierarchy (h1 → h2 → h3, no skipped levels)
+- ARIA labels for dynamic content and status updates
+- Button and link text clarity (no "click here", meaningful labels)
+- Form validation messages tied to form controls
+- Modal focus management (trap focus inside modal)
+- Image alt text (descriptive, not "image of")
+- Loading states announced to screen readers
+
+**Testing Implementation**:
+- Frontend: axe-core integration tests (jest-axe)
+- Automated: Run in CI/CD pipeline (fail on errors)
+- Manual: Checklist for edge cases (videos, animations, complex interactions)
+- Documentation: Accessibility statement added to dashboard
+
+**Acceptance**:
+- Automated tests: 0 axe-core errors, 0 warnings on all pages
+- Manual testing: Keyboard navigation successful on all features
+- Screen reader testing: All content readable and functional
+- Color contrast: All text/UI elements pass WCAG AA (4.5:1 or 3:1)
+- Focus management: Clear visible focus indicators on all interactive elements
+- Documentation: Accessibility statement and WCAG compliance notes in footer
 
 ---
 
@@ -2075,7 +2150,7 @@ Optimize:
 
 ## Summary
 
-**Total Tasks**: 90 | **Parallel Opportunities**: ~50 tasks marked [P]
+**Total Tasks**: 91 | **Parallel Opportunities**: ~50 tasks marked [P]
 
 ### Tasks by Phase
 

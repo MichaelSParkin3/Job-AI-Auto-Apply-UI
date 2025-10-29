@@ -156,6 +156,10 @@ When she clicks "Apply Now," the system launches a supervised browser session an
 #### Real-time Status Updates
 
 - **FR-041**: System MUST poll the queue file every 2 seconds to detect status changes from CLI operations and update UI accordingly
+  - **Error Handling**: If queue file is missing, system displays message: "Queue is empty. Run discovery first." and allows user to start discovery
+  - **Corruption Recovery**: If queue file is corrupted (invalid JSON), system logs error, displays recovery message ("Queue file corrupted. Reset queue?"), and offers button to reset to empty queue
+  - **Permission Errors**: If queue file cannot be read due to permissions, display: "Cannot access queue file. Check file permissions." with retry button
+  - **Max Retries**: After 3 consecutive polling failures, pause polling and notify user with manual retry option
 - **FR-042**: When active job status changes, system MUST update job list and detail page without requiring manual refresh
 - **FR-043**: System MUST display when data was last updated (timestamp) on the dashboard
 
@@ -168,6 +172,10 @@ When she clicks "Apply Now," the system launches a supervised browser session an
 #### Responsive Design & Accessibility
 
 - **FR-047**: UI MUST be responsive and usable on desktop screens (1280x720 minimum resolution)
+  - **Desktop Focus**: Primary target is 1280x720 and larger (16:9 aspect ratio)
+  - **Tablet Appreciated**: iPad and larger tablets (768x1024+) will work if responsive layout applies, but not required
+  - **Mobile Out of Scope**: Phones and small devices (<768px width) are not supported; no mobile optimization required
+  - **Testing**: Verify 1280x720 required resolution, test iPad for functionality (not required to pass, nice to have)
 - **FR-048**: All interactive elements MUST be keyboard navigable and have appropriate ARIA labels
 - **FR-049**: System MUST use semantic HTML and sufficient color contrast for accessibility
 
@@ -246,6 +254,63 @@ Application configuration persisted to .env file
 - **AD-001**: Users prefer web UI over CLI for profile management (qualitative feedback)
 - **AD-002**: Supervised mode browser visibility enables users to solve captchas without additional tools
 - **AD-003**: Real-time log viewing reduces support questions about application progress
+
+---
+
+## Non-Functional Requirements
+
+### Performance
+
+- **Dashboard Initial Load**: <2 seconds (Largest Contentful Paint)
+- **Queue Refresh**: <3 seconds (API response time for job list updates)
+- **Options Modal/Panel**: <1 second (modal interactive time)
+- **Artifact Loading**: <5 seconds (image decoding and display)
+- **Frontend Bundle Size**: <500KB gzipped
+- **Backend Response Time**: <1s p99 for all non-discovery/apply endpoints
+- **Database/File Operations**: < 100ms for profile/settings reads, <500ms for profile/settings writes
+
+### Scalability
+
+- Dashboard remains responsive with 500+ jobs in queue (pagination/virtual scrolling)
+- Backend can handle 100 concurrent users on local machine
+- Queue file size up to 10MB without performance degradation (20,000+ jobs)
+
+### Reliability & Resilience
+
+- Graceful handling of lost connection to CLI subprocess (error message, retry option)
+- Profile/settings corruption prevention via atomic writes (temp file + atomic rename)
+- Queue file loss recovery (recreate empty queue, allow user to re-run discovery)
+- Browser session persistence across page refreshes (localStorage for UI state)
+
+### Security & Compliance
+
+- No user authentication required (single-user localhost application)
+- All sensitive values (API keys) masked in API responses
+- Directory traversal attack prevention in artifact file serving (whitelist directories only)
+- HTTPS not required (localhost HTTP only)
+
+### Accessibility
+
+- **WCAG 2.1 Level AA Compliance**: All pages pass automated and manual accessibility audits
+- **Keyboard Navigation**: All features fully operable via keyboard (Tab, Enter, Escape)
+- **Screen Reader Support**: Semantic HTML, ARIA labels for dynamic content, form validation messages
+- **Color Contrast**: 4.5:1 for text, 3:1 for UI components (WCAG AA standard)
+- **Focus Management**: Clear visible focus indicators, focus trap in modals
+
+### Maintainability & Observability
+
+- Structured JSON logging on backend with correlation IDs for request tracing
+- Frontend error logging to console and optional backend service
+- Performance metrics collection (web-vitals on frontend, prometheus on backend)
+- All code follows PEP8 (Python) and ESLint (JavaScript) style guides
+- 95%+ code coverage on backend models and services (per Phase 2 TDD requirement)
+
+### Compatibility
+
+- **Frontend**: Support modern browsers (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
+- **Backend**: Python 3.11+ (matching existing CLI infrastructure)
+- **OS Support**: Linux, macOS, Windows (tested on all three)
+- **Responsive Design**: 1280x720 minimum required, tablet (iPad) appreciated, mobile out of scope
 
 ---
 
