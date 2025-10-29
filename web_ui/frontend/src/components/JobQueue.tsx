@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useMemo, useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueue } from '../hooks/useQueue'
 import {
   ApplicationItem,
@@ -15,11 +15,15 @@ interface JobQueueProps {
   itemsPerPage?: number
 }
 
+type SortField = 'title' | 'company' | 'date' | 'status'
+type SortDirection = 'asc' | 'desc'
+
 export const JobQueue: React.FC<JobQueueProps> = ({
   profileId,
   itemsPerPage = 50,
 }) => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     items,
     counts,
@@ -31,12 +35,62 @@ export const JobQueue: React.FC<JobQueueProps> = ({
     searchItems,
   } = useQueue(profileId)
 
+  // Load from URL parameters
   const [
     selectedStatus,
     setSelectedStatus,
-  ] = useState<ApplicationStatus | 'ALL'>('ALL')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
+  ] = useState<ApplicationStatus | 'ALL'>(
+    (searchParams.get('status') as ApplicationStatus | 'ALL') || 'ALL'
+  )
+  const [searchQuery, setSearchQuery] = useState(
+    searchParams.get('search') || ''
+  )
+  const [currentPage, setCurrentPage] = useState(
+    parseInt(searchParams.get('page') || '1')
+  )
+  const [sortField, setSortField] = useState<SortField>(
+    (searchParams.get('sort') as SortField) || 'date'
+  )
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    (searchParams.get('order') as SortDirection) || 'desc'
+  )
+
+  // Update URL when parameters change
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (selectedStatus !== 'ALL') {
+      params.set('status', selectedStatus)
+    }
+    if (searchQuery) {
+      params.set('search', searchQuery)
+    }
+    if (currentPage > 1) {
+      params.set('page', currentPage.toString())
+    }
+    if (sortField !== 'date') {
+      params.set('sort', sortField)
+    }
+    if (sortDirection !== 'desc') {
+      params.set('order', sortDirection)
+    }
+    setSearchParams(params, { replace: true })
+  }, [selectedStatus, searchQuery, currentPage, sortField, sortDirection, setSearchParams])
+
+  // Sort function
+  const getSortValue = (item: ApplicationItem, field: SortField): any => {
+    switch (field) {
+      case 'title':
+        return item.title.toLowerCase()
+      case 'company':
+        return item.company.toLowerCase()
+      case 'date':
+        return new Date(item.date_discovered || 0).getTime()
+      case 'status':
+        return item.status
+      default:
+        return null
+    }
+  }
 
   // Filter and search
   const filteredItems = useMemo(() => {
@@ -60,8 +114,25 @@ export const JobQueue: React.FC<JobQueueProps> = ({
       )
     }
 
+    // Sort
+    result = [...result].sort((a, b) => {
+      const aVal = getSortValue(a, sortField)
+      const bVal = getSortValue(b, sortField)
+
+      if (aVal === null || bVal === null) return 0
+
+      let comparison = 0
+      if (aVal < bVal) {
+        comparison = -1
+      } else if (aVal > bVal) {
+        comparison = 1
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+
     return result
-  }, [items, selectedStatus, searchQuery, filterByStatus])
+  }, [items, selectedStatus, searchQuery, sortField, sortDirection, filterByStatus])
 
   // Pagination
   const totalPages = Math.ceil(
@@ -191,17 +262,117 @@ export const JobQueue: React.FC<JobQueueProps> = ({
             <table className="w-full">
               <thead className="bg-gray-100 border-b">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold">
-                    Job Title
+                  <th
+                    className="px-4 py-2 text-left font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => {
+                      if (sortField === 'title') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('title')
+                        setSortDirection('asc')
+                      }
+                      setCurrentPage(1)
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        if (sortField === 'title') {
+                          setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                        } else {
+                          setSortField('title')
+                          setSortDirection('asc')
+                        }
+                        setCurrentPage(1)
+                      }
+                    }}
+                    aria-label="Sort by job title"
+                  >
+                    Job Title {sortField === 'title' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold">
-                    Company
+                  <th
+                    className="px-4 py-2 text-left font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => {
+                      if (sortField === 'company') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('company')
+                        setSortDirection('asc')
+                      }
+                      setCurrentPage(1)
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        if (sortField === 'company') {
+                          setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                        } else {
+                          setSortField('company')
+                          setSortDirection('asc')
+                        }
+                        setCurrentPage(1)
+                      }
+                    }}
+                    aria-label="Sort by company"
+                  >
+                    Company {sortField === 'company' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold">
-                    Status
+                  <th
+                    className="px-4 py-2 text-left font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => {
+                      if (sortField === 'status') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('status')
+                        setSortDirection('asc')
+                      }
+                      setCurrentPage(1)
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        if (sortField === 'status') {
+                          setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                        } else {
+                          setSortField('status')
+                          setSortDirection('asc')
+                        }
+                        setCurrentPage(1)
+                      }
+                    }}
+                    aria-label="Sort by status"
+                  >
+                    Status {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold">
-                    Discovered
+                  <th
+                    className="px-4 py-2 text-left font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => {
+                      if (sortField === 'date') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('date')
+                        setSortDirection('desc')
+                      }
+                      setCurrentPage(1)
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        if (sortField === 'date') {
+                          setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                        } else {
+                          setSortField('date')
+                          setSortDirection('desc')
+                        }
+                        setCurrentPage(1)
+                      }
+                    }}
+                    aria-label="Sort by discovery date"
+                  >
+                    Discovered {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
                 </tr>
               </thead>
