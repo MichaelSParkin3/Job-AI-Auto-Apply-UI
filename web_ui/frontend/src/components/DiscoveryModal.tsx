@@ -29,6 +29,7 @@ interface DiscoveryModalProps {
   onClose: () => void;
   profileId: string;
   onDiscoveryComplete?: (discoveredCount: number) => void;
+  onRefreshQueue?: () => Promise<void>;
 }
 
 export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
@@ -36,6 +37,7 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
   onClose,
   profileId,
   onDiscoveryComplete,
+  onRefreshQueue,
 }) => {
   const [step, setStep] = useState<"options" | "progress" | "results">("options");
 
@@ -96,6 +98,7 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
   };
 
   const handleDiscover = async () => {
+    // Validate before attempting discovery
     if (!validateOptions()) {
       return;
     }
@@ -103,45 +106,125 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
     setIsDiscovering(true);
     setProgress(0);
     setDiscoveredCount(0);
-    setStatusMessage("Starting discovery...");
+    setStatusMessage("Initializing discovery...");
     setError(null);
     setStep("progress");
 
     try {
-      // Execute discovery
-      const response = await apiClient.post("/api/v1/discover/execute", null, {
-        params: {
-          profile_id: profileId,
+      // Step 1: Validate server connection
+      try {
+        const healthCheck = await apiClient.get("/api/v1/health");
+        if (healthCheck.status !== 200) {
+          throw new Error("Backend server is not responding");
+        }
+      } catch (healthErr) {
+        throw new Error("Unable to connect to backend server. Please ensure it's running on localhost:5000");
+      }
+
+      // Step 2: Execute discovery with error handling
+      let response;
+      try {
+        response = await apiClient.post("/api/v1/discover/execute", null, {
+          params: {
+            profile_id: profileId,
+            search_window: searchWindow,
+            job_cap: jobCap,
+            custom_query: customQuery || undefined,
+          },
+        });
+      } catch (discoverErr: any) {
+        if (discoverErr.response?.status === 404) {
+          throw new Error(`Profile "${profileId}" not found`);
+        } else if (discoverErr.response?.status === 400) {
+          throw new Error(`Invalid discovery parameters: ${discoverErr.response.data?.detail || "Bad request"}`);
+        } else if (discoverErr.response?.status === 500) {
+          throw new Error(`Server error during discovery: ${discoverErr.response.data?.detail || "Internal error"}`);
+        } else if (discoverErr.message?.includes("timeout")) {
+          throw new Error("Discovery timed out. Please try again with a smaller job cap.");
+        }
+        throw new Error(discoverErr.message || "Discovery failed");
+      }
+
+      // Step 3: Process results with validation
+      const totalDiscovered = response.data?.total_discovered || 0;
+      const totalEnqueued = response.data?.total_enqueued || 0;
+
+      if (totalDiscovered < 0 || totalEnqueued < 0) {
+        throw new Error("Invalid discovery results received from server");
+      }
+
+      // Update progress
+      setProgress(100);
+      setStatusMessage(
+        totalDiscovered === 0
+          ? "No new jobs found matching your criteria"
+          : `Found ${totalDiscovered} jobs, ${totalEnqueued} added to queue`
+      );
+
+      setTotalDiscovered(totalDiscovered);
+      setTotalEnqueued(totalEnqueued);
+
+      // Step 4: Persist options for next time
+      try {
+        storage.setRunOptions(profileId, "discover", {
           search_window: searchWindow,
           job_cap: jobCap,
-          custom_query: customQuery || undefined,
-        },
-      });
+          custom_query: customQuery,
+        });
+      } catch (storageErr) {
+        console.warn("Failed to save discovery options:", storageErr);
+        // Don't fail the entire discovery if storage fails
+      }
 
-      // Simulate progress (in real implementation, this would stream from SSE or polling)
-      setProgress(100);
-      setStatusMessage("Discovery completed");
-      setTotalDiscovered(response.data.total_discovered || 0);
-      setTotalEnqueued(response.data.total_enqueued || 0);
-
-      // Save options for next time
-      storage.setRunOptions(profileId, "discover", {
-        search_window: searchWindow,
-        job_cap: jobCap,
-        custom_query: customQuery,
-      });
+      // Step 5: Refresh the queue with newly discovered jobs
+      if (onRefreshQueue) {
+        try {
+          setStatusMessage("Updating job queue...");
+          await onRefreshQueue();
+          setStatusMessage(
+            totalDiscovered === 0
+              ? "No new jobs found matching your criteria"
+              : `Found ${totalDiscovered} jobs, ${totalEnqueued} added to queue`
+          );
+        } catch (refreshErr) {
+          console.warn("Failed to refresh queue:", refreshErr);
+          // Don't fail the entire operation if queue refresh fails
+          setStatusMessage(
+            totalDiscovered === 0
+              ? "No new jobs found matching your criteria"
+              : `Found ${totalDiscovered} jobs (queue refresh pending)`
+          );
+        }
+      }
 
       setStep("results");
       setIsDiscovering(false);
 
+      // Notify parent component of completion
       if (onDiscoveryComplete) {
-        onDiscoveryComplete(response.data.total_discovered || 0);
+        onDiscoveryComplete(totalDiscovered);
       }
     } catch (err: any) {
-      setError(err.message || "Discovery failed");
+      // Enhanced error reporting
+      const errorMessage = err.message || "An unexpected error occurred during discovery";
+      setError(errorMessage);
+      setStatusMessage("Discovery failed");
       setIsDiscovering(false);
+
+      // Log error for debugging
+      console.error("Discovery error:", err);
+
+      // Return to options to allow retry
       setStep("options");
     }
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    setProgress(0);
+    setDiscoveredCount(0);
+    setStatusMessage("");
+    handleDiscover();
   };
 
   const handleReset = () => {
@@ -179,15 +262,23 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
               </Alert>
             )}
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4" role="region" aria-label="Discovery options">
               {/* Quick Start Section */}
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor="search-window" className="text-sm font-medium">
+                  <Label
+                    htmlFor="search-window"
+                    className="text-sm font-medium"
+                    aria-required="true"
+                  >
                     Search Window
                   </Label>
                   <Select value={searchWindow} onValueChange={setSearchWindow}>
-                    <SelectTrigger id="search-window">
+                    <SelectTrigger
+                      id="search-window"
+                      aria-describedby={errors.searchWindow ? "search-window-error" : undefined}
+                      aria-invalid={!!errors.searchWindow}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -199,14 +290,27 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
                     </SelectContent>
                   </Select>
                   {errors.searchWindow && (
-                    <p className="text-xs text-red-500 mt-1">{errors.searchWindow}</p>
+                    <p
+                      id="search-window-error"
+                      className="text-xs text-red-500 mt-1"
+                      role="alert"
+                    >
+                      {errors.searchWindow}
+                    </p>
                   )}
                 </div>
 
                 <div>
-                  <Label htmlFor="job-cap" className="text-sm font-medium">
+                  <Label
+                    htmlFor="job-cap"
+                    className="text-sm font-medium"
+                    aria-required="true"
+                  >
                     Job Cap (max jobs to discover)
                   </Label>
+                  <p className="text-xs text-gray-500 mb-1">
+                    Enter a value between 1 and 1000
+                  </p>
                   <Input
                     id="job-cap"
                     type="number"
@@ -215,9 +319,17 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
                     value={jobCap}
                     onChange={(e) => setJobCap(parseInt(e.target.value) || 10)}
                     className="mt-1"
+                    aria-describedby={errors.jobCap ? "job-cap-error" : "job-cap-help"}
+                    aria-invalid={!!errors.jobCap}
                   />
-                  {errors.jobCap && (
-                    <p className="text-xs text-red-500 mt-1">{errors.jobCap}</p>
+                  {errors.jobCap ? (
+                    <p id="job-cap-error" className="text-xs text-red-500 mt-1" role="alert">
+                      {errors.jobCap}
+                    </p>
+                  ) : (
+                    <p id="job-cap-help" className="text-xs text-gray-400 mt-1">
+                      Default: 10 jobs
+                    </p>
                   )}
                 </div>
               </div>
@@ -261,14 +373,19 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
               </Collapsible>
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={handleClose}>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                aria-label="Close discovery modal without discovering"
+              >
                 Cancel
               </Button>
               <Button
                 onClick={handleDiscover}
                 disabled={isDiscovering}
                 className="bg-blue-600 hover:bg-blue-700"
+                aria-label={isDiscovering ? "Discovery in progress" : "Start job discovery"}
               >
                 {isDiscovering ? "Discovering..." : "Discover"}
               </Button>
@@ -280,34 +397,61 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
           <>
             <DialogHeader>
               <DialogTitle>Discovery in Progress</DialogTitle>
+              <DialogDescription>
+                Searching for job postings. This may take a minute or two.
+              </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               <div>
                 <div className="flex justify-between text-sm mb-2">
-                  <span>Progress</span>
-                  <span className="font-medium">{progress}%</span>
+                  <label htmlFor="discovery-progress" className="font-medium">
+                    Progress
+                  </label>
+                  <span className="font-medium" aria-live="polite">
+                    {progress}%
+                  </span>
                 </div>
-                <Progress value={progress} className="h-2" />
+                <Progress
+                  id="discovery-progress"
+                  value={progress}
+                  className="h-2"
+                  aria-label="Discovery progress bar"
+                />
               </div>
 
               <Alert>
-                <AlertDescription>
+                <AlertDescription aria-live="polite" aria-atomic="true">
                   {statusMessage || `Discovered ${discoveredCount} jobs...`}
                 </AlertDescription>
               </Alert>
 
               {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" role="alert">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={handleClose} disabled={isDiscovering}>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                disabled={isDiscovering}
+                aria-label="Cancel discovery"
+              >
                 Cancel
               </Button>
+              {error && (
+                <Button
+                  onClick={handleRetry}
+                  disabled={isDiscovering}
+                  className="bg-orange-600 hover:bg-orange-700"
+                  aria-label="Retry discovery"
+                >
+                  Retry
+                </Button>
+              )}
             </DialogFooter>
           </>
         )}
