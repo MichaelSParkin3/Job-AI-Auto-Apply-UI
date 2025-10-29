@@ -283,56 +283,7 @@ async def get_last_discovery_options(
         }
 
 
-# ============================================================================
-# APPLY ENDPOINTS
-# ============================================================================
-
-@router.post("/apply/single", tags=["apply"])
-async def apply_single(
-    profile_id: str,
-    job_id: str,
-) -> Dict[str, str]:
-    """Apply to single job (stub)."""
-    return {
-        "status": "started",
-        "profile_id": profile_id,
-        "job_id": job_id,
-    }
-
-
-@router.post("/apply/bulk", tags=["apply"])
-async def apply_bulk(
-    profile_id: str,
-) -> Dict[str, str]:
-    """Apply to multiple jobs (stub)."""
-    return {
-        "status": "started",
-        "profile_id": profile_id,
-    }
-
-
-@router.get("/apply/status/{job_id}", tags=["apply"])
-async def get_apply_status(
-    job_id: str,
-    profile_id: str,
-) -> Dict[str, Any]:
-    """Get apply status (stub)."""
-    return {
-        "job_id": job_id,
-        "status": "pending",
-    }
-
-
-@router.get("/apply/logs/{job_id}", tags=["apply"])
-async def get_apply_logs(
-    job_id: str,
-    profile_id: str,
-) -> Dict[str, Any]:
-    """Get apply logs (stub)."""
-    return {
-        "job_id": job_id,
-        "logs": [],
-    }
+# Apply endpoints are now in separate v1/apply.py module and included below
 
 
 # ============================================================================
@@ -448,5 +399,9 @@ async def reset_all_settings(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# Include router in app
+# Include all routers in app
 app.include_router(router)
+
+# Include specialized v1 routers
+from src.api.v1.apply import router as apply_router
+app.include_router(apply_router, prefix="/api/v1")
