@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from src.app import app_context, app
 from src.models import Profile, ApplicationItem, Setting, RunConfiguration
 from src.services import (
@@ -11,6 +12,15 @@ from src.services import (
     ArtifactService,
     CLIService,
 )
+
+
+# Request/Response Models
+class DiscoveryRequest(BaseModel):
+    """Request body for discovery execution."""
+    profile_id: str
+    search_window: Optional[str] = "24h"
+    job_cap: Optional[int] = 10
+    custom_query: Optional[str] = None
 
 
 # Dependency injection functions
@@ -208,10 +218,7 @@ def get_run_config_service():
 
 @router.post("/discover/execute", tags=["discovery"])
 async def execute_discovery(
-    profile_id: str,
-    search_window: Optional[str] = "24h",
-    job_cap: Optional[int] = 10,
-    custom_query: Optional[str] = None,
+    request: DiscoveryRequest,
     cli_service: CLIService = Depends(get_cli_service),
 ) -> Dict[str, Any]:
     """Execute discovery with configurable options."""
@@ -221,22 +228,35 @@ async def execute_discovery(
         # Save the options for next time
         run_config_service = RunConfigurationService()
         config = RunConfiguration(
-            profile_id=profile_id,
+            profile_id=request.profile_id,
             operation_type="discover",
-            search_window=search_window,
-            job_cap=job_cap,
-            custom_query=custom_query,
+            search_window=request.search_window,
+            job_cap=request.job_cap,
+            custom_query=request.custom_query,
         )
-        run_config_service.save_run_config(profile_id, config)
+        run_config_service.save_run_config(request.profile_id, config)
 
-        # Execute discovery via CLI (simplified - real implementation streams)
+        # Execute discovery via CLI and collect results
+        total_discovered = 0
+        total_enqueued = 0
+
+        # Call CLI service to execute discovery
+        async for event in cli_service.execute_discover(
+            request.profile_id,
+            request.search_window or "24h",
+            request.job_cap or 10,
+            request.custom_query,
+        ):
+            # Extract counts from final event
+            if event.get("event") == "discover.end":
+                total_discovered = event.get("total_discovered", 0)
+                total_enqueued = event.get("total_enqueued", 0)
+
         return {
-            "status": "started",
-            "profile_id": profile_id,
-            "search_window": search_window,
-            "job_cap": job_cap,
-            "custom_query": custom_query,
-            "message": "Discovery execution initiated",
+            "status": "completed",
+            "profile_id": request.profile_id,
+            "total_discovered": total_discovered,
+            "total_enqueued": total_enqueued,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
