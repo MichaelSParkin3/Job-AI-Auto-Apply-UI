@@ -385,7 +385,7 @@ export default function ProfileForm({
             Optional: For persistent browser profiles with cookies/sessions
           </p>
         </div>
-      </div>
+      </fieldset>
 
       {/* Defaults Section */}
       <Collapsible

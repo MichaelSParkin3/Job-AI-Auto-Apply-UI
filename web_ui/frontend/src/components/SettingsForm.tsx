@@ -330,7 +330,7 @@ export default function SettingsForm({
                   </div>
                 ))}
               </div>
-            </Collapsible Content>
+            </CollapsibleContent>
           </Collapsible>
         );
       })}
