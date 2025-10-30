@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '../lib/utils'
 
 export interface LogEntry {
@@ -92,11 +96,11 @@ export const LogViewer: React.FC<LogViewerProps> = ({
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-2xl">
           {isLive ? '🔴 Live Logs' : 'Application Logs'}
-        </h2>
+        </CardTitle>
         <div className="flex gap-2">
           {onClear && (
             <Button
@@ -115,116 +119,100 @@ export const LogViewer: React.FC<LogViewerProps> = ({
             Copy
           </Button>
         </div>
-      </div>
+      </CardHeader>
 
-      {/* Filter Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* Level Filters */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={cn(
-              'px-3 py-1 rounded text-sm font-medium transition-colors',
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-900 hover:bg-gray-300'
-            )}
-          >
-            All ({logs.length})
-          </button>
-          <button
-            onClick={() => setFilter('info')}
-            className={cn(
-              'px-3 py-1 rounded text-sm font-medium transition-colors',
-              filter === 'info'
-                ? 'bg-blue-600 text-white'
-                : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-            )}
-          >
-            ℹ️ Info ({levelCounts.info})
-          </button>
-          <button
-            onClick={() => setFilter('warning')}
-            className={cn(
-              'px-3 py-1 rounded text-sm font-medium transition-colors',
-              filter === 'warning'
-                ? 'bg-yellow-600 text-white'
-                : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-            )}
-          >
-            ⚠️ Warning ({levelCounts.warning})
-          </button>
-          <button
-            onClick={() => setFilter('error')}
-            className={cn(
-              'px-3 py-1 rounded text-sm font-medium transition-colors',
-              filter === 'error'
-                ? 'bg-red-600 text-white'
-                : 'bg-red-100 text-red-800 hover:bg-red-200'
-            )}
-          >
-            ❌ Error ({levelCounts.error})
-          </button>
+      <CardContent className="space-y-4">
+        {/* Filter Bar */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Level Filters */}
+          <div className="flex flex-wrap gap-2">
+            <Badge
+              variant={filter === 'all' ? 'default' : 'secondary'}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setFilter('all')}
+            >
+              All ({logs.length})
+            </Badge>
+            <Badge
+              variant={filter === 'info' ? 'default' : 'secondary'}
+              className="cursor-pointer hover:opacity-80 transition-opacity bg-blue-100 text-blue-800 hover:bg-blue-200"
+              onClick={() => setFilter('info')}
+            >
+              ℹ️ Info ({levelCounts.info})
+            </Badge>
+            <Badge
+              variant={filter === 'warning' ? 'default' : 'secondary'}
+              className="cursor-pointer hover:opacity-80 transition-opacity bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+              onClick={() => setFilter('warning')}
+            >
+              ⚠️ Warning ({levelCounts.warning})
+            </Badge>
+            <Badge
+              variant={filter === 'error' ? 'default' : 'secondary'}
+              className="cursor-pointer hover:opacity-80 transition-opacity bg-red-100 text-red-800 hover:bg-red-200"
+              onClick={() => setFilter('error')}
+            >
+              ❌ Error ({levelCounts.error})
+            </Badge>
+          </div>
+
+          {/* Search Input */}
+          <Input
+            type="text"
+            placeholder="Search logs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 text-sm"
+          />
         </div>
 
-        {/* Search Input */}
-        <input
-          type="text"
-          placeholder="Search logs..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className={cn(
-            'flex-1 px-3 py-2 rounded border border-gray-300',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500',
-            'text-sm'
-          )}
-        />
-      </div>
-
-      {/* Log Container */}
-      <div
-        ref={containerRef}
-        className="bg-gray-900 rounded font-mono text-sm max-h-96 overflow-y-auto space-y-0"
-        role="log"
-        aria-live={isLive ? 'polite' : 'off'}
-      >
-        {filteredLogs.length === 0 ? (
-          <div className="text-gray-500 p-4 text-center">
-            No logs to display
+        {/* Log Container */}
+        <ScrollArea className="border rounded-lg bg-gray-900 h-96">
+          <div
+            ref={containerRef}
+            className="font-mono text-sm space-y-0"
+            role="log"
+            aria-live={isLive ? 'polite' : 'off'}
+          >
+            {filteredLogs.length === 0 ? (
+              <div className="text-gray-500 p-4 text-center">
+                No logs to display
+              </div>
+            ) : (
+              filteredLogs.map((log, index) => (
+                <div
+                  key={index}
+                  className={cn(
+                    'px-4 py-2 border-b border-gray-800 hover:bg-gray-800 transition-colors',
+                    getLevelBg(log.level)
+                  )}
+                >
+                  <span className="text-gray-400">
+                    [{log.timestamp}]
+                  </span>
+                  <span
+                    className={cn(
+                      'ml-2 font-bold',
+                      getLevelColor(log.level)
+                    )}
+                  >
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="ml-2 text-gray-100">
+                    {log.message}
+                  </span>
+                </div>
+              ))
+            )}
+            <div ref={scrollEndRef} />
           </div>
-        ) : (
-          filteredLogs.map((log, index) => (
-            <div
-              key={index}
-              className={cn(
-                'px-4 py-2 border-b border-gray-800 hover:bg-gray-800 transition-colors',
-                getLevelBg(log.level)
-              )}
-            >
-              <span className="text-gray-400">
-                [{log.timestamp}]
-              </span>
-              <span
-                className={cn(
-                  'ml-2 font-bold',
-                  getLevelColor(log.level)
-                )}
-              >
-                [{log.level.toUpperCase()}]
-              </span>
-              <span className="ml-2 text-gray-100">
-                {log.message}
-              </span>
-            </div>
-          ))
-        )}
-        <div ref={scrollEndRef} />
-      </div>
+        </ScrollArea>
 
-      {/* Info */}
-      <div className="text-xs text-gray-500 text-right">
-        Showing {filteredLogs.length} of {logs.length} logs
-      </div>
-    </div>
+        {/* Info */}
+        <div className="text-xs text-gray-500 text-right">
+          Showing {filteredLogs.length} of {logs.length} logs
+        </div>
+      </CardContent>
+    </Card>
   )
 }

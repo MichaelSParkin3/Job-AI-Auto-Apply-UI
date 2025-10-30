@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { Artifacts } from '../types/index'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { useLazyLoadImage } from '../hooks/useLazyLoadImage'
 
 interface ArtifactsGalleryProps {
@@ -68,65 +70,70 @@ export const ArtifactsGallery: React.FC<
       {/* Artifacts List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {availableArtifacts.map((artifact) => (
-          <div
-            key={artifact.type}
-            className="border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-900">
-                <span className="mr-2">{artifact.icon}</span>
+          <Card key={artifact.type}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span>{artifact.icon}</span>
                 {artifact.type}
-              </h3>
-            </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-600 truncate">
+                {artifact.path}
+              </p>
 
-            <p className="text-sm text-gray-600 mb-4 truncate">
-              {artifact.path}
-            </p>
+              <div className="flex gap-2">
+                {artifact.type === 'Screenshot' &&
+                  artifact.path && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setSelectedImage(artifact.path || null)
+                      }
+                    >
+                      View
+                    </Button>
+                  )}
 
-            <div className="flex gap-2">
-              {artifact.type === 'Screenshot' &&
-                artifact.path && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setSelectedImage(artifact.path || null)
-                    }
-                  >
-                    View
-                  </Button>
-                )}
-
-              <a
-                href={`/api/v1/artifacts/${profileId}/${jobId}/${artifact.path?.split('/').pop()}`}
-                download
-              >
-                <Button size="sm">Download</Button>
-              </a>
-            </div>
-          </div>
+                <a
+                  href={`/api/v1/artifacts/${profileId}/${jobId}/${artifact.path?.split('/').pop()}`}
+                  download
+                >
+                  <Button size="sm">Download</Button>
+                </a>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       {/* Confirmation Details */}
       {artifacts.confirmation_text && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-green-900 mb-3">
-            ✓ Submission Confirmation
-          </h3>
-
-          <div className="space-y-3">
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✓</span>
+              <CardTitle className="text-green-900">
+                Submission Confirmation
+              </CardTitle>
+              <Badge variant="default" className="ml-auto bg-green-600">
+                Confirmed
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <p className="text-green-800">
               {artifacts.confirmation_text}
             </p>
 
             {artifacts.confirmation_id && (
-              <div className="flex items-center justify-between bg-white p-3 rounded border border-green-200">
+              <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-green-200">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">
+                  <p className="text-sm text-gray-600 mb-2">
                     Confirmation ID
                   </p>
-                  <p className="font-mono text-lg text-gray-900">
+                  <p className="font-mono text-sm text-gray-900 break-all">
                     {artifacts.confirmation_id}
                   </p>
                 </div>
@@ -139,6 +146,7 @@ export const ArtifactsGallery: React.FC<
                     )
                     alert('Copied to clipboard!')
                   }}
+                  className="ml-4 flex-shrink-0"
                 >
                   Copy
                 </Button>
@@ -153,8 +161,8 @@ export const ArtifactsGallery: React.FC<
                 ).toLocaleString()}
               </p>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Image Lightbox */}
