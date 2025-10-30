@@ -60,8 +60,8 @@ export function useQueue(
       setError(null)
       const response = await jobsApi.listJobs(profileId)
       if (isMountedRef.current) {
-        setItems(response.jobs || [])
-        setCounts(calculateCounts(response.jobs || []))
+        setItems(response.items || [])
+        setCounts(calculateCounts(response.items || []))
         setLastUpdated(new Date())
       }
     } catch (err) {
