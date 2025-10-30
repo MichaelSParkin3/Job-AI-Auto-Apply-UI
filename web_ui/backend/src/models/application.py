@@ -3,7 +3,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ApplicationStatus(str, Enum):
@@ -14,6 +14,37 @@ class ApplicationStatus(str, Enum):
     SUBMITTED = "SUBMITTED"
     FAILED = "FAILED"
     CAPTCHA_BLOCKED = "CAPTCHA_BLOCKED"
+
+    @classmethod
+    def normalize(cls, value: str) -> str:
+        """Normalize status value to uppercase enum value.
+
+        Maps legacy lowercase and non-standard status values to valid enum values.
+
+        Args:
+            value: Status value (may be lowercase or non-standard)
+
+        Returns:
+            Normalized uppercase enum value
+        """
+        if not isinstance(value, str):
+            return value
+
+        # Map lowercase versions to uppercase
+        normalized = value.upper()
+
+        # Map non-standard values to valid enum values
+        status_mapping = {
+            "SUBMITTED": cls.SUBMITTED,
+            "FAILED": cls.FAILED,
+            "PENDING_REVIEW": cls.SUBMITTED,  # Legacy value -> SUBMITTED
+            "SKIPPED": cls.FAILED,  # Legacy value -> FAILED
+            "NEW": cls.NEW,
+            "IN_PROGRESS": cls.IN_PROGRESS,
+            "CAPTCHA_BLOCKED": cls.CAPTCHA_BLOCKED,
+        }
+
+        return status_mapping.get(normalized, value)
 
 
 class JobDetails(BaseModel):

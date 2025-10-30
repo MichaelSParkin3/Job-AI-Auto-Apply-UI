@@ -1,10 +1,13 @@
 """Queue service for managing application queue."""
 
 import hashlib
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 from src.models import ApplicationItem, ApplicationStatus
 from src.utils import load_json, save_json, FileOpsError
+
+log = logging.getLogger(__name__)
 
 
 class QueueService:
@@ -62,13 +65,45 @@ class QueueService:
             # Handle both wrapper format {"items": [...]} and raw array [...]
             items_data = data.get("items", []) if isinstance(data, dict) else data
             items = []
-            for item_data in items_data:
+            skipped_count = 0
+
+            for idx, item_data in enumerate(items_data):
                 try:
+                    # Normalize status value if present
+                    if "status" in item_data and isinstance(item_data["status"], str):
+                        original_status = item_data["status"]
+                        item_data["status"] = ApplicationStatus.normalize(original_status)
+                        if item_data["status"] != original_status:
+                            log.info(
+                                f"queue.status_normalized",
+                                profile_id=profile_id,
+                                item_index=idx,
+                                original_status=original_status,
+                                normalized_status=item_data["status"],
+                            )
+
                     item = ApplicationItem(**item_data)
                     items.append(item)
-                except Exception:
-                    # Skip invalid items
+                except Exception as e:
+                    # Log validation errors instead of silently skipping
+                    skipped_count += 1
+                    log.warning(
+                        f"queue.item_skipped",
+                        profile_id=profile_id,
+                        item_index=idx,
+                        error=str(e),
+                        item_summary=f"{item_data.get('company', '?')} - {item_data.get('title', '?')}",
+                    )
                     continue
+
+            if skipped_count > 0:
+                log.warning(
+                    f"queue.load_incomplete",
+                    profile_id=profile_id,
+                    total_items=len(items_data),
+                    loaded_items=len(items),
+                    skipped_items=skipped_count,
+                )
 
             return items
         except Exception as e:
