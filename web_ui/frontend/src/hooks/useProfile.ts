@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Profile } from '../types/index'
 import { profilesApi } from '../services/api'
-import { storageService } from '../services/storage'
+import { storage } from '../services/storage'
 
 export interface UseProfileResult {
   profiles: Profile[]
@@ -29,7 +29,7 @@ export function useProfile(): UseProfileResult {
       setProfiles(response.profiles || [])
 
       // Restore active profile from storage or use first profile
-      let active = storageService.getActiveProfile()
+      let active = storage.getActiveProfile()
       if (
         !active ||
         !response.profiles?.find(
@@ -38,7 +38,7 @@ export function useProfile(): UseProfileResult {
       ) {
         active = response.profiles?.[0]?.id || null
         if (active) {
-          storageService.setActiveProfile(active)
+          storage.setActiveProfile(active)
         }
       }
 
@@ -67,7 +67,7 @@ export function useProfile(): UseProfileResult {
       try {
         setError(null)
         await profilesApi.switchProfile(profileId)
-        storageService.setActiveProfile(profileId)
+        storage.setActiveProfile(profileId)
         setActiveProfile(profileId)
 
         const profile = await profilesApi.getProfile(profileId)
