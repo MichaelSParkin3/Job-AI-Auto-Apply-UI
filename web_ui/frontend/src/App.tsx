@@ -6,6 +6,8 @@ import { TopBar } from './components/TopBar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LoadingSpinner } from './components/LoadingSpinner'
 import { Dashboard } from './pages/Dashboard'
+import Settings from './pages/Settings'
+import ProfileEdit from './pages/ProfileEdit'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -78,12 +80,16 @@ export default function App() {
                     element={<DiscoverPage />}
                   />
                   <Route
+                    path="/profiles/:profileId/edit"
+                    element={<ProfileEdit />}
+                  />
+                  <Route
                     path="/profiles"
                     element={<ProfilesPage />}
                   />
                   <Route
                     path="/settings"
-                    element={<SettingsPage />}
+                    element={<Settings />}
                   />
                   <Route
                     path="/artifacts"
@@ -137,19 +143,6 @@ function ProfilesPage() {
       </h1>
       <p className="text-gray-600 mt-2">
         Coming Soon - Profile editing interface
-      </p>
-    </div>
-  )
-}
-
-function SettingsPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">
-        Settings
-      </h1>
-      <p className="text-gray-600 mt-2">
-        Coming Soon - Application settings
       </p>
     </div>
   )
