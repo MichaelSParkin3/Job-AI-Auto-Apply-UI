@@ -10,7 +10,7 @@ from src.models.config import (
     OperationType,
     ApplyMode as ApplyModeEnum,
 )
-from src.models.application import ApplicationStatus, ApplicationReason
+from src.models.application import ApplicationStatus, FailureReason
 from src.services.cli_service import CLIService
 from src.services.queue_service import QueueService
 from src.services.run_config_service import RunConfigurationService
