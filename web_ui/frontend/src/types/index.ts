@@ -134,6 +134,14 @@ export interface RunConfiguration {
 export type SettingCategory = 'server' | 'discovery' | 'application' | 'llm' | 'diagnostics' | 'performance'
 export type SettingInputType = 'text' | 'number' | 'boolean' | 'select' | 'textarea'
 
+export const SettingInputType = {
+  TEXT: 'text' as const,
+  NUMBER: 'number' as const,
+  BOOLEAN: 'boolean' as const,
+  SELECT: 'select' as const,
+  TEXTAREA: 'textarea' as const,
+}
+
 export interface Setting {
   key: string
   value?: string

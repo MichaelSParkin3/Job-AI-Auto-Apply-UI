@@ -250,4 +250,5 @@ export const artifactsApi = {
   },
 }
 
+export { api as apiClient }
 export default api
