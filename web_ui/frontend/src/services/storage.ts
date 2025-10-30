@@ -163,5 +163,5 @@ class StorageService {
   }
 }
 
-export const storageService =
+export const storage =
   new StorageService()
