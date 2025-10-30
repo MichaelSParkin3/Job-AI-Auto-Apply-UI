@@ -249,7 +249,7 @@ export default function SettingsPage() {
               This action cannot be undone. Are you sure?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialog Footer>
+          <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleResetAll}
@@ -257,7 +257,7 @@ export default function SettingsPage() {
             >
               Reset All Settings
             </AlertDialogAction>
-          </AlertDialog Footer>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
