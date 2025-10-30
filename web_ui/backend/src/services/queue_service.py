@@ -75,11 +75,7 @@ class QueueService:
                         item_data["status"] = ApplicationStatus.normalize(original_status)
                         if item_data["status"] != original_status:
                             log.info(
-                                f"queue.status_normalized",
-                                profile_id=profile_id,
-                                item_index=idx,
-                                original_status=original_status,
-                                normalized_status=item_data["status"],
+                                f"Status normalized for {profile_id} item {idx}: {original_status} -> {item_data['status']}"
                             )
 
                     item = ApplicationItem(**item_data)
@@ -87,22 +83,15 @@ class QueueService:
                 except Exception as e:
                     # Log validation errors instead of silently skipping
                     skipped_count += 1
+                    item_summary = f"{item_data.get('company', '?')} - {item_data.get('title', '?')}"
                     log.warning(
-                        f"queue.item_skipped",
-                        profile_id=profile_id,
-                        item_index=idx,
-                        error=str(e),
-                        item_summary=f"{item_data.get('company', '?')} - {item_data.get('title', '?')}",
+                        f"Skipped invalid queue item {idx} ({item_summary}): {str(e)}"
                     )
                     continue
 
             if skipped_count > 0:
                 log.warning(
-                    f"queue.load_incomplete",
-                    profile_id=profile_id,
-                    total_items=len(items_data),
-                    loaded_items=len(items),
-                    skipped_items=skipped_count,
+                    f"Queue load incomplete for {profile_id}: loaded {len(items)} of {len(items_data)} items, skipped {skipped_count}"
                 )
 
             return items
