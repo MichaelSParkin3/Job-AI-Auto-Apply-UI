@@ -59,8 +59,10 @@ class QueueService:
                 return []
 
             data = load_json(queue_path)
+            # Handle both wrapper format {"items": [...]} and raw array [...]
+            items_data = data.get("items", []) if isinstance(data, dict) else data
             items = []
-            for item_data in data:
+            for item_data in items_data:
                 try:
                     item = ApplicationItem(**item_data)
                     items.append(item)
@@ -86,7 +88,8 @@ class QueueService:
         queue_path = self._get_queue_path(profile_id)
 
         try:
-            data = [item.model_dump() for item in items]
+            # Save in wrapper format {"items": [...]} for compatibility with Python CLI
+            data = {"items": [item.model_dump() for item in items]}
             save_json(queue_path, data)
         except Exception as e:
             raise FileOpsError(f"Failed to save queue for {profile_id}: {e}")

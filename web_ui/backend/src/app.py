@@ -55,9 +55,9 @@ async def lifespan(app: FastAPI):
     )
 
     app_context.profile_service = ProfileService(os.getenv("PROFILES_DIR", "../../profiles"))
-    app_context.queue_service = QueueService(os.getenv("QUEUES_DIR", "data/queues"))
-    app_context.settings_service = SettingsService(os.getenv("SETTINGS_FILE", ".env"))
-    app_context.artifact_service = ArtifactService(os.getenv("ARTIFACTS_DIR", "data/artifacts"))
+    app_context.queue_service = QueueService(os.getenv("QUEUES_DIR", "../../data/queues"))
+    app_context.settings_service = SettingsService(os.getenv("SETTINGS_FILE", "../../.env"))
+    app_context.artifact_service = ArtifactService(os.getenv("ARTIFACTS_DIR", "../../data/artifacts"))
     app_context.cli_service = CLIService(os.getenv("CLI_COMMAND", "auto-apply"))
 
     log.msg("app.startup", message="Application started")
