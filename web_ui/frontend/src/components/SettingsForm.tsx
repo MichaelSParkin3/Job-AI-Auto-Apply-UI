@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import {
   Collapsible,
-  Collapsible Content,
+  CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Setting, SettingCategory, SettingInputType } from "@/types";

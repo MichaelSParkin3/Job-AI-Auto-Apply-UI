@@ -25,7 +25,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Collapsible,
-  Collapsible Content,
+  CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Profile, ProfileDefaults, ProfileKeywords, ProfileExperience, ProfilePrompts } from "@/types";
