@@ -3,7 +3,7 @@ import { useProfile } from '../hooks/useProfile'
 import { JobQueue } from '../components/JobQueue'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
-import { Button } from '../components/Button'
+import { Button } from '@/components/ui/button'
 
 export const Dashboard: React.FC = () => {
   const {

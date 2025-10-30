@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useProfile } from '../hooks/useProfile'
 import { useQueue } from '../hooks/useQueue'
 import { cn } from '../lib/utils'
-import { Button } from './Button'
+import { Button } from '@/components/ui/button'
 
 interface NavItem {
   path: string

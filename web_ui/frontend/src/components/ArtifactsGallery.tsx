@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Artifacts } from '../types/index'
-import { Button } from './Button'
+import { Button } from '@/components/ui/button'
 import { useLazyLoadImage } from '../hooks/useLazyLoadImage'
 
 interface ArtifactsGalleryProps {

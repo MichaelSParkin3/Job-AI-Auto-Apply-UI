@@ -1,6 +1,8 @@
 import React from 'react'
 import { cn } from '../lib/utils'
-import { Button } from './Button'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AlertCircle } from 'lucide-react'
 
 interface ErrorMessageProps {
   error: Error | string | null
@@ -27,42 +29,34 @@ export const ErrorMessage: React.FC<
         : 'An unexpected error occurred'
 
   return (
-    <div
-      className={cn(
-        'p-4 bg-red-50 border border-red-200 rounded-lg',
-        'flex items-start gap-4'
-      )}
-      role="alert"
-    >
-      <div className="text-2xl">⚠️</div>
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
       <div className="flex-1">
-        <h3 className="font-semibold text-red-900 mb-1">
-          Error
-        </h3>
-        <p className="text-red-800 text-sm">
-          {errorMessage}
-        </p>
-        <div className="flex gap-2 mt-3">
-          {onRetry && (
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={onRetry}
-            >
-              Retry
-            </Button>
-          )}
-          {dismissible && onDismiss && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onDismiss}
-            >
-              Dismiss
-            </Button>
-          )}
-        </div>
+        <AlertDescription className="mt-2">
+          <p className="font-semibold mb-2">Error</p>
+          <p className="text-sm mb-3">{errorMessage}</p>
+          <div className="flex gap-2">
+            {onRetry && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={onRetry}
+              >
+                Retry
+              </Button>
+            )}
+            {dismissible && onDismiss && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onDismiss}
+              >
+                Dismiss
+              </Button>
+            )}
+          </div>
+        </AlertDescription>
       </div>
-    </div>
+    </Alert>
   )
 }

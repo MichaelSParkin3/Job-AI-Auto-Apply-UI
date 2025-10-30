@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { cn } from '../lib/utils'
-import { Button } from './Button'
+import { Button } from '@/components/ui/button'
 
 interface RefreshButtonProps {
   onRefresh: () => Promise<void>

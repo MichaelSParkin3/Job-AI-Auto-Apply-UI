@@ -8,7 +8,7 @@ import {
 import { cn } from '../lib/utils'
 import { LoadingSpinner } from './LoadingSpinner'
 import { ErrorMessage } from './ErrorMessage'
-import { Button } from './Button'
+import { Button } from '@/components/ui/button'
 
 interface JobQueueProps {
   profileId: string
