@@ -271,7 +271,7 @@ export default function SettingsForm({
               </Button>
             </CollapsibleTrigger>
 
-            <Collapsible Content className="px-4 pb-4 border-t pt-4">
+            <CollapsibleContent className="px-4 pb-4 border-t pt-4">
               <div className="space-y-4">
                 {categorySettings.map((setting) => (
                   <div key={setting.key} className="space-y-2">

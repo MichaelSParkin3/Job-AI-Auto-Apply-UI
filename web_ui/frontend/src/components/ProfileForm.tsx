@@ -406,7 +406,7 @@ export default function ProfileForm({
             )}
           </Button>
         </CollapsibleTrigger>
-        <Collapsible Content className="px-6 pb-6 space-y-4 border-t pt-4">
+        <CollapsibleContent className="px-6 pb-6 space-y-4 border-t pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="defaults-name">Default Name</Label>
@@ -475,7 +475,7 @@ export default function ProfileForm({
               />
             </div>
           </div>
-        </Collapsible Content>
+        </CollapsibleContent>
       </Collapsible>
 
       {/* Keywords Section */}
@@ -497,7 +497,7 @@ export default function ProfileForm({
             )}
           </Button>
         </CollapsibleTrigger>
-        <Collapsible Content className="px-6 pb-6 space-y-4 border-t pt-4">
+        <CollapsibleContent className="px-6 pb-6 space-y-4 border-t pt-4">
           <div className="space-y-2">
             <Label htmlFor="keywords-roles">Target Roles</Label>
             <Textarea
@@ -535,7 +535,7 @@ export default function ProfileForm({
               One technology per line
             </p>
           </div>
-        </Collapsible Content>
+        </CollapsibleContent>
       </Collapsible>
 
       {/* Experience Section */}
@@ -564,7 +564,7 @@ export default function ProfileForm({
             )}
           </Button>
         </CollapsibleTrigger>
-        <Collapsible Content className="px-6 pb-6 border-t pt-4">
+        <CollapsibleContent className="px-6 pb-6 border-t pt-4">
           <div className="space-y-6">
             {profile.experience?.map((exp, index) => (
               <div
@@ -702,7 +702,7 @@ export default function ProfileForm({
               Add Experience
             </Button>
           </div>
-        </Collapsible Content>
+        </CollapsibleContent>
       </Collapsible>
 
       {/* Prompts Section (Optional) */}
@@ -724,7 +724,7 @@ export default function ProfileForm({
             )}
           </Button>
         </CollapsibleTrigger>
-        <Collapsible Content className="px-6 pb-6 space-y-4 border-t pt-4">
+        <CollapsibleContent className="px-6 pb-6 space-y-4 border-t pt-4">
           <div className="space-y-2">
             <Label htmlFor="prompts-cover">Cover Letter Guidance</Label>
             <Textarea
@@ -778,7 +778,7 @@ export default function ProfileForm({
               rows={3}
             />
           </div>
-        </Collapsible Content>
+        </CollapsibleContent>
       </Collapsible>
 
       {/* Form Actions */}
