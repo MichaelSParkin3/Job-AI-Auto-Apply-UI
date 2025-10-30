@@ -8,6 +8,10 @@ import { LoadingSpinner } from './components/LoadingSpinner'
 import { Dashboard } from './pages/Dashboard'
 import Settings from './pages/Settings'
 import ProfileEdit from './pages/ProfileEdit'
+import { JobDetail } from './pages/JobDetail'
+import ProfilesPage from './pages/ProfilesPage'
+import DiscoverPage from './pages/DiscoverPage'
+import ArtifactsPage from './pages/ArtifactsPage'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -73,7 +77,7 @@ export default function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route
                     path="/job/:jobId"
-                    element={<JobDetailPage />}
+                    element={<JobDetail />}
                   />
                   <Route
                     path="/discover"
@@ -86,6 +90,10 @@ export default function App() {
                   <Route
                     path="/profiles"
                     element={<ProfilesPage />}
+                  />
+                  <Route
+                    path="/profiles/new"
+                    element={<ProfileEdit isNew={true} />}
                   />
                   <Route
                     path="/settings"
@@ -109,54 +117,3 @@ export default function App() {
   )
 }
 
-function JobDetailPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">
-        Job Details
-      </h1>
-      <p className="text-gray-600 mt-2">
-        Coming Soon - Job detail view with artifacts
-      </p>
-    </div>
-  )
-}
-
-function DiscoverPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">
-        Discover Jobs
-      </h1>
-      <p className="text-gray-600 mt-2">
-        Coming Soon - Discovery workflow
-      </p>
-    </div>
-  )
-}
-
-function ProfilesPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">
-        Manage Profiles
-      </h1>
-      <p className="text-gray-600 mt-2">
-        Coming Soon - Profile editing interface
-      </p>
-    </div>
-  )
-}
-
-function ArtifactsPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">
-        Artifacts
-      </h1>
-      <p className="text-gray-600 mt-2">
-        Coming Soon - Artifact browser and viewer
-      </p>
-    </div>
-  )
-}

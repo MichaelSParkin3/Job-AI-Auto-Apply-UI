@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from web_ui.backend.src.models.config import RunConfiguration, OperationType
-from web_ui.backend.src.utils.file_ops import load_json, save_json, ensure_dir
+from src.models.config import RunConfiguration, OperationType
+from src.utils.file_ops import load_json, save_json, ensure_dir
 
 
 class RunConfigurationService:
