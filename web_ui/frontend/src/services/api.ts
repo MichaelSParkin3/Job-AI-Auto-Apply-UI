@@ -147,12 +147,22 @@ export const jobsApi = {
 
 export const discoveryApi = {
   execute: async (profileId: string, searchWindow?: string, jobCap?: number, customQuery?: string) => {
-    const { data } = await api.post('/discover/execute', {
+    // Build payload with only defined values to avoid serialization issues
+    const payload: any = {
       profile_id: profileId,
-      search_window: searchWindow,
-      job_cap: jobCap,
-      custom_query: customQuery,
-    })
+    }
+
+    if (searchWindow !== undefined) {
+      payload.search_window = searchWindow
+    }
+    if (jobCap !== undefined) {
+      payload.job_cap = jobCap
+    }
+    if (customQuery !== undefined && customQuery !== '') {
+      payload.custom_query = customQuery
+    }
+
+    const { data } = await api.post('/discover/execute', payload)
     return data
   },
 
