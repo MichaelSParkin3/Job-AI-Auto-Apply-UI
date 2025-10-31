@@ -70,7 +70,7 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
 
   const loadLastOptions = async () => {
     try {
-      const response = await apiClient.get(`/api/v1/discover/last-options/${profileId}`);
+      const response = await apiClient.get(`/discover/last-options/${profileId}`);
       const lastOptions = response.data;
 
       setSearchWindow(lastOptions.search_window || "24h");
@@ -113,7 +113,7 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
     try {
       // Step 1: Validate server connection
       try {
-        const healthCheck = await apiClient.get("/api/v1/health");
+        const healthCheck = await apiClient.get("/health");
         if (healthCheck.status !== 200) {
           throw new Error("Backend server is not responding");
         }
@@ -124,7 +124,7 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
       // Step 2: Execute discovery with error handling
       let response;
       try {
-        response = await apiClient.post("/api/v1/discover/execute", null, {
+        response = await apiClient.post("/discover/execute", null, {
           params: {
             profile_id: profileId,
             search_window: searchWindow,
