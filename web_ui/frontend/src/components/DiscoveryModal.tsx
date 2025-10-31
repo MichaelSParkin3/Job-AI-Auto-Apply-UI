@@ -144,8 +144,8 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
       }
 
       // Step 3: Process results with validation
-      const totalDiscovered = response.data?.total_discovered || 0;
-      const totalEnqueued = response.data?.total_enqueued || 0;
+      const totalDiscovered = response?.total_discovered || 0;
+      const totalEnqueued = response?.total_enqueued || 0;
 
       if (totalDiscovered < 0 || totalEnqueued < 0) {
         throw new Error("Invalid discovery results received from server");
