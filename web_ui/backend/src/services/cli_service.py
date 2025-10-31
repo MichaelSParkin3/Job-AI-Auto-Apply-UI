@@ -47,7 +47,8 @@ class CLIService:
         if custom_query:
             cmd.extend(["--query", custom_query])
 
-        await self._execute_streaming(cmd)
+        async for event in self._execute_streaming(cmd):
+            yield event
 
     async def execute_apply_single(
         self,
@@ -67,7 +68,8 @@ class CLIService:
         if review_mode:
             cmd.append("--review-mode")
 
-        await self._execute_streaming(cmd)
+        async for event in self._execute_streaming(cmd):
+            yield event
 
     async def execute_apply_bulk(
         self,
@@ -80,7 +82,8 @@ class CLIService:
         if supervised:
             cmd.append("--supervised")
 
-        await self._execute_streaming(cmd)
+        async for event in self._execute_streaming(cmd):
+            yield event
 
     async def _execute_streaming(
         self,
