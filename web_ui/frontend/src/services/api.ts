@@ -146,11 +146,12 @@ export const jobsApi = {
 // ============================================================================
 
 export const discoveryApi = {
-  execute: async (profileId: string, searchWindow?: string, jobCap?: number) => {
+  execute: async (profileId: string, searchWindow?: string, jobCap?: number, customQuery?: string) => {
     const { data } = await api.post('/discover/execute', {
       profile_id: profileId,
       search_window: searchWindow,
       job_cap: jobCap,
+      custom_query: customQuery,
     })
     return data
   },

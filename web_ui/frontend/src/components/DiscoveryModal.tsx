@@ -21,7 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ChevronDown } from "lucide-react";
-import { apiClient } from "@/services/api";
+import { apiClient, discoveryApi } from "@/services/api";
 import { storage } from "@/services/storage";
 
 interface DiscoveryModalProps {
@@ -124,14 +124,12 @@ export const DiscoveryModal: React.FC<DiscoveryModalProps> = ({
       // Step 2: Execute discovery with error handling
       let response;
       try {
-        response = await apiClient.post("/discover/execute", null, {
-          params: {
-            profile_id: profileId,
-            search_window: searchWindow,
-            job_cap: jobCap,
-            custom_query: customQuery || undefined,
-          },
-        });
+        response = await discoveryApi.execute(
+          profileId,
+          searchWindow,
+          jobCap,
+          customQuery || undefined
+        );
       } catch (discoverErr: any) {
         if (discoverErr.response?.status === 404) {
           throw new Error(`Profile "${profileId}" not found`);
