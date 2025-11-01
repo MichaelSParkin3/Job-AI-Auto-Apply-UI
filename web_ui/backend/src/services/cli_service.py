@@ -91,11 +91,22 @@ class CLIService:
         timeout: int = 3600,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute command and stream JSON output."""
+        import os
+        from pathlib import Path
+
+        # Ensure CLI can find profiles directory by setting env var
+        # The CLI runs from backend dir, so we need absolute path to project root
+        env = os.environ.copy()
+        backend_dir = Path(__file__).parent.parent.parent.parent
+        profiles_dir = (backend_dir / ".." / "profiles").resolve()
+        env["AUTO_APPLY_PROFILES_DIR"] = str(profiles_dir)
+
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
 
             while True:

@@ -673,9 +673,21 @@ def _ensure_profile(profile: Profile | Mapping[str, object]) -> Profile:
     prompts = _coerce_str_mapping(profile.get("prompts", {}))
     user_data_dir = profile.get("user_data_dir")
     preferred_browser = profile.get("preferred_browser")
+    search_query = profile.get("search_query")
+    experience = profile.get("experience")
 
     resolved_user_dir = Path(str(user_data_dir)).expanduser() if user_data_dir else None
     resolved_browser = str(preferred_browser) if preferred_browser else None
+    resolved_search_query = str(search_query) if search_query else None
+    resolved_experience = (
+        [
+            {key: value for key, value in item.items() if isinstance(item, Mapping)}
+            for item in experience
+            if isinstance(item, Mapping)
+        ]
+        if isinstance(experience, list)
+        else None
+    )
 
     return Profile(
         id=profile_id,
@@ -686,6 +698,8 @@ def _ensure_profile(profile: Profile | Mapping[str, object]) -> Profile:
         prompts=prompts,
         user_data_dir=resolved_user_dir,
         preferred_browser=resolved_browser,
+        search_query=resolved_search_query,
+        experience=resolved_experience if resolved_experience else None,
     )
 
 
