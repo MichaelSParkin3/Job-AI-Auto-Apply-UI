@@ -102,11 +102,14 @@ class CLIService:
         env["AUTO_APPLY_PROFILES_DIR"] = str(profiles_dir)
 
         try:
+            # Set CWD to project root so CLI writes to correct queue/artifacts locations
+            project_root = backend_dir.parent
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                cwd=str(project_root),
             )
 
             while True:
