@@ -163,7 +163,7 @@ export default function DiscoverPage() {
       {/* Discovery Modal */}
       <DiscoveryModal
         isOpen={showDiscoveryModal}
-        profileId={activeProfile.id}
+        profileId={activeProfile!}
         onClose={() => setShowDiscoveryModal(false)}
         onDiscoveryComplete={handleDiscoveryComplete}
         onRefreshQueue={refreshQueue}
