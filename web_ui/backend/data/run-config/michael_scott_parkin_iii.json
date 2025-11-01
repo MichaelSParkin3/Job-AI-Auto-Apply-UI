@@ -1,7 +1,7 @@
 {
   "profile_id": "michael_scott_parkin_iii",
   "operation_type": "discover",
-  "search_window": "24h",
+  "search_window": "7d",
   "job_cap": 3,
   "custom_query": null,
   "mode": null,
@@ -16,5 +16,5 @@
   "logs_dir": null,
   "max_concurrent": null,
   "stop_on_failure": null,
-  "last_updated": "2025-11-01T20:24:41.452282"
+  "last_updated": "2025-11-01T20:28:44.210027"
 }

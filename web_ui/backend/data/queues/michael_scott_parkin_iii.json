@@ -1025,6 +1025,120 @@
         "extracted_at": null
       },
       "reason": null
+    },
+    {
+      "id": "019a411bbc7d6528b45ced47ab43",
+      "url": "https://jobs.lever.co/useinsider/883843d7-46e6-4ada-8633-d2bafe319191",
+      "company": "useinsider",
+      "title": "Front-End Developer (Remote)",
+      "status": "new",
+      "discovered_at": "2025-11-01T20:28:48.125093+00:00",
+      "last_updated_at": "2025-11-01T20:28:48.125093+00:00",
+      "hash": "4a8f5657b028c2bd2b9fe4e475689821e5dbf3e1a4f2b049aa95f829e49789d0",
+      "artifacts": {
+        "dom_snapshot_path": null,
+        "screenshot_path": null,
+        "video_path": null,
+        "har_path": null,
+        "confirmation_text": null,
+        "confirmation_id": null,
+        "form_state_path": null,
+        "screenshot_before_path": null,
+        "screenshot_after_path": null
+      },
+      "details": {
+        "location": "Istanbul, Turkiye",
+        "work_model": "remote",
+        "employment_type": "full-time",
+        "department": "Software Development /",
+        "posting_date": null,
+        "compensation": null,
+        "posting_excerpt": "Before jumping in on all the information about the role and what you can bring to the table, let us introduce ourselves real quick.\n\n\nAbout us\n\n\nWe are Insider, a B2B SaaS company that drives growth for its clients around the world. How are we achieving this? We are the #1 AI-native platform for Customer Experience and Marketing—offers marketers a single platform to deliver unique experiences per person, drive profitable growth, and unleash peak productivity and efficiency. Our platform connects data across channels, predicts future behavior with AI, and individualizes experiences from a single platform.\n\n\nWe have just celebrated our $500M Series E funding round, led by General Atlantic. Before this, we’ve unlocked unicorn status following our Series D round. We are backed by top-notch investors, including Sequoia Capital, QIA, Riverwood, and Endeavor Catalyst, and trusted by 1200+ brands from high-growth startups to the most prestigious Fortune 500 companies such as Samsung, Coca-Cola, Nike, L’Oreal, Singapore Airlines, Virgin, Nestle, Nissan, Lenovo, Puma, IKEA, Allianz, Dominos, CNN, and the list goes on.\n\n\nHaving unlocked unicorn status, Insider was congratulated for becoming one of the only woman-founded, women-led B2B SaaS unicorns in the world, to achieve $200M in CARR (Committed Annual Recurring Revenue). Insider was named a leader in The Forrester Wave for Cross-Channel Campaign Management 2021, and Leader in the IDC MarketScape: Worldwide Omnichannel Marketing Platf",
+        "posting_text": "Before jumping in on all the information about the role and what you can bring to the table, let us introduce ourselves real quick.\n\n\nAbout us\n\n\nWe are Insider, a B2B SaaS company that drives growth for its clients around the world. How are we achieving this? We are the #1 AI-native platform for Customer Experience and Marketing—offers marketers a single platform to deliver unique experiences per person, drive profitable growth, and unleash peak productivity and efficiency. Our platform connects data across channels, predicts future behavior with AI, and individualizes experiences from a single platform.\n\n\nWe have just celebrated our $500M Series E funding round, led by General Atlantic. Before this, we’ve unlocked unicorn status following our Series D round. We are backed by top-notch investors, including Sequoia Capital, QIA, Riverwood, and Endeavor Catalyst, and trusted by 1200+ brands from high-growth startups to the most prestigious Fortune 500 companies such as Samsung, Coca-Cola, Nike, L’Oreal, Singapore Airlines, Virgin, Nestle, Nissan, Lenovo, Puma, IKEA, Allianz, Dominos, CNN, and the list goes on.\n\n\nHaving unlocked unicorn status, Insider was congratulated for becoming one of the only woman-founded, women-led B2B SaaS unicorns in the world, to achieve $200M in CARR (Committed Annual Recurring Revenue). Insider was named a leader in The Forrester Wave for Cross-Channel Campaign Management 2021, and Leader in the IDC MarketScape: Worldwide Omnichannel Marketing Platforms for B2C Enterprises 2023 Assessment. The company has been recognized in The Top 1% of all software companies worldwide in G2’s 2024 Software Awards, and named in The Top 10 Best Software Products with the most #1 rankings alongside other software legends like Google, Zoom, and Monday.com. According to G2’s Spring’24 reports. Insider is also the #1 G2 Leader in 6+ categories, including Customer Data Platforms (CDP), Personalization Engines, Personalization Software, Mobile Marketing, Customer Journey Analytics, and e-commerce Personalization.\n\n\nWhen our team founded Insider, they not only sought to create a product company but also to build the most socially progressive technology community in the world. Through our corporate social responsibility initiatives like 100Projects SheCodes, SheLeads, and SheMarkables, our community has committed to scaling its impact into our communities across 27+ countries, spearheading transformative projects in areas such as health, education, farming, animal rights, and increasing the proportional representation of women in STEM careers. \n\n\nBehind all these achievements, there is an exceptionally talented and passionate team across 27+ countries that moves fast and agile, creates cutting-edge products, and focuses on making an impact. If you want to join us on this journey, just keep reading.\n\n\nAnd now? Now we are looking for a Front-end Developer, who will help our Web Development Team create and implement a wide variety of web-based products using Go, Node JS, or PHP, and wants to take their career one step further. If you think you are one of those people, here you will have the chance to work with the world's leading brands with Artificial Intelligence & Machine Learning technologies. Right now, while you are reading this, we are sending an average of 2.2 billion requests and almost 2 billion instant notifications to more than 450 servers a day. On the Artificial Intelligence and Predictive side, we have more than 100 TB of historical data. We do not wait for jobs or opportunities to come to our feet, we create them. We have now reached 25% of global users. If all these interests you, read on for more! \n\n\nOur Engineers and Software Developers always think with an innovative perspective, taking advantage of the inexhaustible power of the digital world. They create impressive and intelligent products like a true artist. Our Product and Development teams are located in our Istanbul office, so we produce and develop the technology we export to the world in our own country. As Insider, we believe in cooperation and adapting the innovations brought by technology by acting fast. We work closely with other Departments with agile teams, and we are not afraid of getting our hands dirty. As we said; we do not wait for jobs or opportunities to come to our feet, we create them ourselves. You can check our Tech Stacks here!: https://www.stackshare.io/companies/useinsider ",
+        "tech_tags": [],
+        "source_query": "site:jobs.lever.co intitle:remote (\"Front End\" OR \"Frontend\") -\"hybrid\" -\"on-site\" -\"onsite\"",
+        "source_rank": 1,
+        "apply_url": "https://jobs.lever.co/useinsider/883843d7-46e6-4ada-8633-d2bafe319191/apply",
+        "closed": false,
+        "extracted_at": "2025-11-01T20:28:48.125060+00:00"
+      },
+      "reason": null
+    },
+    {
+      "id": "019a411bbdcd5867a323b12dcbe5",
+      "url": "https://jobs.lever.co/wishpond/2435df43-d3ef-4ab4-b344-d539008ce0bd",
+      "company": "wishpond",
+      "title": "SENIOR PYTHON DEVELOPER (100% Remote outside of Canada)",
+      "status": "new",
+      "discovered_at": "2025-11-01T20:28:48.461356+00:00",
+      "last_updated_at": "2025-11-01T20:28:48.461356+00:00",
+      "hash": "9786004c234742a88962e587186222ab94f75237d345e12e0946ae279201fbad",
+      "artifacts": {
+        "dom_snapshot_path": null,
+        "screenshot_path": null,
+        "video_path": null,
+        "har_path": null,
+        "confirmation_text": null,
+        "confirmation_id": null,
+        "form_state_path": null,
+        "screenshot_before_path": null,
+        "screenshot_after_path": null
+      },
+      "details": {
+        "location": "Brazil",
+        "work_model": "remote",
+        "employment_type": "contractor - full time",
+        "department": "WISHPOND TECHNOLOGIES – Product Development /",
+        "posting_date": null,
+        "compensation": null,
+        "posting_excerpt": "SalesCloser.ai currently has the position of Senior Python Developer, and we’re excited to tell you about it!\n \nOVERVIEW\nSalescloser.ai is looking for a Senior Python Developer to join our team on a full-time basis. This is a fully remote position, and the successful individual could be based anywhere in the world. You will collaborate with a SalesCloser.ai exceptional global team, building scalable and efficient solutions that power the products and services offered to clients across Canada and the US. In partnership with the Product Development Department, the Senior Python Developer will play a key role in driving innovation, improving system performance, and ensuring the continued success of SalesCloser.ai.\n \n RESPONSIBILITIES\n• Write clean, efficient, and scalable code primarily in Python\n• Build and maintain components for web applications pragmatically, with a strong focus on performance, reliability, and security\n• Design and implement robust backend systems and RESTful APIs\n• Troubleshoot application issues, adeptly debugging and resolving errors to ensure the best user experience\n• Develop and maintain automated tests to guarantee code quality and system stability",
+        "posting_text": "SalesCloser.ai currently has the position of Senior Python Developer, and we’re excited to tell you about it!\n \nOVERVIEW\nSalescloser.ai is looking for a Senior Python Developer to join our team on a full-time basis. This is a fully remote position, and the successful individual could be based anywhere in the world. You will collaborate with a SalesCloser.ai exceptional global team, building scalable and efficient solutions that power the products and services offered to clients across Canada and the US. In partnership with the Product Development Department, the Senior Python Developer will play a key role in driving innovation, improving system performance, and ensuring the continued success of SalesCloser.ai.\n \n RESPONSIBILITIES\n• Write clean, efficient, and scalable code primarily in Python\n• Build and maintain components for web applications pragmatically, with a strong focus on performance, reliability, and security\n• Design and implement robust backend systems and RESTful APIs\n• Troubleshoot application issues, adeptly debugging and resolving errors to ensure the best user experience\n• Develop and maintain automated tests to guarantee code quality and system stability",
+        "tech_tags": [],
+        "source_query": "site:jobs.lever.co intitle:remote (\"Front End\" OR \"Frontend\") -\"hybrid\" -\"on-site\" -\"onsite\"",
+        "source_rank": 2,
+        "apply_url": "https://jobs.lever.co/wishpond/2435df43-d3ef-4ab4-b344-d539008ce0bd/apply",
+        "closed": false,
+        "extracted_at": "2025-11-01T20:28:48.461323+00:00"
+      },
+      "reason": null
+    },
+    {
+      "id": "019a411bc5d8b47a35768c0cd642",
+      "url": "https://jobs.lever.co/bluelightconsulting/1ae4d1d7-2f90-44cb-8d3c-9461c99191ef?source=JobTarget+Jobs",
+      "company": "bluelightconsulting",
+      "title": "Data Engineer - Remote, Latin America",
+      "status": "new",
+      "discovered_at": "2025-11-01T20:28:50.520238+00:00",
+      "last_updated_at": "2025-11-01T20:28:50.520238+00:00",
+      "hash": "02b9fdf0c2ee34a3b5e9d23ab0e90bb0f000ec251762bc72ca65d7e8efbd1881",
+      "artifacts": {
+        "dom_snapshot_path": null,
+        "screenshot_path": null,
+        "video_path": null,
+        "har_path": null,
+        "confirmation_text": null,
+        "confirmation_id": null,
+        "form_state_path": null,
+        "screenshot_before_path": null,
+        "screenshot_after_path": null
+      },
+      "details": {
+        "location": "Buenos Aires Province, Argentina",
+        "work_model": "remote",
+        "employment_type": "full-time",
+        "department": "Engineering – Software Development /",
+        "posting_date": null,
+        "compensation": null,
+        "posting_excerpt": "Bluelight Consulting is a leading software consultancy dedicated to designing and developing innovative technology that enhances users' lives. With a steadfast commitment to delivering exceptional service to our clients, Bluelight excels in its focus on quality and customer satisfaction. Our mission is not only to create cutting-edge applications but also to foster a collaborative and enriching work environment where each team member can grow and thrive. With a presence across the United States and Central/South America, Bluelight is in an exciting phase of expansion, continually seeking exceptional talent to join its dynamic and diverse community.\n\n\nWe are looking for a skilled individual to join our rapidly growing team at Bluelight Consulting. This position is ideal for someone who thrives in a fast-paced, dynamic environment where everyone's opinions and efforts are valued and appreciated. You will have the opportunity to contribute to challenging and meaningful projects, developing high-quality applications that stand out in the market. We value continuous learning, personal growth, and hard work, offering a collaborative environment that promotes professional development. If you are passionate about software development and eager to be part of a growing software consultancy, we invite you to apply and join us on this exciting journey.",
+        "posting_text": "Bluelight Consulting is a leading software consultancy dedicated to designing and developing innovative technology that enhances users' lives. With a steadfast commitment to delivering exceptional service to our clients, Bluelight excels in its focus on quality and customer satisfaction. Our mission is not only to create cutting-edge applications but also to foster a collaborative and enriching work environment where each team member can grow and thrive. With a presence across the United States and Central/South America, Bluelight is in an exciting phase of expansion, continually seeking exceptional talent to join its dynamic and diverse community.\n\n\nWe are looking for a skilled individual to join our rapidly growing team at Bluelight Consulting. This position is ideal for someone who thrives in a fast-paced, dynamic environment where everyone's opinions and efforts are valued and appreciated. You will have the opportunity to contribute to challenging and meaningful projects, developing high-quality applications that stand out in the market. We value continuous learning, personal growth, and hard work, offering a collaborative environment that promotes professional development. If you are passionate about software development and eager to be part of a growing software consultancy, we invite you to apply and join us on this exciting journey.",
+        "tech_tags": [],
+        "source_query": "site:jobs.lever.co intitle:remote (\"Front End\" OR \"Frontend\") -\"hybrid\" -\"on-site\" -\"onsite\"",
+        "source_rank": 3,
+        "apply_url": "https://jobs.lever.co/bluelightconsulting/1ae4d1d7-2f90-44cb-8d3c-9461c99191ef/apply",
+        "closed": false,
+        "extracted_at": "2025-11-01T20:28:50.520208+00:00"
+      },
+      "reason": null
     }
   ]
 }
