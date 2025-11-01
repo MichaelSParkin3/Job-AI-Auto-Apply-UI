@@ -241,16 +241,28 @@ async def execute_discovery(
         total_enqueued = 0
 
         # Call CLI service to execute discovery
+        discovery_output = None
         async for event in cli_service.execute_discover(
             request.profile_id,
             request.search_window or "24h",
             request.job_cap or 10,
             request.custom_query,
         ):
-            # Extract counts from final event
-            if event.get("event") == "discover.end":
-                total_discovered = event.get("total_discovered", 0)
-                total_enqueued = event.get("total_enqueued", 0)
+            # The discovery output is a single JSON object with "items" key (per contract)
+            if isinstance(event, dict) and "items" in event:
+                discovery_output = event
+                total_discovered = len(event.get("items", []))
+
+        # After discovery completes, reload the queue to see how many were actually enqueued
+        # (in case some were duplicates)
+        if discovery_output:
+            try:
+                queue_items = queue_service.load_queue(request.profile_id)
+                total_enqueued = len(queue_items)
+            except Exception as e:
+                # If queue loading fails, at least report what we discovered
+                total_enqueued = total_discovered
+                print(f"Warning: Could not reload queue after discovery: {e}")
 
         return {
             "status": "completed",

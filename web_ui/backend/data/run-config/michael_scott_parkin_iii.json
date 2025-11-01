@@ -1,0 +1,20 @@
+{
+  "profile_id": "michael_scott_parkin_iii",
+  "operation_type": "discover",
+  "search_window": "24h",
+  "job_cap": 3,
+  "custom_query": null,
+  "mode": null,
+  "review_mode": null,
+  "llm_provider_override": null,
+  "llm_model_override": null,
+  "use_llm_locator": null,
+  "debug_resume_widget": null,
+  "resume_wait_timeout": null,
+  "audit_after_submit": null,
+  "save_logs": null,
+  "logs_dir": null,
+  "max_concurrent": null,
+  "stop_on_failure": null,
+  "last_updated": "2025-11-01T16:48:41.766878"
+}
