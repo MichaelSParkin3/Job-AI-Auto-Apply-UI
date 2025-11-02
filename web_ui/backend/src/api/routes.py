@@ -11,6 +11,7 @@ from src.services import (
     SettingsService,
     ArtifactService,
     CLIService,
+    RunConfigurationService,
 )
 
 
@@ -47,6 +48,11 @@ def get_artifact_service() -> ArtifactService:
 def get_cli_service() -> CLIService:
     """Get CLIService instance."""
     return app_context.cli_service
+
+
+def get_run_config_service() -> RunConfigurationService:
+    """Get RunConfigurationService instance."""
+    return app_context.run_config_service
 
 
 # Create API router
@@ -209,24 +215,17 @@ async def delete_job(
 # DISCOVERY ENDPOINTS
 # ============================================================================
 
-# Import RunConfigurationService for discovery options persistence
-def get_run_config_service():
-    """Get RunConfigurationService instance."""
-    from src.services.run_config_service import RunConfigurationService
-    return RunConfigurationService()
-
 
 @router.post("/discover/execute", tags=["discovery"])
 async def execute_discovery(
     request: DiscoveryRequest,
     cli_service: CLIService = Depends(get_cli_service),
+    queue_service: QueueService = Depends(get_queue_service),
+    run_config_service: RunConfigurationService = Depends(get_run_config_service),
 ) -> Dict[str, Any]:
     """Execute discovery with configurable options."""
     try:
-        from src.services.run_config_service import RunConfigurationService
-
         # Save the options for next time
-        run_config_service = RunConfigurationService()
         config = RunConfiguration(
             profile_id=request.profile_id,
             operation_type="discover",
