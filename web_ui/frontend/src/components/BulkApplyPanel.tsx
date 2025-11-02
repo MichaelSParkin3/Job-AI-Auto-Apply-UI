@@ -88,7 +88,7 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
   const loadLastOptions = async () => {
     try {
       const response = await apiClient.get(
-        `/api/v1/apply/last-options/${profileId}`
+        `/apply/last-options/${profileId}`
       );
       const lastOptions = response.data;
 
@@ -140,7 +140,7 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
     try {
       // Step 1: Validate server connection
       try {
-        const healthCheck = await apiClient.get("/api/v1/health");
+        const healthCheck = await apiClient.get("/health");
         if (healthCheck.status !== 200) {
           throw new Error("Backend server is not responding");
         }
@@ -153,7 +153,7 @@ export const BulkApplyPanel: React.FC<BulkApplyPanelProps> = ({
       // Step 2: Execute bulk apply with error handling
       let response;
       try {
-        response = await apiClient.post("/api/v1/apply/bulk", null, {
+        response = await apiClient.post("/apply/bulk", null, {
           params: {
             profile_id: profileId,
             mode: mode,
