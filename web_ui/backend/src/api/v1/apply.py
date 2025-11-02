@@ -3,7 +3,7 @@
 import os
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from src.models.config import (
     RunConfiguration,
@@ -14,13 +14,25 @@ from src.models.application import ApplicationStatus, FailureReason
 from src.services.cli_service import CLIService
 from src.services.queue_service import QueueService
 from src.services.run_config_service import RunConfigurationService
+from src.app import app_context
 
 router = APIRouter(prefix="/apply", tags=["apply"])
 
-# Service instances (would normally be injected)
-cli_service = CLIService()
-queue_service = QueueService()
-run_config_service = RunConfigurationService()
+
+# Dependency injection functions
+def get_cli_service() -> CLIService:
+    """Get CLIService instance."""
+    return app_context.cli_service
+
+
+def get_queue_service() -> QueueService:
+    """Get QueueService instance."""
+    return app_context.queue_service
+
+
+def get_run_config_service() -> RunConfigurationService:
+    """Get RunConfigurationService instance."""
+    return app_context.run_config_service
 
 
 def validate_resume_timeout(timeout: Optional[int]) -> None:
@@ -95,6 +107,9 @@ async def apply_single(
     audit_after_submit: Optional[bool] = False,
     save_logs: Optional[bool] = False,
     logs_dir: Optional[str] = None,
+    queue_service: QueueService = Depends(get_queue_service),
+    cli_service: CLIService = Depends(get_cli_service),
+    run_config_service: RunConfigurationService = Depends(get_run_config_service),
 ) -> Dict[str, Any]:
     """Apply to a single job.
 
@@ -170,13 +185,37 @@ async def apply_single(
         )
         run_config_service.save_run_config(profile_id, config)
 
-        # Execute apply via CLI (simplified - real implementation streams)
+        # Execute apply via CLI and stream results
+        submitted = False
+        failed = False
+        failure_reason = None
+        confirmation_id = None
+
+        async for event in cli_service.execute_apply_single(
+            profile_id,
+            job_id,
+            review_mode=review_mode,
+        ):
+            # Parse event and track result
+            if isinstance(event, dict):
+                event_type = event.get("type")
+                if event_type == "item.submitted":
+                    submitted = True
+                    confirmation_id = event.get("confirmation_id")
+                elif event_type == "item.failed":
+                    failed = True
+                    failure_reason = event.get("reason", {}).get("message")
+
         return {
-            "status": "started",
+            "status": "submitted" if submitted else ("failed" if failed else "in_progress"),
             "profile_id": profile_id,
             "job_id": job_id,
             "mode": mode,
-            "message": "Application execution initiated",
+            "submitted": submitted,
+            "failed": failed,
+            "failure_reason": failure_reason,
+            "confirmation_id": confirmation_id,
+            "message": "Application completed successfully" if submitted else (f"Application failed: {failure_reason}" if failed else "Application in progress"),
         }
 
     except HTTPException:
@@ -199,6 +238,9 @@ async def apply_bulk(
     llm_model_override: Optional[str] = None,
     save_logs: Optional[bool] = False,
     logs_dir: Optional[str] = None,
+    queue_service: QueueService = Depends(get_queue_service),
+    cli_service: CLIService = Depends(get_cli_service),
+    run_config_service: RunConfigurationService = Depends(get_run_config_service),
 ) -> Dict[str, Any]:
     """Apply to multiple waiting jobs.
 
@@ -279,14 +321,35 @@ async def apply_bulk(
                 ApplicationStatus.IN_PROGRESS,
             )
 
-        # Execute bulk apply via CLI (simplified - real implementation streams)
+        # Execute bulk apply via CLI and stream results
+        submitted_count = 0
+        failed_count = 0
+        captcha_blocked_count = 0
+
+        async for event in cli_service.execute_apply_bulk(
+            profile_id,
+            supervised=(mode == "supervised"),
+        ):
+            # Parse event and track results
+            if isinstance(event, dict):
+                event_type = event.get("type")
+                if event_type == "item.submitted":
+                    submitted_count += 1
+                elif event_type == "item.failed":
+                    failed_count += 1
+                elif event_type == "item.captcha_blocked":
+                    captcha_blocked_count += 1
+
         return {
-            "status": "started",
+            "status": "completed",
             "profile_id": profile_id,
             "total_jobs": len(waiting_jobs),
+            "submitted": submitted_count,
+            "failed": failed_count,
+            "captcha_blocked": captcha_blocked_count,
             "mode": mode,
             "max_concurrent": max_concurrent,
-            "message": f"Bulk application initiated for {len(waiting_jobs)} jobs",
+            "message": f"Bulk application completed: {submitted_count} submitted, {failed_count} failed, {captcha_blocked_count} captcha blocked",
         }
 
     except HTTPException:
@@ -302,6 +365,7 @@ async def apply_bulk(
 async def get_apply_status(
     job_id: str,
     profile_id: str,
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> Dict[str, Any]:
     """Get current application status for a job.
 
@@ -353,6 +417,7 @@ async def get_apply_status(
 async def get_apply_logs(
     job_id: str,
     profile_id: str,
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> Dict[str, Any]:
     """Get application logs for a job.
 
@@ -391,7 +456,10 @@ async def get_apply_logs(
 
 
 @router.get("/last-options/{profile_id}", response_model=Dict[str, Any])
-async def get_last_apply_options(profile_id: str) -> Dict[str, Any]:
+async def get_last_apply_options(
+    profile_id: str,
+    run_config_service: RunConfigurationService = Depends(get_run_config_service),
+) -> Dict[str, Any]:
     """Get last-used apply options for a profile.
 
     Args:
@@ -463,6 +531,7 @@ async def get_last_apply_options(profile_id: str) -> Dict[str, Any]:
 async def mark_captcha_blocked(
     profile_id: str,
     job_id: str,
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> Dict[str, Any]:
     """Mark a job as CAPTCHA blocked and allow for later resumption.
 
@@ -521,6 +590,7 @@ async def mark_captcha_blocked(
 async def stop_application(
     profile_id: str,
     job_id: str,
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> Dict[str, Any]:
     """Stop or cancel a job application in progress.
 
