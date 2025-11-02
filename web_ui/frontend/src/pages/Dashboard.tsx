@@ -1,17 +1,28 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useProfile } from '../hooks/useProfile'
+import { useQueue } from '../hooks/useQueue'
 import { JobQueue } from '../components/JobQueue'
+import { BulkApplyPanel } from '../components/BulkApplyPanel'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { Button } from '@/components/ui/button'
 
 export const Dashboard: React.FC = () => {
+  const [showApplyPanel, setShowApplyPanel] = useState(false)
+
   const {
     activeProfile,
     profileData,
     isLoading,
     error,
   } = useProfile()
+
+  const {
+    counts: queueCounts,
+    refresh: refreshQueue,
+  } = useQueue(activeProfile || '', 5000)
+
+  const waitingJobsCount = queueCounts?.NEW || 0
 
   if (isLoading) {
     return (
@@ -59,14 +70,10 @@ export const Dashboard: React.FC = () => {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => {
-            // This will be connected to apply panel in US5
-            alert(
-              'Apply Options panel will open here'
-            )
-          }}
+          onClick={() => setShowApplyPanel(true)}
+          disabled={waitingJobsCount === 0}
         >
-          ⚡ Apply to Waiting Jobs
+          ⚡ Apply to Waiting Jobs ({waitingJobsCount})
         </Button>
       </div>
 
@@ -74,6 +81,17 @@ export const Dashboard: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <JobQueue profileId={activeProfile} />
       </div>
+
+      {/* Apply Modal */}
+      <BulkApplyPanel
+        isOpen={showApplyPanel}
+        onClose={() => setShowApplyPanel(false)}
+        profileId={activeProfile!}
+        totalWaitingJobs={waitingJobsCount}
+        onApplyComplete={async () => {
+          await refreshQueue()
+        }}
+      />
     </div>
   )
 }
