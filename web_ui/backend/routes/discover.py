@@ -1,5 +1,6 @@
 """Routes for job discovery."""
 
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -52,8 +53,11 @@ async def run_discover_task(request: DiscoverRequest) -> dict:
         # Convert window string to hours
         window_hours = _parse_window_to_hours(request.window)
 
-        # Call discover_jobs directly
-        items = discover_jobs(profile=profile, window_hours=window_hours, cap=request.cap)
+        # Call discover_jobs in thread pool to avoid asyncio.run() conflict
+        # discover_jobs is synchronous but uses asyncio.run() internally
+        items = await asyncio.to_thread(
+            discover_jobs, profile=profile, window_hours=window_hours, cap=request.cap
+        )
 
         # Filter real ApplicationItems
         to_enqueue = [item for item in items if hasattr(item, "hash")]
