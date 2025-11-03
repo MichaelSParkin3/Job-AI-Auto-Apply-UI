@@ -149,7 +149,9 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
         websocket: WebSocket connection
         task_id: Task ID from /api/apply response
     """
+    logger.info("websocket.apply.connection_attempt", task_id=task_id)
     await websocket.accept()
+    logger.info("websocket.apply.connection_accepted", task_id=task_id)
 
     try:
         # Validate task exists

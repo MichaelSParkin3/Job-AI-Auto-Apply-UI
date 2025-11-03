@@ -34,10 +34,14 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
   }, [events])
 
   useEffect(() => {
+    let isActive = true
     const ws = new ApplyWebSocket(taskId)
     wsRef.current = ws
 
     const unsubscribe = ws.subscribe((event: ApplyEvent) => {
+      // Skip state updates if component unmounted during React StrictMode cleanup
+      if (!isActive) return
+
       const timestamp = new Date().toLocaleTimeString()
       setEvents((prev) => [...prev, { timestamp, type: event.type, data: event }])
 
@@ -67,10 +71,19 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
     // Connect to WebSocket
     ws.connect()
       .then(() => {
-        setConnected(true)
-        setConnectionError(null)
+        // Only update state if component is still active
+        if (isActive) {
+          setConnected(true)
+          setConnectionError(null)
+        } else {
+          // Component unmounted during connection, disconnect
+          ws.disconnect()
+        }
       })
       .catch((error) => {
+        // Only update state if component is still active
+        if (!isActive) return
+
         const errorMsg = error instanceof Error ? error.message : String(error)
         setConnectionError(errorMsg)
         addToast({
@@ -80,12 +93,13 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
         })
       })
 
-    // Cleanup
+    // Cleanup function - runs on unmount or when dependencies change
     return () => {
+      isActive = false
       unsubscribe()
       ws.disconnect()
     }
-  }, [taskId, addToast])
+  }, [taskId])
 
   const getEventBadgeColor = (type: string) => {
     if (type === 'item.submitted') return 'bg-green-100 text-green-800'
