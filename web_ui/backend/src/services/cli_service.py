@@ -6,6 +6,9 @@ import asyncio
 from typing import AsyncGenerator, Dict, Any, Optional, List
 from src.models import RunConfiguration
 from src.utils import FileOpsError
+import structlog
+
+log = structlog.get_logger(__name__)
 
 
 class CLIService:
@@ -47,8 +50,10 @@ class CLIService:
         if custom_query:
             cmd.extend(["--query", custom_query])
 
+        log.info("cli.discover.start", profile_id=profile_id, window=search_window, cap=job_cap, query=custom_query)
         async for event in self._execute_streaming(cmd):
             yield event
+        log.info("cli.discover.end", profile_id=profile_id)
 
     async def execute_apply_single(
         self,
@@ -82,8 +87,10 @@ class CLIService:
         if supervised:
             cmd.append("--supervised")
 
+        log.info("cli.apply.bulk.start", profile_id=profile_id, supervised=supervised)
         async for event in self._execute_streaming(cmd):
             yield event
+        log.info("cli.apply.bulk.end", profile_id=profile_id)
 
     async def _execute_streaming(
         self,
@@ -101,9 +108,17 @@ class CLIService:
         profiles_dir = (backend_dir / ".." / "profiles").resolve()
         env["AUTO_APPLY_PROFILES_DIR"] = str(profiles_dir)
 
+        # Set CWD to project root so CLI writes to correct queue/artifacts locations
+        project_root = backend_dir.parent
+
+        log.info(
+            "cli.subprocess.starting",
+            cmd=" ".join(cmd),
+            cwd=str(project_root),
+            profiles_dir=str(profiles_dir),
+        )
+
         try:
-            # Set CWD to project root so CLI writes to correct queue/artifacts locations
-            project_root = backend_dir.parent
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -112,6 +127,9 @@ class CLIService:
                 cwd=str(project_root),
             )
 
+            log.info("cli.subprocess.created", pid=process.pid)
+
+            event_count = 0
             while True:
                 try:
                     # Read with timeout
@@ -127,16 +145,49 @@ class CLIService:
                     if line_str:
                         try:
                             data = json.loads(line_str)
+                            event_count += 1
+                            event_type = data.get("type", "unknown")
+                            log.debug(
+                                "cli.subprocess.event",
+                                event_type=event_type,
+                                event_num=event_count,
+                                data=data,
+                            )
                             yield data
                         except json.JSONDecodeError:
-                            # Skip non-JSON lines
+                            # Log non-JSON output
+                            log.warning("cli.subprocess.non_json_output", line=line_str)
                             continue
                 except asyncio.TimeoutError:
                     process.kill()
+                    log.error("cli.subprocess.timeout", timeout_seconds=timeout)
                     raise FileOpsError("CLI command timeout")
 
-            # Wait for process to finish
-            await process.wait()
+            # CRITICAL: Read stderr before waiting for process to avoid deadlock
+            # and capture all error output
+            stderr_data = await process.stderr.read()
+            if stderr_data:
+                stderr_str = stderr_data.decode()
+                log.error("cli.subprocess.stderr", stderr=stderr_str)
 
+            # Wait for process to finish and get exit code
+            exit_code = await process.wait()
+            log.info(
+                "cli.subprocess.finished",
+                exit_code=exit_code,
+                pid=process.pid,
+                total_events=event_count,
+            )
+
+            # Raise error if process exited with non-zero code
+            if exit_code != 0:
+                raise FileOpsError(
+                    f"CLI command failed with exit code {exit_code}. "
+                    f"Produced {event_count} events. See logs for stderr output."
+                )
+
+        except FileOpsError:
+            raise
         except Exception as e:
+            log.error("cli.subprocess.exception", error=str(e), exc_type=type(e).__name__)
             raise FileOpsError(f"CLI execution failed: {e}")
