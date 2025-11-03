@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Profile } from '@/lib/api'
 import { ProfileSelector } from '@/components/ProfileSelector'
 import { DiscoverForm } from '@/components/DiscoverForm'
+import { ApplyForm } from '@/components/ApplyForm'
+import { ApplyProgress } from '@/components/ApplyProgress'
 import { ToastProvider } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toast'
 import './App.css'
@@ -9,6 +11,8 @@ import './App.css'
 function AppContent() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
   const [activeTab, setActiveTab] = useState<'discover' | 'apply'>('discover')
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [activeWebsocketUrl, setActiveWebsocketUrl] = useState<string | null>(null)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -64,15 +68,26 @@ function AppContent() {
               )}
 
               {activeTab === 'apply' && (
-                <div className="rounded-lg bg-white p-6 shadow">
-                  <h2 className="mb-4 text-xl font-semibold text-gray-900">
-                    Apply to Jobs
-                  </h2>
-                  <p className="text-gray-600">
-                    Apply to queued jobs using profile ({selectedProfile.name})
-                  </p>
-                  {/* ApplyForm component will go here */}
-                </div>
+                <>
+                  {activeTaskId && activeWebsocketUrl ? (
+                    <ApplyProgress
+                      taskId={activeTaskId}
+                      websocketUrl={activeWebsocketUrl}
+                      onClose={() => {
+                        setActiveTaskId(null)
+                        setActiveWebsocketUrl(null)
+                      }}
+                    />
+                  ) : (
+                    <ApplyForm
+                      profileId={selectedProfile.id}
+                      onTaskCreated={(taskId, websocketUrl) => {
+                        setActiveTaskId(taskId)
+                        setActiveWebsocketUrl(websocketUrl)
+                      }}
+                    />
+                  )}
+                </>
               )}
             </div>
 

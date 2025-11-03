@@ -12,20 +12,43 @@ export interface ReasonDetail {
 export interface ApplyStartEvent {
   type: 'apply.start'
   profile_id: string
-  timestamp: string
+  timestamp?: string
 }
 
 export interface ItemStartEvent {
   type: 'item.start'
   item_id: string
-  company: string
-  title: string
+  company?: string
+  title?: string
 }
 
 export interface ItemSubmittedEvent {
   type: 'item.submitted'
   item_id: string
-  confirmation_id: string
+  confirmation_id?: string
+  confirmation_text?: string
+  screenshot_after_path?: string
+}
+
+export interface ItemSavedForReviewEvent {
+  type: 'item.saved_for_review'
+  item_id: string
+  form_state_path?: string
+  screenshot_before_path?: string
+}
+
+export interface ItemSkippedEvent {
+  type: 'item.skipped'
+  item_id: string
+  reason?: ReasonDetail
+}
+
+export interface ItemCaptchaBlockedEvent {
+  type: 'item.captcha_blocked'
+  item_id: string
+  reason?: ReasonDetail
+  form_state_path?: string
+  screenshot_before_path?: string
 }
 
 export interface ItemFailedEvent {
@@ -49,6 +72,9 @@ export type ApplyEvent =
   | ApplyStartEvent
   | ItemStartEvent
   | ItemSubmittedEvent
+  | ItemSavedForReviewEvent
+  | ItemSkippedEvent
+  | ItemCaptchaBlockedEvent
   | ItemFailedEvent
   | ApplyEndEvent
   | ApplyErrorEvent
