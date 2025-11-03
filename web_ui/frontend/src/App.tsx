@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import type { Profile } from '@/lib/api'
 import { ProfileSelector } from '@/components/ProfileSelector'
+import { DiscoverForm } from '@/components/DiscoverForm'
+import { ToastProvider } from '@/lib/toast'
+import { Toaster } from '@/components/ui/toast'
 import './App.css'
 
-function App() {
+function AppContent() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
   const [activeTab, setActiveTab] = useState<'discover' | 'apply'>('discover')
 
@@ -55,21 +58,13 @@ function App() {
             </div>
 
             {/* Tab Content */}
-            <div className="rounded-lg bg-white p-6 shadow">
-              {activeTab === 'discover' && (
-                <div>
-                  <h2 className="mb-4 text-xl font-semibold text-gray-900">
-                    Discover Jobs
-                  </h2>
-                  <p className="text-gray-600">
-                    Discover job postings matching your profile ({selectedProfile.name})
-                  </p>
-                  {/* DiscoverForm component will go here */}
-                </div>
+            <div>
+              {activeTab === 'discover' && selectedProfile && (
+                <DiscoverForm profileId={selectedProfile.id} />
               )}
 
               {activeTab === 'apply' && (
-                <div>
+                <div className="rounded-lg bg-white p-6 shadow">
                   <h2 className="mb-4 text-xl font-semibold text-gray-900">
                     Apply to Jobs
                   </h2>
@@ -80,6 +75,8 @@ function App() {
                 </div>
               )}
             </div>
+
+      <Toaster />
           </>
         ) : (
           <div className="rounded-lg bg-blue-50 p-6 text-center">
@@ -93,6 +90,14 @@ function App() {
         )}
       </main>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   )
 }
 
