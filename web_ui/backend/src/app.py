@@ -37,6 +37,7 @@ class AppContext:
         self.settings_service = None
         self.artifact_service = None
         self.cli_service = None
+        self.run_config_service = None
 
 
 app_context = AppContext()
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
         SettingsService,
         ArtifactService,
         CLIService,
+        RunConfigurationService,
     )
 
     app_context.profile_service = ProfileService(os.getenv("PROFILES_DIR", "../../profiles"))
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
     app_context.settings_service = SettingsService(os.getenv("SETTINGS_FILE", "../../.env"))
     app_context.artifact_service = ArtifactService(os.getenv("ARTIFACTS_DIR", "../../data/artifacts"))
     app_context.cli_service = CLIService(os.getenv("CLI_COMMAND", "auto-apply"))
+    app_context.run_config_service = RunConfigurationService(os.getenv("RUN_CONFIG_DIR", "../../data/run-config"))
 
     log.msg("app.startup", message="Application started")
     yield

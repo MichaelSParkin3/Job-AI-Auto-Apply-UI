@@ -9,39 +9,39 @@ from pydantic import BaseModel, Field, field_validator
 class ApplicationStatus(str, Enum):
     """Application status enumeration."""
 
-    NEW = "NEW"
-    IN_PROGRESS = "IN_PROGRESS"
-    SUBMITTED = "SUBMITTED"
-    FAILED = "FAILED"
-    CAPTCHA_BLOCKED = "CAPTCHA_BLOCKED"
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+    FAILED = "failed"
+    CAPTCHA_BLOCKED = "captcha_blocked"
 
     @classmethod
     def normalize(cls, value: str) -> str:
-        """Normalize status value to uppercase enum value.
+        """Normalize status value to lowercase enum value.
 
-        Maps legacy lowercase and non-standard status values to valid enum values.
+        Maps legacy uppercase and non-standard status values to valid enum values.
 
         Args:
-            value: Status value (may be lowercase or non-standard)
+            value: Status value (may be uppercase or non-standard)
 
         Returns:
-            Normalized uppercase enum value
+            Normalized lowercase enum value
         """
         if not isinstance(value, str):
             return value
 
-        # Map lowercase versions to uppercase
-        normalized = value.upper()
+        # Map to lowercase for comparison
+        normalized = value.lower()
 
         # Map non-standard values to valid enum values
         status_mapping = {
-            "SUBMITTED": cls.SUBMITTED,
-            "FAILED": cls.FAILED,
-            "PENDING_REVIEW": cls.SUBMITTED,  # Legacy value -> SUBMITTED
-            "SKIPPED": cls.FAILED,  # Legacy value -> FAILED
-            "NEW": cls.NEW,
-            "IN_PROGRESS": cls.IN_PROGRESS,
-            "CAPTCHA_BLOCKED": cls.CAPTCHA_BLOCKED,
+            "submitted": cls.SUBMITTED.value,
+            "failed": cls.FAILED.value,
+            "pending_review": cls.SUBMITTED.value,  # Legacy value -> submitted
+            "skipped": cls.FAILED.value,  # Legacy value -> failed
+            "new": cls.NEW.value,
+            "in_progress": cls.IN_PROGRESS.value,
+            "captcha_blocked": cls.CAPTCHA_BLOCKED.value,
         }
 
         return status_mapping.get(normalized, value)

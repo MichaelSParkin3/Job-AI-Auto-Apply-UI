@@ -60,6 +60,14 @@ class CLIService:
         profile_id: str,
         job_id: str,
         review_mode: bool = False,
+        llm_provider_override: Optional[str] = None,
+        llm_model_override: Optional[str] = None,
+        use_llm_locator: Optional[bool] = False,
+        debug_resume_widget: Optional[bool] = False,
+        resume_wait_timeout: Optional[int] = None,
+        audit_after_submit: Optional[bool] = True,
+        save_logs: Optional[bool] = False,
+        logs_dir: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute apply command for single job."""
         cmd = [
@@ -72,6 +80,22 @@ class CLIService:
 
         if review_mode:
             cmd.append("--review-mode")
+        if llm_provider_override:
+            cmd.extend(["--llm-provider", llm_provider_override])
+        if llm_model_override:
+            cmd.extend(["--llm-model", llm_model_override])
+        if use_llm_locator:
+            cmd.append("--use-llm-locator")
+        if debug_resume_widget:
+            cmd.append("--debug-resume-widget")
+        if resume_wait_timeout:
+            cmd.extend(["--resume-wait-timeout-seconds", str(resume_wait_timeout)])
+        if audit_after_submit is False:
+            cmd.append("--no-audit-after-submit")
+        if save_logs:
+            cmd.append("--save-logs")
+        if logs_dir:
+            cmd.extend(["--logs-dir", logs_dir])
 
         async for event in self._execute_streaming(cmd):
             yield event
@@ -80,12 +104,27 @@ class CLIService:
         self,
         profile_id: str,
         supervised: bool = True,
+        review_mode: bool = False,
+        llm_provider_override: Optional[str] = None,
+        llm_model_override: Optional[str] = None,
+        save_logs: bool = False,
+        logs_dir: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute apply command for bulk applications."""
         cmd = [self.cli_command, "apply", "--profile", profile_id, "--json"]
 
         if supervised:
             cmd.append("--supervised")
+        if review_mode:
+            cmd.append("--review-mode")
+        if llm_provider_override:
+            cmd.extend(["--llm-provider", llm_provider_override])
+        if llm_model_override:
+            cmd.extend(["--llm-model", llm_model_override])
+        if save_logs:
+            cmd.append("--save-logs")
+        if logs_dir:
+            cmd.extend(["--logs-dir", logs_dir])
 
         log.info("cli.apply.bulk.start", profile_id=profile_id, supervised=supervised)
         async for event in self._execute_streaming(cmd):
@@ -179,12 +218,16 @@ class CLIService:
                 total_events=event_count,
             )
 
-            # Raise error if process exited with non-zero code
-            if exit_code != 0:
+            # Check exit code
+            # Per CLI contracts: 0 = success, 2 = no results (valid), 1 = fatal error
+            if exit_code not in (0, 2):
                 raise FileOpsError(
                     f"CLI command failed with exit code {exit_code}. "
                     f"Produced {event_count} events. See logs for stderr output."
                 )
+
+            if exit_code == 2:
+                log.info("cli.subprocess.no_results", total_events=event_count)
 
         except FileOpsError:
             raise

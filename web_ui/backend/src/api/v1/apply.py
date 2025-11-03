@@ -195,6 +195,14 @@ async def apply_single(
             profile_id,
             job_id,
             review_mode=review_mode,
+            llm_provider_override=llm_provider_override,
+            llm_model_override=llm_model_override,
+            use_llm_locator=use_llm_locator,
+            debug_resume_widget=debug_resume_widget,
+            resume_wait_timeout=resume_wait_timeout,
+            audit_after_submit=audit_after_submit,
+            save_logs=save_logs,
+            logs_dir=logs_dir,
         ):
             # Parse event and track result
             if isinstance(event, dict):
@@ -329,6 +337,11 @@ async def apply_bulk(
         async for event in cli_service.execute_apply_bulk(
             profile_id,
             supervised=(mode == "supervised"),
+            review_mode=review_mode,
+            llm_provider_override=llm_provider_override,
+            llm_model_override=llm_model_override,
+            save_logs=save_logs or False,
+            logs_dir=logs_dir,
         ):
             # Parse event and track results
             if isinstance(event, dict):
