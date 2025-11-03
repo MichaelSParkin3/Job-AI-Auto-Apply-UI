@@ -12,15 +12,19 @@ dependencies = [
   "structlog>=24.1.0",
   "browser-use>=0.7.0",
   "playwright>=1.45.0",
-  "python-dotenv>=1.0.1"
+  "python-dotenv>=1.0.1",
+  "fastapi>=0.109.0",
+  "uvicorn[standard]>=0.27.0"
 ]
 
 [project.scripts]
 auto-apply = "job_ai_auto_apply_ui.orchestrator:main"
+auto-apply-web = "web_ui.backend.app:main"
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["tests"]
+testpaths = ["tests", "web_ui/tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
