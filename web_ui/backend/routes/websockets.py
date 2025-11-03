@@ -1,6 +1,7 @@
 """WebSocket routes for real-time streaming."""
 
 import asyncio
+import os
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -11,6 +12,28 @@ from .apply import active_tasks
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+
+def _apply_request_settings(request) -> None:
+    """Apply ApplyRequest settings as environment variables for the apply session."""
+    # Override LLM provider if specified
+    if request.llm_provider:
+        os.environ["LLM_PROVIDER"] = request.llm_provider
+
+    # Override LLM model if specified
+    if request.llm_model:
+        os.environ["LLM_MODEL"] = request.llm_model
+
+    # Override feature flags if specified
+    if request.use_llm_locator:
+        os.environ["AUTO_APPLY_USE_LLM_LOCATOR"] = "1"
+
+    if request.debug_resume_widget:
+        os.environ["AUTO_APPLY_DEBUG_RESUME_WIDGET"] = "1"
+
+    # Override resume timeout if specified
+    if request.resume_wait_timeout_seconds:
+        os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(request.resume_wait_timeout_seconds)
 
 
 def _transform_apply_event(event: dict) -> dict:
@@ -172,17 +195,15 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
         )
 
         try:
+            # Apply request settings as environment variables (picked up by config loader)
+            _apply_request_settings(request)
+
             # Stream apply events using async wrapper to handle sync generator with asyncio.run() inside
             async for event in _iter_apply_events_async(
                 profile=profile,
                 mode="supervised" if request.supervised else "auto",
-                job_id=request.job_id,
-                llm_provider=request.llm_provider,
-                llm_model=request.llm_model,
-                use_llm_locator=request.use_llm_locator,
-                debug_resume_widget=request.debug_resume_widget,
-                resume_wait_timeout_seconds=request.resume_wait_timeout_seconds,
                 review_mode=request.review_mode,
+                job_id=request.job_id,
             ):
                 # Forward event to WebSocket client
                 await websocket.send_json(event)
