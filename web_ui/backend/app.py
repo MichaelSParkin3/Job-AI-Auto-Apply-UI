@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import web_settings
-from .routes import discover, profiles
+from .routes import apply, discover, profiles, websockets
 
 logger = structlog.get_logger()
 
@@ -59,6 +59,8 @@ app.add_middleware(
 # Register routers
 app.include_router(profiles.router, prefix="/api", tags=["profiles"])
 app.include_router(discover.router, prefix="/api", tags=["discover"])
+app.include_router(apply.router, prefix="/api", tags=["apply"])
+app.include_router(websockets.router, prefix="/ws", tags=["websockets"])
 
 
 @app.get("/health")
