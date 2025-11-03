@@ -1,0 +1,12 @@
+/* App-specific styles
+   Most styling is handled by Tailwind CSS utility classes
+   Add component-specific styles here as needed */
+
+#root {
+  min-height: 100vh;
+}
+
+/* Smooth transitions for tab switching */
+.transition-smooth {
+  transition: all 0.2s ease-in-out;
+}
