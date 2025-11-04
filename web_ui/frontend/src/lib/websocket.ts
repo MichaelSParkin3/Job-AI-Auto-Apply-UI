@@ -68,6 +68,29 @@ export interface ApplyErrorEvent {
   message: string
 }
 
+// Interactive supervised mode events
+export interface ActionPromptOption {
+  action: string
+  label: string
+  key?: string
+}
+
+export interface PromptContext {
+  item_id?: string
+  screenshot_path?: string
+  company?: string
+  title?: string
+}
+
+export interface ActionPromptEvent {
+  type: 'prompt.action_required'
+  prompt_id: string
+  message: string
+  options: ActionPromptOption[]
+  context?: PromptContext
+  timeout_seconds?: number
+}
+
 export type ApplyEvent =
   | ApplyStartEvent
   | ItemStartEvent
@@ -77,6 +100,7 @@ export type ApplyEvent =
   | ItemCaptchaBlockedEvent
   | ItemFailedEvent
   | ApplyEndEvent
+  | ActionPromptEvent
   | ApplyErrorEvent
 
 // Event subscription callbacks
@@ -166,6 +190,30 @@ export class ApplyWebSocket {
     if (this.ws) {
       this.ws.close()
       this.ws = null
+    }
+  }
+
+  /**
+   * Send user response to action prompt
+   * @param promptId ID of the prompt being responded to
+   * @param action Action chosen by user (e.g., 'submit', 'skip', 'block')
+   */
+  sendResponse(promptId: string, action: string): void {
+    if (!this.isConnected()) {
+      console.error('WebSocket not connected, cannot send response')
+      return
+    }
+
+    try {
+      const message = {
+        type: 'user_response',
+        prompt_id: promptId,
+        action,
+      }
+      this.ws!.send(JSON.stringify(message))
+      console.log('Sent response:', message)
+    } catch (error) {
+      console.error('Failed to send response:', error)
     }
   }
 

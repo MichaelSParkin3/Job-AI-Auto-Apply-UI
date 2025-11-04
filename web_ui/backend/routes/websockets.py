@@ -1,17 +1,24 @@
-"""WebSocket routes for real-time streaming."""
+"""WebSocket routes for real-time streaming and bidirectional communication."""
 
 import asyncio
 import os
+import uuid
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Dict, Optional, List
 
 from job_ai_auto_apply_ui.orchestrator import iter_apply_events
 from job_ai_auto_apply_ui.profile_manager import load_profile
 
 from .apply import active_tasks
+from ..models.events import ActionPromptOption, PromptContext
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+# Global pending prompts for bidirectional communication
+# Maps prompt_id -> asyncio.Queue for response
+pending_prompts: Dict[str, asyncio.Queue] = {}
 
 
 def _apply_request_settings(request) -> None:
@@ -34,6 +41,70 @@ def _apply_request_settings(request) -> None:
     # Override resume timeout if specified
     if request.resume_wait_timeout_seconds:
         os.environ["AUTO_APPLY_RESUME_WAIT_TIMEOUT_SECONDS"] = str(request.resume_wait_timeout_seconds)
+
+
+async def emit_action_prompt(
+    websocket: WebSocket,
+    message: str,
+    options: List[ActionPromptOption],
+    context: Optional[PromptContext] = None,
+    timeout_seconds: int = 300,
+) -> str:
+    """
+    Emit action prompt to client and wait for response.
+
+    Args:
+        websocket: WebSocket connection to send prompt on
+        message: Prompt message to display
+        options: List of action options for user to choose
+        context: Optional context (company, title, screenshot, etc.)
+        timeout_seconds: Timeout waiting for response
+
+    Returns:
+        Action chosen by user, or "timeout" if no response received
+    """
+    prompt_id = str(uuid.uuid4())
+    response_queue: asyncio.Queue = asyncio.Queue()
+    pending_prompts[prompt_id] = response_queue
+
+    try:
+        # Send prompt to client
+        logger.info(
+            "websocket.prompt.emit",
+            prompt_id=prompt_id,
+            message=message,
+            option_count=len(options),
+        )
+        await websocket.send_json(
+            {
+                "type": "prompt.action_required",
+                "prompt_id": prompt_id,
+                "message": message,
+                "options": [opt.model_dump() for opt in options],
+                "context": context.model_dump() if context else None,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+
+        # Wait for response (with timeout)
+        response = await asyncio.wait_for(response_queue.get(), timeout=timeout_seconds)
+        action = response.get("action", "timeout")
+        logger.info(
+            "websocket.prompt.response",
+            prompt_id=prompt_id,
+            action=action,
+        )
+        return action
+
+    except asyncio.TimeoutError:
+        logger.warning(
+            "websocket.prompt.timeout",
+            prompt_id=prompt_id,
+            timeout_seconds=timeout_seconds,
+        )
+        return "timeout"
+    finally:
+        pending_prompts.pop(prompt_id, None)
 
 
 def _transform_apply_event(event: dict) -> dict:
@@ -145,15 +216,19 @@ async def _iter_apply_events_async(*args, **kwargs):
 @router.websocket("/apply/{task_id}")
 async def websocket_apply(websocket: WebSocket, task_id: str):
     """
-    WebSocket endpoint for real-time apply progress streaming.
+    WebSocket endpoint for real-time apply progress streaming with bidirectional support.
 
-    Events streamed as JSON:
+    **Outbound Events** streamed as JSON:
     - {"type": "apply.start", "profile_id": "...", "timestamp": "..."}
     - {"type": "item.start", "item_id": "...", "company": "...", "title": "..."}
     - {"type": "item.submitted", "item_id": "...", "confirmation_id": "..."}
     - {"type": "item.failed", "item_id": "...", "reason": {...}}
+    - {"type": "prompt.action_required", "prompt_id": "...", "message": "...", "options": [...]}
     - {"type": "apply.end", "submitted": 5, "failed": 1}
     - {"type": "error", "message": "..."}
+
+    **Inbound Messages** from client:
+    - {"type": "user_response", "prompt_id": "...", "action": "submit|skip|block"}
 
     Args:
         websocket: WebSocket connection
@@ -162,6 +237,8 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
     logger.info("websocket.apply.connection_attempt", task_id=task_id)
     await websocket.accept()
     logger.info("websocket.apply.connection_accepted", task_id=task_id)
+
+    receiver_task = None
 
     try:
         # Validate task exists
@@ -205,6 +282,77 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
             task_id=task_id,
             profile_id=request.profile_id,
         )
+
+        # Create prompt callback for supervised mode
+        async def prompt_callback(
+            message: str, options: List[str], context: Optional[dict] = None
+        ) -> str:
+            """
+            Callback for CLI to request user input via WebSocket.
+
+            Args:
+                message: Prompt message
+                options: List of action options ['submit', 'skip', 'block']
+                context: Dict with optional keys: item_id, company, title, screenshot_path
+
+            Returns:
+                User's choice or 'timeout'
+            """
+            action_options = [
+                ActionPromptOption(
+                    action=opt,
+                    label=opt.title(),  # Simple: "Submit" -> "Submit"
+                    key=None,  # Could map Submit->Enter, Skip->S, Block->B
+                )
+                for opt in options
+            ]
+
+            # Build context object if provided
+            prompt_context = None
+            if context:
+                prompt_context = PromptContext(
+                    item_id=context.get("item_id"),
+                    company=context.get("company"),
+                    title=context.get("title"),
+                    screenshot_path=context.get("screenshot_path"),
+                )
+
+            return await emit_action_prompt(
+                websocket, message, action_options, prompt_context
+            )
+
+        # Store callback in task for later access
+        task["prompt_callback"] = prompt_callback
+
+        # Start background task to receive client messages (responses)
+        async def receive_client_messages():
+            """Background task to receive user responses from client."""
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    if data.get("type") == "user_response":
+                        prompt_id = data.get("prompt_id")
+                        if prompt_id in pending_prompts:
+                            logger.info(
+                                "websocket.message.received",
+                                prompt_id=prompt_id,
+                                action=data.get("action"),
+                            )
+                            await pending_prompts[prompt_id].put(data)
+                        else:
+                            logger.warning(
+                                "websocket.message.unknown_prompt",
+                                prompt_id=prompt_id,
+                            )
+                    else:
+                        logger.warning(
+                            "websocket.message.unknown_type",
+                            message_type=data.get("type"),
+                        )
+            except Exception as e:
+                logger.error("websocket.receive.error", error=str(e), exc_info=True)
+
+        receiver_task = asyncio.create_task(receive_client_messages())
 
         try:
             # Apply request settings as environment variables (picked up by config loader)
@@ -261,6 +409,14 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
             )
 
     finally:
+        # Cancel background receiver task
+        if receiver_task:
+            receiver_task.cancel()
+            try:
+                await receiver_task
+            except asyncio.CancelledError:
+                pass
+
         try:
             await websocket.close()
         except Exception as close_error:

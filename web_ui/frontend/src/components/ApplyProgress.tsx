@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApplyWebSocket, type ApplyEvent } from '@/lib/websocket'
+import { ApplyWebSocket, type ApplyEvent, type ActionPromptEvent } from '@/lib/websocket'
 import { useToast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PromptModal } from './PromptModal'
 
 interface ApplyProgressProps {
   taskId: string
@@ -16,6 +17,13 @@ interface EventLog {
   data: ApplyEvent
 }
 
+interface PendingPrompt {
+  promptId: string
+  message: string
+  options: Array<{ action: string; label: string; key?: string }>
+  context?: { item_id?: string; company?: string; title?: string; screenshot_path?: string }
+}
+
 export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressProps) {
   const [events, setEvents] = useState<EventLog[]>([])
   const [connected, setConnected] = useState(false)
@@ -24,6 +32,8 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
   const [failed, setFailed] = useState(0)
   const [total, setTotal] = useState(0)
   const [completed, setCompleted] = useState(false)
+  const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null)
+  const [promptLoading, setPromptLoading] = useState(false)
   const wsRef = useRef<ApplyWebSocket | null>(null)
   const eventsEndRef = useRef<HTMLDivElement>(null)
   const { addToast } = useToast()
@@ -43,6 +53,23 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
       if (!isActive) return
 
       const timestamp = new Date().toLocaleTimeString()
+
+      // Handle action prompts specially (don't add to log, show modal instead)
+      if (event.type === 'prompt.action_required') {
+        const promptEvent = event as ActionPromptEvent
+        setPendingPrompt({
+          promptId: promptEvent.prompt_id,
+          message: promptEvent.message,
+          options: promptEvent.options,
+          context: promptEvent.context,
+        })
+        addToast({
+          title: 'Action Required',
+          description: promptEvent.message,
+        })
+        return // Don't add prompt event to log
+      }
+
       setEvents((prev) => [...prev, { timestamp, type: event.type, data: event }])
 
       // Update counters based on event type
@@ -140,6 +167,29 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
         return event.message || 'Unknown error'
       default:
         return 'Event occurred'
+    }
+  }
+
+  const handlePromptResponse = (action: string) => {
+    if (!pendingPrompt || !wsRef.current) return
+
+    setPromptLoading(true)
+    try {
+      wsRef.current.sendResponse(pendingPrompt.promptId, action)
+      addToast({
+        title: 'Response Sent',
+        description: `Action: ${action}`,
+      })
+      setPendingPrompt(null)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      addToast({
+        title: 'Failed to Send Response',
+        description: errorMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setPromptLoading(false)
     }
   }
 
@@ -261,6 +311,19 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
           </div>
         )}
       </CardContent>
+
+      {/* Action Prompt Modal */}
+      {pendingPrompt && (
+        <PromptModal
+          isOpen={true}
+          promptId={pendingPrompt.promptId}
+          message={pendingPrompt.message}
+          options={pendingPrompt.options}
+          context={pendingPrompt.context}
+          onRespond={handlePromptResponse}
+          isLoading={promptLoading}
+        />
+      )}
     </Card>
   )
 }
