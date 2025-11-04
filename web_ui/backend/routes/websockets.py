@@ -111,6 +111,9 @@ async def _iter_apply_events_async(*args, **kwargs):
     Runs the sync generator in a thread pool to avoid asyncio.run() conflict.
     Also transforms event format from backend to frontend expectations.
     """
+    # Sentinel value to signal end of iteration
+    _DONE = object()
+
     # Create an iterator in a thread-safe way
     iterator = None
 
@@ -120,16 +123,23 @@ async def _iter_apply_events_async(*args, **kwargs):
             iterator = iter_apply_events(*args, **kwargs)
         return iterator
 
-    while True:
+    def _next_or_done(it):
+        """Get next item or return sentinel if done (catches StopIteration in thread)."""
         try:
-            # Run next() in a thread pool to avoid blocking the event loop
-            # and to allow the sync generator's asyncio.run() to work
-            event = await asyncio.to_thread(lambda it=_get_iterator(): next(it))
-            # Transform event to match frontend format
-            transformed = _transform_apply_event(event)
-            yield transformed
+            return next(it)
         except StopIteration:
+            return _DONE
+
+    while True:
+        # Run next() in a thread pool, catching StopIteration inside the thread
+        event = await asyncio.to_thread(_next_or_done, _get_iterator())
+
+        if event is _DONE:
             break
+
+        # Transform event to match frontend format
+        transformed = _transform_apply_event(event)
+        yield transformed
 
 
 @router.websocket("/apply/{task_id}")
