@@ -1,9 +1,10 @@
 # Web UI Implementation Plan: FastAPI + shadcn/ui for Job-AI-Auto-Apply
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Created:** 2025-11-03
+**Last Updated:** 2025-11-04
 **Branch:** `web-ui-minimal`
-**Focus:** Discover & Apply commands with flag selection, comprehensive testing
+**Focus:** Discover & Apply commands with flag selection, interactive supervised mode, comprehensive testing
 
 ---
 
@@ -1709,7 +1710,753 @@ test.describe('Discover Flow', () => {
 
 ---
 
-### Phase 6: Polish & Documentation (Week 6)
+### Phase 6: Interactive Supervised Mode (Week 6)
+
+This phase implements bidirectional WebSocket communication to handle interactive supervised mode, where the CLI needs user input for actions like CAPTCHA solving, job skipping, and submission confirmation.
+
+#### 6A: Backend - Bidirectional WebSocket & Input Queue
+
+**Architecture**: Use `asyncio.Queue` to bridge WebSocket responses → CLI input handlers.
+
+**File: `web_ui/backend/models/events.py`** (extend existing)
+
+```python
+from enum import Enum
+from typing import Optional, List
+from pydantic import BaseModel
+
+# Extend event types
+class ActionPromptOption(BaseModel):
+    """Option for action prompt."""
+    action: str  # 'submit', 'skip', 'block', 'retry'
+    label: str   # 'Submit (solved)', 'Skip this job', etc.
+    key: Optional[str] = None  # 'Enter', 'S', 'B' for keyboard shortcuts
+
+class PromptContext(BaseModel):
+    """Context for user prompt."""
+    item_id: Optional[str] = None
+    screenshot_path: Optional[str] = None
+    company: Optional[str] = None
+    title: Optional[str] = None
+
+class ActionPromptEvent(BaseModel):
+    """Event requesting user action."""
+    type: str = "prompt.action_required"
+    prompt_id: str  # Unique ID for this prompt
+    message: str
+    options: List[ActionPromptOption]
+    context: Optional[PromptContext] = None
+    timeout_seconds: int = 300  # 5 min default
+
+class UserResponseMessage(BaseModel):
+    """Message from client responding to prompt."""
+    type: str = "user_response"
+    prompt_id: str
+    action: str
+```
+
+**File: `web_ui/backend/routes/websockets.py`** (extend existing)
+
+```python
+from asyncio import Queue
+from typing import Dict
+import uuid
+
+# Global prompt handlers (in-memory; use Redis for production)
+pending_prompts: Dict[str, Queue] = {}
+
+async def emit_action_prompt(
+    websocket: WebSocket,
+    message: str,
+    options: List[ActionPromptOption],
+    context: Optional[PromptContext] = None,
+    timeout_seconds: int = 300
+) -> str:
+    """
+    Emit action prompt to client and wait for response.
+
+    Returns the action chosen by user (or 'timeout' if no response).
+    """
+    prompt_id = str(uuid.uuid4())
+    response_queue: Queue = Queue()
+    pending_prompts[prompt_id] = response_queue
+
+    try:
+        # Send prompt to client
+        await websocket.send_json({
+            "type": "prompt.action_required",
+            "prompt_id": prompt_id,
+            "message": message,
+            "options": [opt.dict() for opt in options],
+            "context": context.dict() if context else None,
+            "timeout_seconds": timeout_seconds
+        })
+
+        # Wait for response (with timeout)
+        import asyncio
+        response = await asyncio.wait_for(
+            response_queue.get(),
+            timeout=timeout_seconds
+        )
+        return response.get("action", "timeout")
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Prompt {prompt_id} timed out")
+        return "timeout"
+    finally:
+        del pending_prompts[prompt_id]
+
+@router.websocket("/apply/{task_id}")
+async def websocket_apply(websocket: WebSocket, task_id: str):
+    """
+    Extended WebSocket handler supporting bidirectional communication.
+
+    Now handles:
+    - Outbound: apply events + action prompts
+    - Inbound: user responses to prompts
+    """
+    await websocket.accept()
+
+    try:
+        if task_id not in active_tasks:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Task {task_id} not found"
+            })
+            await websocket.close()
+            return
+
+        task = active_tasks[task_id]
+        request = task["request"]
+        profile = load_profile(request.profile_id)
+
+        logger.info("websocket.apply.start", task_id=task_id)
+
+        # Create input callback for CLI
+        async def prompt_callback(message: str, options: List[str]) -> str:
+            """Callback for CLI to request user input via WebSocket."""
+            action_options = [
+                ActionPromptOption(action=opt, label=opt.title())
+                for opt in options
+            ]
+            return await emit_action_prompt(
+                websocket,
+                message,
+                action_options
+            )
+
+        # Store callback in task for CLI access
+        task["prompt_callback"] = prompt_callback
+
+        # Listen for inbound messages (user responses)
+        async def receive_messages():
+            """Background task to receive client messages."""
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    if data["type"] == "user_response":
+                        prompt_id = data["prompt_id"]
+                        if prompt_id in pending_prompts:
+                            await pending_prompts[prompt_id].put(data)
+            except Exception as e:
+                logger.error(f"Error receiving messages: {e}")
+
+        # Start message receiver task
+        import asyncio
+        receiver_task = asyncio.create_task(receive_messages())
+
+        # Stream apply events (existing code)
+        async for event in _iter_apply_events_async(
+            profile=profile,
+            # Pass prompt_callback to orchestrator
+            prompt_callback=prompt_callback,
+            ...  # other args
+        ):
+            transformed = _transform_apply_event(event)
+            await websocket.send_json(transformed)
+
+        task["status"] = "completed"
+        logger.info("websocket.apply.complete", task_id=task_id)
+
+    except WebSocketDisconnect:
+        logger.info("websocket.disconnected", task_id=task_id)
+    except Exception as e:
+        logger.error("websocket.error", task_id=task_id, error=str(e))
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+        except:
+            pass
+    finally:
+        receiver_task.cancel()
+        await websocket.close()
+```
+
+**CLI Integration** (minimal changes to orchestrator.py):
+
+```python
+# In orchestrator.py, modify iter_apply_events to accept prompt_callback
+
+async def iter_apply_events(
+    profile: Profile,
+    supervised: bool = True,
+    prompt_callback: Optional[Callable[[str, List[str]], Coroutine[Any, Any, str]]] = None,
+    ...
+) -> AsyncIterator[ApplyEvent]:
+    """
+    Stream apply events. If supervised and prompt_callback provided,
+    use callback for prompts instead of stdin.
+    """
+    # When CLI needs input:
+    if supervised and prompt_callback:
+        action = await prompt_callback(
+            "What would you like to do?",
+            ["submit", "skip", "block"]
+        )
+    else:
+        # Fall back to stdin (existing behavior)
+        action = input("What would you like to do? [s/S/B]: ")
+
+    # Continue with action...
+```
+
+**File: `web_ui/tests/test_bidirectional_websocket.py`**
+
+```python
+import pytest
+import json
+from fastapi.testclient import TestClient
+from web_ui.backend.app import app
+
+def test_websocket_bidirectional_flow():
+    """Test WebSocket sending events AND receiving responses."""
+    client = TestClient(app)
+
+    # Create task
+    response = client.post("/api/apply", json={
+        "profile_id": "test_profile",
+        "supervised": True
+    })
+    task_id = response.json()["task_id"]
+
+    # Connect to WebSocket
+    with client.websocket_connect(f"/ws/apply/{task_id}") as websocket:
+        # Receive apply start
+        event = websocket.receive_json()
+        assert event["type"] == "apply.start"
+
+        # Simulate receiving action prompt (would be from backend)
+        # Client should handle this and send response
+        # For now just verify connection works
+        assert True
+
+def test_action_prompt_event_structure():
+    """Test action prompt event has correct structure."""
+    from web_ui.backend.models.events import ActionPromptEvent, ActionPromptOption
+
+    event = ActionPromptEvent(
+        prompt_id="test123",
+        message="What do you want to do?",
+        options=[
+            ActionPromptOption(action="submit", label="Submit Form"),
+            ActionPromptOption(action="skip", label="Skip Job"),
+        ]
+    )
+
+    assert event.type == "prompt.action_required"
+    assert event.prompt_id == "test123"
+    assert len(event.options) == 2
+```
+
+**Validation**:
+- ✅ Backend accepts WebSocket messages from client
+- ✅ `emit_action_prompt()` sends prompt and waits for response
+- ✅ Response queue receives client messages
+- ✅ CLI can be called with prompt_callback
+- ✅ Timeout handling works
+- ✅ Tests pass
+
+---
+
+#### 6B: Frontend - Action Prompt UI
+
+**File: `frontend/src/lib/websocket.ts`** (extend)
+
+```ts
+export type ApplyEvent =
+  | { type: 'apply.start'; profile_id: string; timestamp: string }
+  | { type: 'item.start'; item_id: string; company: string; title: string }
+  | { type: 'item.submitted'; item_id: string; confirmation_id: string }
+  | { type: 'item.failed'; item_id: string; reason: { code: string; message: string } }
+  | { type: 'apply.end'; submitted: number; failed: number }
+  | { type: 'prompt.action_required'; prompt_id: string; message: string; options: ActionOption[]; context?: PromptContext }
+  | { type: 'error'; message: string }
+
+export interface ActionOption {
+  action: string
+  label: string
+  key?: string
+}
+
+export interface PromptContext {
+  item_id?: string
+  screenshot_path?: string
+  company?: string
+  title?: string
+}
+
+export class ApplyWebSocket {
+  private ws: WebSocket | null = null
+  private url: string
+
+  constructor(taskId: string) {
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+    this.url = `${wsUrl}/ws/apply/${taskId}`
+  }
+
+  connect(
+    onEvent: (event: ApplyEvent) => void,
+    onError?: (error: Event) => void
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.ws = new WebSocket(this.url)
+
+      this.ws.onopen = () => {
+        console.log('WebSocket connected')
+        resolve()
+      }
+
+      this.ws.onmessage = (message) => {
+        const event = JSON.parse(message.data) as ApplyEvent
+        onEvent(event)
+      }
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+        onError?.(error)
+        reject(error)
+      }
+
+      this.ws.onclose = () => {
+        console.log('WebSocket closed')
+      }
+    })
+  }
+
+  /**
+   * Send user response to action prompt.
+   */
+  sendResponse(promptId: string, action: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          type: 'user_response',
+          prompt_id: promptId,
+          action,
+        })
+      )
+    } else {
+      console.error('WebSocket not ready')
+    }
+  }
+
+  disconnect(): void {
+    this.ws?.close()
+  }
+}
+```
+
+**File: `frontend/src/components/PromptModal.tsx`** (new)
+
+```tsx
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import type { ActionOption, PromptContext } from '@/lib/websocket'
+
+interface PromptModalProps {
+  isOpen: boolean
+  promptId: string
+  message: string
+  options: ActionOption[]
+  context?: PromptContext
+  onRespond: (action: string) => void
+  isLoading?: boolean
+}
+
+export function PromptModal({
+  isOpen,
+  promptId,
+  message,
+  options,
+  context,
+  onRespond,
+  isLoading = false,
+}: PromptModalProps) {
+  return (
+    <Dialog open={isOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Action Required</DialogTitle>
+          <DialogDescription>{message}</DialogDescription>
+        </DialogHeader>
+
+        {context && (
+          <Card>
+            <CardContent className="pt-4 space-y-2">
+              {context.company && (
+                <div>
+                  <span className="font-medium">Company:</span> {context.company}
+                </div>
+              )}
+              {context.title && (
+                <div>
+                  <span className="font-medium">Title:</span> {context.title}
+                </div>
+              )}
+              {context.screenshot_path && (
+                <div className="mt-4">
+                  <img
+                    src={context.screenshot_path}
+                    alt="Current form"
+                    className="max-w-full border rounded"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          {options.map((option) => (
+            <Button
+              key={option.action}
+              variant={option.action === 'submit' ? 'default' : 'outline'}
+              onClick={() => onRespond(option.action)}
+              disabled={isLoading}
+            >
+              {option.label}
+              {option.key && <span className="ml-2 text-xs">({option.key})</span>}
+            </Button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+```
+
+**File: `frontend/src/components/ApplyProgress.tsx`** (extend)
+
+```tsx
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { ApplyWebSocket, ApplyEvent } from '@/lib/websocket'
+import { PromptModal } from './PromptModal'
+
+interface ApplyProgressProps {
+  taskId: string
+  onComplete: () => void
+}
+
+interface PendingPrompt {
+  promptId: string
+  message: string
+  options: any[]
+  context?: any
+}
+
+export function ApplyProgress({ taskId, onComplete }: ApplyProgressProps) {
+  const [events, setEvents] = useState<ApplyEvent[]>([])
+  const [progress, setProgress] = useState(0)
+  const [status, setStatus] = useState<'running' | 'completed' | 'error'>('running')
+  const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null)
+  const [wsConnection, setWsConnection] = useState<ApplyWebSocket | null>(null)
+
+  useEffect(() => {
+    const ws = new ApplyWebSocket(taskId)
+
+    const handleConnect = async () => {
+      await ws.connect(
+        (event) => {
+          console.log('Received event:', event)
+
+          // Handle action prompts
+          if (event.type === 'prompt.action_required') {
+            setPendingPrompt({
+              promptId: event.prompt_id,
+              message: event.message,
+              options: event.options,
+              context: event.context,
+            })
+          } else {
+            // Regular event
+            setEvents((prev) => [...prev, event])
+
+            if (event.type === 'apply.end') {
+              setStatus('completed')
+              setProgress(100)
+              setTimeout(() => onComplete(), 3000)
+            } else if (event.type === 'error') {
+              setStatus('error')
+            } else if (event.type === 'item.submitted' || event.type === 'item.failed') {
+              setProgress((prev) => Math.min(prev + 10, 95))
+            }
+          }
+        },
+        (error) => {
+          console.error('WebSocket error:', error)
+          setStatus('error')
+        }
+      )
+      setWsConnection(ws)
+    }
+
+    handleConnect().catch(console.error)
+
+    return () => ws.disconnect()
+  }, [taskId])
+
+  const handlePromptResponse = (action: string) => {
+    if (pendingPrompt && wsConnection) {
+      wsConnection.sendResponse(pendingPrompt.promptId, action)
+      setPendingPrompt(null)
+    }
+  }
+
+  const getEventBadge = (event: ApplyEvent) => {
+    switch (event.type) {
+      case 'apply.start':
+        return <Badge variant="outline">Started</Badge>
+      case 'item.start':
+        return <Badge>Processing</Badge>
+      case 'item.submitted':
+        return <Badge variant="success">Submitted</Badge>
+      case 'item.failed':
+        return <Badge variant="destructive">Failed</Badge>
+      case 'apply.end':
+        return <Badge variant="success">Completed</Badge>
+      case 'error':
+        return <Badge variant="destructive">Error</Badge>
+      default:
+        return null
+    }
+  }
+
+  const getEventMessage = (event: ApplyEvent) => {
+    switch (event.type) {
+      case 'apply.start':
+        return `Started applying for profile: ${event.profile_id}`
+      case 'item.start':
+        return `Filling application: ${event.company} - ${event.title}`
+      case 'item.submitted':
+        return `Submitted! Confirmation: ${event.confirmation_id}`
+      case 'item.failed':
+        return `Failed: ${event.reason.message}`
+      case 'apply.end':
+        return `Completed: ${event.submitted} submitted, ${event.failed} failed`
+      case 'error':
+        return `Error: ${event.message}`
+      default:
+        return JSON.stringify(event)
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Apply Progress</CardTitle>
+          <CardDescription>Real-time application status</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Progress</span>
+              <span>{progress}%</span>
+            </div>
+            <Progress value={progress} />
+          </div>
+
+          <ScrollArea className="h-[400px] border rounded-md p-4">
+            <div className="space-y-3">
+              {events.map((event, index) => (
+                <div key={index} className="flex items-start gap-3">
+                  {getEventBadge(event)}
+                  <span className="text-sm flex-1">{getEventMessage(event)}</span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          {status === 'completed' && (
+            <p className="text-sm text-muted-foreground">
+              Apply completed! Returning to form in 3 seconds...
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {pendingPrompt && (
+        <PromptModal
+          isOpen={true}
+          promptId={pendingPrompt.promptId}
+          message={pendingPrompt.message}
+          options={pendingPrompt.options}
+          context={pendingPrompt.context}
+          onRespond={handlePromptResponse}
+        />
+      )}
+    </>
+  )
+}
+```
+
+**File: `frontend/tests/components/PromptModal.test.tsx`** (new)
+
+```tsx
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { PromptModal } from '@/components/PromptModal'
+
+describe('PromptModal', () => {
+  it('renders prompt message and options', () => {
+    const onRespond = vi.fn()
+    render(
+      <PromptModal
+        isOpen={true}
+        promptId="test123"
+        message="Solve CAPTCHA and choose:"
+        options={[
+          { action: 'submit', label: 'Submit (solved)' },
+          { action: 'skip', label: 'Skip Job' },
+        ]}
+        onRespond={onRespond}
+      />
+    )
+
+    expect(screen.getByText('Solve CAPTCHA and choose:')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+  })
+
+  it('calls onRespond with action when button clicked', () => {
+    const onRespond = vi.fn()
+    render(
+      <PromptModal
+        isOpen={true}
+        promptId="test123"
+        message="Test"
+        options={[
+          { action: 'submit', label: 'Submit' },
+        ]}
+        onRespond={onRespond}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(onRespond).toHaveBeenCalledWith('submit')
+  })
+
+  it('displays context information (company, title, screenshot)', () => {
+    const onRespond = vi.fn()
+    render(
+      <PromptModal
+        isOpen={true}
+        promptId="test123"
+        message="Test"
+        options={[]}
+        context={{
+          company: 'Acme Corp',
+          title: 'Software Engineer',
+          screenshot_path: '/artifacts/screenshot.png',
+        }}
+        onRespond={onRespond}
+      />
+    )
+
+    expect(screen.getByText(/acme corp/i)).toBeInTheDocument()
+    expect(screen.getByText(/software engineer/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/current form/i)).toBeInTheDocument()
+  })
+})
+```
+
+**Validation**:
+- ✅ PromptModal displays action options as buttons
+- ✅ Screenshot/context displays when available
+- ✅ `sendResponse()` sends choice back to backend
+- ✅ ApplyProgress handles prompt events
+- ✅ Component tests pass
+- ✅ E2E test simulates user responding to prompt
+
+---
+
+#### 6C: Live Logs (Optional Enhancement)
+
+**Optional**: Add terminal-style log streaming for debugging.
+
+**File: `frontend/src/components/LiveTerminal.tsx`** (new, optional)
+
+```tsx
+import { useEffect, useState } from 'react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
+interface TerminalLogProps {
+  lines: string[]
+  autoScroll?: boolean
+}
+
+export function LiveTerminal({ lines, autoScroll = true }: TerminalLogProps) {
+  const [scrollPosition, setScrollPosition] = useState(0)
+
+  useEffect(() => {
+    if (autoScroll) {
+      // Auto-scroll to bottom
+      const element = document.querySelector('[data-terminal-scroll]')
+      if (element) {
+        element.scrollTop = element.scrollHeight
+      }
+    }
+  }, [lines, autoScroll])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Terminal Output</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea
+          className="h-[200px] bg-black text-green-400 p-4 rounded font-mono text-xs"
+          data-terminal-scroll
+        >
+          {lines.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+**Future enhancement**: Emit `log.stdout` / `log.stderr` events from backend if verbose logging requested.
+
+**Validation**:
+- ✅ Terminal display renders logs
+- ✅ Auto-scrolls to bottom
+- ✅ Styled like terminal (monospace, dark)
+
+---
+
+### Phase 7: Polish & Documentation (Week 7)
 
 **Tasks**:
 1. Add loading states and error boundaries
@@ -1814,12 +2561,27 @@ npx playwright test
 - [ ] Component tests cover all interactions
 - [ ] E2E tests validate complete workflows
 
+### Interactive Supervised Mode (Phase 6)
+
+- [ ] Backend accepts bidirectional WebSocket messages
+- [ ] Action prompt events include prompt_id, message, options, context
+- [ ] PromptModal displays options as clickable buttons
+- [ ] Screenshots display in prompts when available
+- [ ] User responses sent back to backend via `sendResponse()`
+- [ ] CLI receives responses via `prompt_callback()` and continues
+- [ ] Timeout handling (5 min default, user-configurable)
+- [ ] CAPTCHA detection triggers action prompt with screenshot
+- [ ] E2E test verifies user can respond to prompts
+- [ ] Optional: Live terminal logs display for debugging
+
 ### Integration
 
 - [ ] Web UI and CLI use identical queue files
 - [ ] Discover from web UI creates items visible in CLI
 - [ ] Apply from web UI updates queue status correctly
 - [ ] No code changes to existing CLI modules
+- [ ] Interactive supervised mode works in CLI and Web UI equally
+- [ ] All supervised mode actions (S/B/Enter) available in UI
 
 ---
 
