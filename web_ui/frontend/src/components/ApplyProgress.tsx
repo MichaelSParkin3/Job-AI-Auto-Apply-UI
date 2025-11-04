@@ -81,6 +81,8 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
         setFailed((prev) => prev + 1)
       } else if (event.type === 'apply.end') {
         setCompleted(true)
+        // Disconnect WebSocket to prevent reconnection attempts on normal completion
+        wsRef.current?.disconnect()
         addToast({
           title: 'Apply Complete',
           description: `Submitted: ${event.submitted}, Failed: ${event.failed}`,
