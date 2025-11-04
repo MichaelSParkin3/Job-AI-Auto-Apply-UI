@@ -94,3 +94,13 @@ class UserResponseMessage(BaseModel):
     type: str = Field(default="user_response")
     prompt_id: str = Field(..., description="ID of the prompt being responded to")
     action: str = Field(..., description="Action chosen by user")
+
+
+class VerboseLogEvent(BaseModel):
+    """Event for detailed progress logs from CLI execution."""
+
+    type: str = Field(default="log.verbose")
+    timestamp: str = Field(..., description="ISO timestamp of event")
+    event: str = Field(..., description="Event name (e.g., resume_upload.start)")
+    level: str = Field(default="info", description="Log level (info, warning, error)")
+    data: dict = Field(default_factory=dict, description="Event data fields")

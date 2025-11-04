@@ -113,9 +113,13 @@ def _transform_apply_event(event: dict) -> dict:
 
     Backend sends: {"event": "start", "profile": "..."}
     Frontend expects: {"type": "apply.start", "profile_id": "..."}
+
+    High-level events are transformed to structured types.
+    All other events are transformed to verbose log events for debugging.
     """
     backend_event = event.get("event")
 
+    # High-level events with explicit transformation
     if backend_event == "start":
         return {
             "type": "apply.start",
@@ -171,8 +175,16 @@ def _transform_apply_event(event: dict) -> dict:
             "failed": summary.get("failed", 0),
         }
     else:
-        # Passthrough for error events or unknown types
-        return event
+        # Transform all other events to verbose log events for terminal view
+        # Extract data fields, excluding metadata
+        data = {k: v for k, v in event.items() if k not in ["event", "timestamp", "level"]}
+        return {
+            "type": "log.verbose",
+            "timestamp": event.get("timestamp", ""),
+            "event": backend_event,
+            "level": event.get("level", "info"),
+            "data": data,
+        }
 
 
 async def _iter_apply_events_async(*args, **kwargs):

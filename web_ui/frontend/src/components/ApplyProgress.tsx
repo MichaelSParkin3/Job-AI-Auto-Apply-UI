@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApplyWebSocket, type ApplyEvent, type ActionPromptEvent } from '@/lib/websocket'
+import { ApplyWebSocket, type ApplyEvent, type ActionPromptEvent, type VerboseLogEvent } from '@/lib/websocket'
 import { useToast } from '@/lib/toast'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PromptModal } from './PromptModal'
@@ -15,6 +16,13 @@ interface EventLog {
   timestamp: string
   type: string
   data: ApplyEvent
+}
+
+interface VerboseLog {
+  timestamp: string
+  event: string
+  level: string
+  data: Record<string, any>
 }
 
 interface PendingPrompt {
@@ -34,6 +42,8 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
   const [completed, setCompleted] = useState(false)
   const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null)
   const [promptLoading, setPromptLoading] = useState(false)
+  const [verboseLogs, setVerboseLogs] = useState<VerboseLog[]>([])
+  const [showVerboseLogs, setShowVerboseLogs] = useState(false)
   const wsRef = useRef<ApplyWebSocket | null>(null)
   const eventsEndRef = useRef<HTMLDivElement>(null)
   const { addToast } = useToast()
@@ -68,6 +78,21 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
           description: promptEvent.message,
         })
         return // Don't add prompt event to log
+      }
+
+      // Handle verbose logs specially (don't add to main log, add to verbose logs)
+      if (event.type === 'log.verbose') {
+        const logEvent = event as VerboseLogEvent
+        setVerboseLogs((prev) => [
+          ...prev,
+          {
+            timestamp: logEvent.timestamp,
+            event: logEvent.event,
+            level: logEvent.level,
+            data: logEvent.data,
+          },
+        ])
+        return // Don't add verbose log to main event log
       }
 
       setEvents((prev) => [...prev, { timestamp, type: event.type, data: event }])
@@ -302,6 +327,67 @@ export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressPr
             )}
           </div>
         </div>
+
+        {/* Terminal Logs */}
+        {verboseLogs.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">
+                Terminal Logs ({verboseLogs.length})
+              </h3>
+              <Button
+                onClick={() => setShowVerboseLogs(!showVerboseLogs)}
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+              >
+                {showVerboseLogs ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+
+            {showVerboseLogs && (
+              <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 font-mono text-sm overflow-hidden">
+                <div className="max-h-96 overflow-y-auto space-y-1">
+                  {verboseLogs.length === 0 ? (
+                    <div className="text-gray-500">No logs yet...</div>
+                  ) : (
+                    verboseLogs.map((log, index) => {
+                      const levelColors = {
+                        error: 'text-red-400',
+                        warning: 'text-yellow-400',
+                        info: 'text-green-400',
+                        debug: 'text-blue-400',
+                      }
+                      const levelColor = levelColors[log.level as keyof typeof levelColors] || 'text-green-400'
+
+                      return (
+                        <div key={index} className="text-gray-300 text-xs">
+                          <span className="text-gray-500">[{log.timestamp}]</span>
+                          {' '}
+                          <span className={levelColor}>{log.level.toUpperCase()}</span>
+                          {' '}
+                          <span className="text-cyan-400">{log.event}</span>
+                          {Object.keys(log.data).length > 0 && (
+                            <>
+                              {' - '}
+                              <span className="text-gray-400">
+                                {JSON.stringify(log.data)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Completion Message */}
         {completed && (

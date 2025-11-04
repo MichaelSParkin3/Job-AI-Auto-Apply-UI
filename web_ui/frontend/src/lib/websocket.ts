@@ -91,6 +91,15 @@ export interface ActionPromptEvent {
   timeout_seconds?: number
 }
 
+// Verbose log events for terminal view
+export interface VerboseLogEvent {
+  type: 'log.verbose'
+  timestamp: string
+  event: string
+  level: 'info' | 'warning' | 'error'
+  data: Record<string, any>
+}
+
 export type ApplyEvent =
   | ApplyStartEvent
   | ItemStartEvent
@@ -101,6 +110,7 @@ export type ApplyEvent =
   | ItemFailedEvent
   | ApplyEndEvent
   | ActionPromptEvent
+  | VerboseLogEvent
   | ApplyErrorEvent
 
 // Event subscription callbacks
