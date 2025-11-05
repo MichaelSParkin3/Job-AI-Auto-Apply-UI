@@ -376,6 +376,7 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                 mode="supervised" if request.supervised else "auto",
                 review_mode=request.review_mode,
                 job_id=request.job_id,
+                prompt_callback=prompt_callback,
             ):
                 # Forward event to WebSocket client
                 await websocket.send_json(event)

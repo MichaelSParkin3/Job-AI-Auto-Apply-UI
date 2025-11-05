@@ -1000,6 +1000,7 @@ class LeverApplyAgent:
         item: ApplicationItem,
         mode: str,
         review_mode: bool = False,
+        prompt_callback: Callable[[str, list[str], dict | None], str] | None = None,
     ) -> Artifacts | Reason:
         """Open the apply URL in the given session, fill, and optionally submit.
 
@@ -1009,12 +1010,16 @@ class LeverApplyAgent:
             item: Application item being processed.
             mode: "auto" or "supervised" mode indicator.
             review_mode: If True, save pre-submit artifacts and pause without submitting.
+            prompt_callback: Optional callback for interactive prompts in supervised mode.
 
         Returns:
             Artifacts on success or Reason on failure/review.
         """
         apply_url = item.details.apply_url if item.details and item.details.apply_url else item.url
         ensure_allowed_domain(apply_url, self._options.allowed_domains)
+
+        # Store prompt callback for use in CAPTCHA handling and other interactive prompts
+        self._prompt_callback = prompt_callback
 
         page = await session.get_current_page() or await session.new_page()
         # Robust navigate: event-bus -> CDP -> page.goto, with verification + logs
@@ -1597,6 +1602,8 @@ class LeverApplyAgent:
                     captcha_state=cstate,
                     mode=mode,
                     timeout_seconds=resolved_settings.captcha_timeout_seconds,
+                    prompt_callback=self._prompt_callback,
+                    item=item,
                 )
 
                 # If user claims submission or it was validated, try to capture as artifacts
@@ -3758,11 +3765,14 @@ async def _handle_captcha_blocking(
     captcha_state: dict,
     mode: str = "supervised",
     timeout_seconds: int = 30,
+    prompt_callback: Callable[[str, list[str], dict | None], str] | None = None,
+    item: ApplicationItem | None = None,
 ) -> tuple[str, bool]:
     """Handle captcha blocking with user interaction in supervised mode.
 
-    In supervised mode, gives user 30 seconds to solve captcha manually.
-    User can press 'S' to mark as submitted or 'B' to mark as blocked.
+    In supervised mode with prompt_callback, emits an action_required prompt via WebSocket.
+    Without callback, gives user timeout seconds to solve captcha manually via terminal.
+    User can choose to solve, skip, or block the application.
     Auto-blocks after timeout if no response.
 
     In auto mode, immediately returns blocked status.
@@ -3772,6 +3782,8 @@ async def _handle_captcha_blocking(
         captcha_state: Result from captcha detection.
         mode: "supervised" or "auto".
         timeout_seconds: Seconds to wait for user input (default 30).
+        prompt_callback: Optional async callback for WebSocket prompts.
+        item: ApplicationItem being processed (for context).
 
     Returns:
         tuple: (status, validated) where status is "submitted" or "blocked"
@@ -3790,7 +3802,40 @@ async def _handle_captcha_blocking(
         )
         return ("blocked", False)
 
-    # Supervised mode: show interactive prompt
+    # Supervised mode: use callback if available, otherwise fall back to terminal I/O
+    if prompt_callback:
+        # Use WebSocket-based prompt for web UI
+        try:
+            message = "CAPTCHA Detected - What would you like to do?"
+            options = ["submit", "skip", "block"]
+            context = None
+            if item:
+                context = {
+                    "item_id": item.id,
+                    "company": item.details.company if item.details else None,
+                    "title": item.details.title if item.details else None,
+                }
+
+            action = await prompt_callback(message, options, context)
+            log_event("captcha.websocket_response", action=action, item_id=item.id if item else None)
+
+            # Map action to status
+            if action == "submit":
+                # User claims to have solved captcha
+                return ("submitted", False)  # Validation will be skipped
+            elif action in ("skip", "block"):
+                # User wants to skip/block
+                return ("blocked", False)
+            else:
+                # Timeout or other response
+                log_event("captcha.websocket_timeout")
+                return ("blocked", False)
+        except Exception as e:
+            log_event("captcha.websocket_error", error=str(e))
+            # Fall through to terminal I/O
+            pass
+
+    # Supervised mode: show interactive terminal prompt (fallback)
     print("\n" + "=" * 60)
     print("⚠️  CAPTCHA DETECTED - ACTION REQUIRED")
     print("=" * 60)
