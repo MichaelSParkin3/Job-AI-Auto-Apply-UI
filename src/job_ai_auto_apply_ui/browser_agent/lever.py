@@ -1508,7 +1508,9 @@ class LeverApplyAgent:
             if mode != "auto":
                 await _form_report_validity(page)
                 # Let the user fix in supervised mode
-                pause_reason = await _supervised_pause()
+                pause_reason = await _supervised_pause(
+                    prompt_callback=self._prompt_callback, item=item
+                )
                 if pause_reason is not None:
                     return pause_reason
             else:
@@ -1526,7 +1528,9 @@ class LeverApplyAgent:
                 "Please verify the resume is attached, then press Enter to submit."
             )
             if mode != "auto":
-                pause_reason = await _supervised_pause(prompt=review_message)
+                pause_reason = await _supervised_pause(
+                    prompt=review_message, prompt_callback=self._prompt_callback, item=item
+                )
                 if pause_reason is not None:
                     return pause_reason
             else:
@@ -1561,7 +1565,9 @@ class LeverApplyAgent:
 
         # Supervised pause before submit (robust to non-interactive stdin)
         if mode != "auto":
-            pause_reason = await _supervised_pause(allow_skip=True)
+            pause_reason = await _supervised_pause(
+                allow_skip=True, prompt_callback=self._prompt_callback, item=item
+            )
             if pause_reason is not None:
                 return pause_reason
 
@@ -4114,6 +4120,8 @@ async def _supervised_pause(
     *,
     prompt: str | None = None,
     allow_skip: bool = False,
+    prompt_callback: Callable[[str, list[str], dict | None], str] | None = None,
+    item: ApplicationItem | None = None,
 ) -> Reason | None:
     """Pause for human review; be robust to non-interactive stdin.
 
@@ -4121,6 +4129,8 @@ async def _supervised_pause(
         timeout_seconds: Seconds to wait before auto-continuing (ignored if allow_skip=True).
         prompt: Custom prompt message. Defaults based on allow_skip.
         allow_skip: If True, wait indefinitely for user input and support S to skip.
+        prompt_callback: Optional callback for WebSocket-based prompts (web UI integration).
+        item: Application item for context in WebSocket prompts.
 
     Returns:
         Reason if user skips (S) or aborts (Ctrl+C), otherwise None to continue.
@@ -4142,6 +4152,32 @@ async def _supervised_pause(
     else:
         message = "Review filled form in the browser. Press Enter to submit, or wait to auto-continue..."
 
+    # Try WebSocket callback first (for web UI integration)
+    if prompt_callback:
+        try:
+            log_event("supervised.pause.start", reason="pre_submit" if allow_skip else "form_validation")
+            options = ["submit", "skip"] if allow_skip else ["submit"]
+            context = (
+                {
+                    "item_id": item.id if item else None,
+                    "company": item.details.company if item and item.details else None,
+                    "title": item.details.title if item and item.details else None,
+                }
+                if item
+                else None
+            )
+            action = prompt_callback(message, options, context)
+            log_event("supervised.pause.response", action=action)
+
+            if action == "skip":
+                return Reason(code="user_skipped", message="User chose to skip this job")
+            # "submit" or other response: continue
+            return None
+        except Exception as exc:
+            log_event("supervised.pause.callback_error", error=str(exc))
+            # Fall through to terminal I/O
+
+    # Terminal I/O fallback (for CLI-only usage)
     print(message)
     try:
         user_input = input().strip().lower()
