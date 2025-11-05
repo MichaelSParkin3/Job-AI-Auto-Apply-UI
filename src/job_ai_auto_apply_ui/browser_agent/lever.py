@@ -3816,7 +3816,8 @@ async def _handle_captcha_blocking(
                     "title": item.details.title if item.details else None,
                 }
 
-            action = await prompt_callback(message, options, context)
+            # Note: prompt_callback is now SYNC (not async), blocks until user responds
+            action = prompt_callback(message, options, context)
             log_event("captcha.websocket_response", action=action, item_id=item.id if item else None)
 
             # Map action to status
@@ -3831,7 +3832,7 @@ async def _handle_captcha_blocking(
                 log_event("captcha.websocket_timeout")
                 return ("blocked", False)
         except Exception as e:
-            log_event("captcha.websocket_error", error=str(e))
+            log_event("captcha.websocket_error", error=str(e), error_type=type(e).__name__)
             # Fall through to terminal I/O
             pass
 

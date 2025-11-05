@@ -296,11 +296,21 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
         )
 
         # Create prompt callback for supervised mode
-        async def prompt_callback(
+        # Note: This is a SYNC callback that bridges to async WebSocket operations
+        # It's called from within asyncio.run() in the CLI, so it must be synchronous
+        # and use run_coroutine_threadsafe to communicate with the FastAPI event loop
+
+        # Capture the FastAPI event loop for thread-safe communication
+        fastapi_loop = asyncio.get_running_loop()
+
+        def prompt_callback(
             message: str, options: List[str], context: Optional[dict] = None
         ) -> str:
             """
-            Callback for CLI to request user input via WebSocket.
+            Sync callback for CLI to request user input via WebSocket.
+
+            Bridges between the nested asyncio.run() loop (in orchestrator) and
+            the FastAPI event loop by using run_coroutine_threadsafe.
 
             Args:
                 message: Prompt message
@@ -310,28 +320,48 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
             Returns:
                 User's choice or 'timeout'
             """
-            action_options = [
-                ActionPromptOption(
-                    action=opt,
-                    label=opt.title(),  # Simple: "Submit" -> "Submit"
-                    key=None,  # Could map Submit->Enter, Skip->S, Block->B
-                )
-                for opt in options
-            ]
+            try:
+                # Build action options
+                action_options = [
+                    ActionPromptOption(
+                        action=opt,
+                        label=opt.title(),  # Simple: "Submit" -> "Submit"
+                        key=None,  # Could map Submit->Enter, Skip->S, Block->B
+                    )
+                    for opt in options
+                ]
 
-            # Build context object if provided
-            prompt_context = None
-            if context:
-                prompt_context = PromptContext(
-                    item_id=context.get("item_id"),
-                    company=context.get("company"),
-                    title=context.get("title"),
-                    screenshot_path=context.get("screenshot_path"),
-                )
+                # Build context object if provided
+                prompt_context = None
+                if context:
+                    prompt_context = PromptContext(
+                        item_id=context.get("item_id"),
+                        company=context.get("company"),
+                        title=context.get("title"),
+                        screenshot_path=context.get("screenshot_path"),
+                    )
 
-            return await emit_action_prompt(
-                websocket, message, action_options, prompt_context
-            )
+                # Create async task in the FastAPI event loop
+                async def _emit():
+                    return await emit_action_prompt(
+                        websocket, message, action_options, prompt_context
+                    )
+
+                # Submit to FastAPI event loop and block for result
+                future = asyncio.run_coroutine_threadsafe(_emit(), fastapi_loop)
+                result = future.result(timeout=300)  # 5 minute timeout
+                logger.info("websocket.prompt_callback_success", action=result)
+                return result
+
+            except Exception as e:
+                logger.error(
+                    "websocket.prompt_callback_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+                # Return timeout action to gracefully fail over
+                return "timeout"
 
         # Store callback in task for later access
         task["prompt_callback"] = prompt_callback

@@ -431,8 +431,9 @@ def iter_apply_events(
         review_mode: If True, save pre-submit artifacts and skip submission.
         audit_after_submit: If True, capture post-submission screenshot (default).
         job_id: If provided, process only this specific job (auto-resets if needed).
-        prompt_callback: Optional callback for interactive prompts in supervised mode.
-            Signature: (message, options, context) -> chosen_action
+        prompt_callback: Optional SYNC callback for interactive prompts in supervised mode.
+            Called from nested asyncio.run() context, uses run_coroutine_threadsafe internally.
+            Signature: (message, options, context) -> chosen_action (blocks until response)
 
     Yields:
         dict[str, object]: Event payloads following the apply contract schema.
