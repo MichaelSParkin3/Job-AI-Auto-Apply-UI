@@ -4160,8 +4160,8 @@ async def _supervised_pause(
             context = (
                 {
                     "item_id": item.id if item else None,
-                    "company": item.details.company if item and item.details else None,
-                    "title": item.details.title if item and item.details else None,
+                    "company": item.company if item else None,
+                    "title": item.title if item else None,
                 }
                 if item
                 else None
