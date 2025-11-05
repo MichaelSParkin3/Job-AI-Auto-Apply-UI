@@ -640,6 +640,7 @@ def iter_apply_events(
                         )
                 yield event_payload
             else:
+                failed += 1
                 queue.mark_failed(item.id, reason_obj)
                 timeline.info("item.failed", reason=reason)
                 yield {"event": "failed", "id": item.id, "reason": reason}

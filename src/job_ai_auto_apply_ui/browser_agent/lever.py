@@ -4166,6 +4166,7 @@ async def _supervised_pause(
                 if item
                 else None
             )
+            log_event("supervised.pause.calling_callback", prompt_callback_exists=True, options=options)
             action = prompt_callback(message, options, context)
             log_event("supervised.pause.response", action=action)
 

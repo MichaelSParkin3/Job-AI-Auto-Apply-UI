@@ -353,6 +353,16 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                 logger.info("websocket.prompt_callback_success", action=result)
                 return result
 
+            except (BrokenPipeError, ConnectionError, OSError) as e:
+                # Connection-level errors (broken pipe, socket closed, etc)
+                logger.warning(
+                    "websocket.prompt_callback_connection_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+                # Auto-continue by returning submit to gracefully handle disconnection
+                return "submit"
             except Exception as e:
                 logger.error(
                     "websocket.prompt_callback_failed",
