@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+import tomli_w
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ __all__ = [
     "ProfileNotFoundError",
     "InvalidProfileError",
     "load_profile",
+    "save_profile",
     "profiles_root",
 ]
 
@@ -157,3 +159,105 @@ def _maybe_str(raw: object) -> str | None:
     if raw is None:
         return None
     return str(raw)
+
+
+def save_profile(
+    profile_id: str,
+    profile_data: Mapping[str, object],
+    base_dir: Path | None = None,
+) -> Path:
+    """Save a profile to disk as a TOML file.
+
+    Args:
+        profile_id: Profile identifier (becomes filename)
+        profile_data: Profile data mapping with keys like id, name, resume_path, etc.
+        base_dir: Directory to save to (defaults to profiles root)
+
+    Returns:
+        Path to the saved profile file
+
+    Raises:
+        InvalidProfileError: If required fields are missing or invalid
+        OSError: If file cannot be written
+    """
+    # Validate required fields
+    if not profile_data.get("id"):
+        raise InvalidProfileError("Profile must have 'id' field")
+    if not profile_data.get("name"):
+        raise InvalidProfileError("Profile must have 'name' field")
+    if not profile_data.get("resume_path"):
+        raise InvalidProfileError("Profile must have 'resume_path' field")
+
+    directory = profiles_root(base_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    # Build TOML structure
+    output: dict[str, object] = {
+        "id": str(profile_data["id"]),
+        "name": str(profile_data["name"]),
+        "resume_path": str(profile_data["resume_path"]),
+    }
+
+    # Add optional fields
+    if profile_data.get("preferred_browser"):
+        output["preferred_browser"] = str(profile_data["preferred_browser"])
+    if profile_data.get("user_data_dir"):
+        output["user_data_dir"] = str(profile_data["user_data_dir"])
+    if profile_data.get("search_query"):
+        output["search_query"] = str(profile_data["search_query"])
+
+    # Add defaults mapping
+    if profile_data.get("defaults"):
+        output["defaults"] = _coerce_str_mapping(profile_data["defaults"])
+
+    # Add keywords mapping
+    if profile_data.get("keywords"):
+        output["keywords"] = _coerce_list_mapping(profile_data["keywords"])
+
+    # Add prompts mapping
+    if profile_data.get("prompts"):
+        output["prompts"] = _coerce_str_mapping(profile_data["prompts"])
+
+    # Add experience array
+    if profile_data.get("experience"):
+        exp_raw = profile_data["experience"]
+        if isinstance(exp_raw, list):
+            experience_list: list[dict[str, object]] = []
+            for item in exp_raw:
+                if isinstance(item, MutableMapping):
+                    # Convert each experience item
+                    exp_item: dict[str, object] = {
+                        "company": str(item.get("company", "")),
+                        "role": str(item.get("role", "")),
+                        "dates": str(item.get("dates", "")),
+                    }
+                    if item.get("location"):
+                        exp_item["location"] = str(item["location"])
+                    if item.get("context"):
+                        exp_item["context"] = str(item["context"])
+
+                    # Highlights and tech_stack as lists
+                    highlights = item.get("highlights", [])
+                    if isinstance(highlights, list):
+                        exp_item["highlights"] = [str(h) for h in highlights if h]
+                    tech_stack = item.get("tech_stack", [])
+                    if isinstance(tech_stack, list):
+                        exp_item["tech_stack"] = [str(t) for t in tech_stack if t]
+
+                    # Metrics as mapping
+                    metrics = item.get("metrics", {})
+                    if isinstance(metrics, MutableMapping):
+                        exp_item["metrics"] = {
+                            str(k): str(v) for k, v in metrics.items() if v
+                        }
+
+                    experience_list.append(exp_item)
+            if experience_list:
+                output["experience"] = experience_list
+
+    # Write TOML file
+    candidate = directory / f"{profile_id}.toml"
+    toml_content = tomli_w.dumps(output)
+    candidate.write_text(toml_content, encoding="utf-8")
+
+    return candidate
