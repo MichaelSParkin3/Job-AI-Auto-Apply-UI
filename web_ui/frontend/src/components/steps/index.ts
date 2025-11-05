@@ -1,11 +1,8 @@
 // Export all step components
 export { BasicInfoStep } from './BasicInfoStep'
-export type { StepProps } from './types'
-
-// TODO: Implement remaining steps following the pattern in BasicInfoStep
-// - ResumeStep
-// - ContactStep
-// - KeywordsStep
-// - ExperienceStep
-// - PromptsStep
-// - ReviewStep
+export { ResumeStep } from './ResumeStep'
+export { ContactStep } from './ContactStep'
+export { KeywordsStep } from './KeywordsStep'
+export { ExperienceStep } from './ExperienceStep'
+export { PromptsStep } from './PromptsStep'
+export { ReviewStep } from './ReviewStep'
