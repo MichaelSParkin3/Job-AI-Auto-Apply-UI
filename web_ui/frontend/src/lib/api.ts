@@ -8,7 +8,18 @@ const api = axios.create({
   },
 })
 
-// Type definitions
+// Profile types (from lib/types.ts imported here for API layer)
+export interface ExperienceItem {
+  company: string
+  role: string
+  dates: string
+  location?: string
+  context?: string
+  highlights: string[]
+  tech_stack: string[]
+  metrics: Record<string, string>
+}
+
 export interface Profile {
   id: string
   name: string
@@ -17,9 +28,26 @@ export interface Profile {
   has_experience: boolean
 }
 
+export interface ProfileDetailResponse {
+  id: string
+  name: string
+  resume_path: string
+  preferred_browser?: string
+  user_data_dir?: string
+  search_query?: string
+  defaults: Record<string, string>
+  keywords: Record<string, string[]>
+  experience: ExperienceItem[]
+  prompts: Record<string, string>
+}
+
 export interface ProfileListResponse {
   profiles: Profile[]
-  count: number
+}
+
+export interface ResumeUploadResponse {
+  filename: string
+  path: string
 }
 
 export interface DiscoverRequest {
@@ -57,6 +85,19 @@ export interface ApplyResponse {
 export const profilesApi = {
   list: () => api.get<ProfileListResponse>('/api/profiles'),
   get: (id: string) => api.get<Profile>(`/api/profiles/${id}`),
+  getDetail: (id: string) => api.get<ProfileDetailResponse>(`/api/profiles/${id}/detail`),
+  create: (profile: ProfileDetailResponse) =>
+    api.post<ProfileDetailResponse>('/api/profiles', profile),
+  update: (id: string, profile: Partial<ProfileDetailResponse>) =>
+    api.put<ProfileDetailResponse>(`/api/profiles/${id}`, profile),
+  delete: (id: string) => api.delete(`/api/profiles/${id}`),
+  uploadResume: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<ResumeUploadResponse>(`/api/profiles/${id}/resume`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
 
 export const discoverApi = {

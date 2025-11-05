@@ -4,13 +4,14 @@ import { ProfileSelector } from '@/components/ProfileSelector'
 import { DiscoverForm } from '@/components/DiscoverForm'
 import { ApplyForm } from '@/components/ApplyForm'
 import { ApplyProgress } from '@/components/ApplyProgress'
+import { ProfilesPage } from '@/pages/ProfilesPage'
 import { ToastProvider } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toast'
 import './App.css'
 
 function AppContent() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
-  const [activeTab, setActiveTab] = useState<'discover' | 'apply'>('discover')
+  const [activeTab, setActiveTab] = useState<'profiles' | 'discover' | 'apply'>('discover')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeWebsocketUrl, setActiveWebsocketUrl] = useState<string | null>(null)
 
@@ -36,6 +37,17 @@ function AppContent() {
             {/* Tabs */}
             <div className="mb-6 border-b border-gray-200">
               <nav className="flex gap-8" aria-label="Tabs">
+                <button
+                  onClick={() => setActiveTab('profiles')}
+                  className={`border-b-2 px-1 py-4 text-sm font-medium ${
+                    activeTab === 'profiles'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'
+                  }`}
+                  aria-current={activeTab === 'profiles' ? 'page' : undefined}
+                >
+                  Profiles
+                </button>
                 <button
                   onClick={() => setActiveTab('discover')}
                   className={`border-b-2 px-1 py-4 text-sm font-medium ${
@@ -63,6 +75,10 @@ function AppContent() {
 
             {/* Tab Content */}
             <div>
+              {activeTab === 'profiles' && (
+                <ProfilesPage />
+              )}
+
               {activeTab === 'discover' && selectedProfile && (
                 <DiscoverForm profileId={selectedProfile.id} />
               )}

@@ -3,6 +3,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ProfileForm } from '../components/ProfileForm'
 import { Profile, ProfileDetailResponse } from '../lib/types'
+import { profilesApi } from '../lib/api'
 
 export function ProfilesPage() {
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list')
@@ -18,9 +19,8 @@ export function ProfilesPage() {
   const loadProfiles = async () => {
     setLoading(true)
     try {
-      // In Phase 3, wire this to API call: GET /api/profiles
-      // For now, show empty state
-      setProfiles([])
+      const response = await profilesApi.list()
+      setProfiles(response.data.profiles)
     } catch (error) {
       console.error('Failed to load profiles:', error)
     } finally {
@@ -32,7 +32,7 @@ export function ProfilesPage() {
     if (!window.confirm(`Delete profile "${profileId}"?`)) return
 
     try {
-      // In Phase 3, wire this to API call: DELETE /api/profiles/{profileId}
+      await profilesApi.delete(profileId)
       await loadProfiles()
     } catch (error) {
       console.error('Failed to delete profile:', error)
@@ -41,9 +41,8 @@ export function ProfilesPage() {
 
   const handleSaveProfile = async (profile: ProfileDetailResponse) => {
     try {
-      // In Phase 3, wire this to API calls:
-      // - POST /api/profiles (create)
-      // - PUT /api/profiles/{id} (update)
+      // ProfileForm handles API calls (POST/PUT) via profilesApi
+      // Just reload and return to list
       await loadProfiles()
       setMode('list')
     } catch (error) {

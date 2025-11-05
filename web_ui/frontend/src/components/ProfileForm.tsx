@@ -11,6 +11,7 @@ import {
   ReviewStep,
 } from './steps'
 import { ProfileDetailResponse } from '../lib/types'
+import { profilesApi } from '../lib/api'
 
 interface ProfileFormProps {
   profileId?: string
@@ -39,20 +40,19 @@ export function ProfileForm({ profileId, onSave, onCancel }: ProfileFormProps) {
   // Load existing profile on mount
   useEffect(() => {
     if (profileId) {
-      // In Phase 3, wire this to load from API
-      // For now, just initialize empty
-      setFormData({
-        id: profileId,
-        name: '',
-        resume_path: '',
-        preferred_browser: undefined,
-        user_data_dir: undefined,
-        search_query: undefined,
-        defaults: {},
-        keywords: {},
-        experience: [],
-        prompts: {},
-      })
+      setLoading(true)
+      profilesApi
+        .getDetail(profileId)
+        .then((response) => {
+          setFormData(response.data)
+        })
+        .catch((err) => {
+          const message = err instanceof Error ? err.message : 'Failed to load profile'
+          setError(message)
+        })
+        .finally(() => {
+          setLoading(false)
+        })
     }
   }, [profileId])
 
@@ -107,11 +107,22 @@ export function ProfileForm({ profileId, onSave, onCancel }: ProfileFormProps) {
 
     setLoading(true)
     try {
-      // In Phase 3, wire this to API call
-      // For now, just call the callback
-      onSave(formData as ProfileDetailResponse)
+      const profileData = formData as ProfileDetailResponse
+
+      if (profileId) {
+        // Update existing profile
+        await profilesApi.update(profileId, profileData)
+      } else {
+        // Create new profile
+        await profilesApi.create(profileData)
+      }
+
+      onSave(profileData)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save profile'
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to save profile'
       setError(message)
     } finally {
       setLoading(false)
