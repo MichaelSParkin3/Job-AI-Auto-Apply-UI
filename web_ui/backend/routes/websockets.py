@@ -5,6 +5,7 @@ import os
 import uuid
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from typing import Dict, Optional, List
 
 from job_ai_auto_apply_ui.orchestrator import iter_apply_events
@@ -320,6 +321,12 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
             Returns:
                 User's choice or 'timeout'
             """
+            logger.info(
+                "websocket.prompt_callback_start",
+                message=message,
+                options=options,
+                has_context=context is not None,
+            )
             try:
                 # Build action options
                 action_options = [
@@ -341,6 +348,20 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                         screenshot_path=context.get("screenshot_path"),
                     )
 
+                # Verify WebSocket is still connected
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    logger.warning(
+                        "websocket.prompt_callback_not_connected",
+                        client_state=websocket.client_state.name,
+                    )
+                    return "block"
+
+                logger.info(
+                    "websocket.prompt_callback_emitting",
+                    message=message,
+                    option_count=len(options),
+                )
+
                 # Create async task in the FastAPI event loop
                 async def _emit():
                     return await emit_action_prompt(
@@ -349,6 +370,7 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
 
                 # Submit to FastAPI event loop and block for result
                 future = asyncio.run_coroutine_threadsafe(_emit(), fastapi_loop)
+                logger.info("websocket.prompt_callback_waiting_for_response")
                 result = future.result(timeout=300)  # 5 minute timeout
                 logger.info("websocket.prompt_callback_success", action=result)
                 return result
@@ -361,8 +383,17 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                     error_type=type(e).__name__,
                     exc_info=True
                 )
-                # Auto-continue by returning submit to gracefully handle disconnection
-                return "submit"
+                # Block instead of auto-submitting on connection errors
+                # This prevents unintended form submissions when connection is broken
+                return "block"
+            except asyncio.TimeoutError as e:
+                # Timeout waiting for response from orchestrator
+                logger.warning(
+                    "websocket.prompt_callback_orchestrator_timeout",
+                    error=str(e),
+                    exc_info=True
+                )
+                return "timeout"
             except Exception as e:
                 logger.error(
                     "websocket.prompt_callback_failed",
@@ -370,8 +401,8 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                     error_type=type(e).__name__,
                     exc_info=True
                 )
-                # Return timeout action to gracefully fail over
-                return "timeout"
+                # Return block action to gracefully fail over (don't auto-submit)
+                return "block"
 
         # Store callback in task for later access
         task["prompt_callback"] = prompt_callback
