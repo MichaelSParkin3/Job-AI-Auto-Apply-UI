@@ -3,7 +3,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { MultiInput } from '../ui/multi-input'
 import { Textarea } from '../ui/textarea'
-import { ExperienceItem, ProfileDetailResponse } from '../../lib/types'
+import type { ExperienceItem, ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>

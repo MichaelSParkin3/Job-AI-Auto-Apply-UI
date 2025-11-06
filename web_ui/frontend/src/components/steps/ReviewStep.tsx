@@ -1,6 +1,6 @@
 import { Button } from '../ui/button'
 import { Card, CardContent } from '../ui/card'
-import { ProfileDetailResponse } from '../../lib/types'
+import type { ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>

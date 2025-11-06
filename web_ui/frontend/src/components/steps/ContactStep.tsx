@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Label } from '../ui/label'
 import { Input } from '../ui/input'
 import { Button } from '../ui/button'
-import { ProfileDetailResponse } from '../../lib/types'
+import type { ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>

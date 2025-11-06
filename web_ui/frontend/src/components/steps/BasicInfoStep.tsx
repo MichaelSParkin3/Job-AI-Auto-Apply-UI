@@ -1,7 +1,7 @@
 import { Label } from '../ui/label'
 import { Input } from '../ui/input'
 import { Select } from '../ui/select'
-import { ProfileDetailResponse } from '../../lib/types'
+import type { ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>

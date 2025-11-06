@@ -1,7 +1,7 @@
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 import { FileUpload } from '../ui/file-upload'
-import { ProfileDetailResponse } from '../../lib/types'
+import type { ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>

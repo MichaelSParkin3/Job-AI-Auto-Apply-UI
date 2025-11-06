@@ -10,7 +10,7 @@ import {
   PromptsStep,
   ReviewStep,
 } from './steps'
-import { ProfileDetailResponse } from '../lib/types'
+import type { ProfileDetailResponse } from '../lib/types'
 import { profilesApi } from '../lib/api'
 
 interface ProfileFormProps {

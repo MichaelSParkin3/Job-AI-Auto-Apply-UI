@@ -1,5 +1,5 @@
 import { MultiInput } from '../ui/multi-input'
-import { ProfileDetailResponse } from '../../lib/types'
+import type { ProfileDetailResponse } from '../../lib/types'
 
 interface StepProps {
   formData: Partial<ProfileDetailResponse>
