@@ -33,6 +33,7 @@ export interface DiscoverRequest {
 export interface DiscoverResponse {
   success: boolean
   items_discovered: number
+  items_duplicate: number
   message: string
   profile_id: string
 }

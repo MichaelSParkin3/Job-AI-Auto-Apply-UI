@@ -62,29 +62,40 @@ async def run_discover_task(request: DiscoverRequest) -> dict:
         # Filter real ApplicationItems
         to_enqueue = [item for item in items if hasattr(item, "hash")]
 
-        # Enqueue items
+        # Enqueue items and track duplicates
+        new_items = []
+        duplicate_count = 0
         if to_enqueue:
             queue = ApplicationQueue(request.profile_id)
-            queue.enqueue(to_enqueue)
+            new_items = queue.enqueue(to_enqueue)
+            duplicate_count = len(to_enqueue) - len(new_items)
 
         logger.info(
             "discover.complete",
             profile_id=request.profile_id,
-            count=len(to_enqueue),
+            new=len(new_items),
+            duplicates=duplicate_count,
             total_items=len(items),
         )
 
         # Store task result
         discover_tasks[task_id] = {
             "status": "completed",
-            "items_discovered": len(to_enqueue),
+            "items_discovered": len(new_items),
+            "items_duplicate": duplicate_count,
             "completed_at": datetime.utcnow().isoformat(),
         }
 
+        # Build message with duplicate info
+        message = f"Discovered {len(new_items)} new postings for profile '{request.profile_id}'."
+        if duplicate_count > 0:
+            message += f" ({duplicate_count} duplicates skipped)"
+
         return {
             "success": True,
-            "items_discovered": len(to_enqueue),
-            "message": f"Discovered {len(to_enqueue)} new postings for profile '{request.profile_id}'",
+            "items_discovered": len(new_items),
+            "items_duplicate": duplicate_count,
+            "message": message,
         }
 
     except Exception as e:

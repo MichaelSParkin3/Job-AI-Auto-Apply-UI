@@ -50,9 +50,19 @@ export function DiscoverForm({ profileId }: DiscoverFormProps) {
 
       const response = await discoverApi.start(request)
 
+      // Build detailed message with breakdown
+      const newCount = response.data.items_discovered
+      const dupCount = response.data.items_duplicate || 0
+      const totalFound = newCount + dupCount
+
+      let description = response.data.message
+      if (newCount > 0 || dupCount > 0) {
+        description += `\n\nSummary:\n• ${newCount} new job(s) added\n• ${dupCount} duplicate(s) skipped\n• ${totalFound} total found`
+      }
+
       addToast({
-        title: 'Discover Started',
-        description: response.data.message,
+        title: 'Discover Complete',
+        description: description,
       })
 
       // Reset form

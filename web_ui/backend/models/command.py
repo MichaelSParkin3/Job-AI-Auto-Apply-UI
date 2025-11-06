@@ -18,7 +18,10 @@ class DiscoverResponse(BaseModel):
 
     success: bool = Field(..., description="Whether discover started successfully")
     items_discovered: int = Field(
-        default=0, description="Number of items discovered (for background tasks)"
+        default=0, description="Number of NEW items discovered"
+    )
+    items_duplicate: int = Field(
+        default=0, description="Number of duplicate items skipped"
     )
     message: str = Field(..., description="Human-readable message")
     profile_id: str = Field(..., description="Profile used for discover")
