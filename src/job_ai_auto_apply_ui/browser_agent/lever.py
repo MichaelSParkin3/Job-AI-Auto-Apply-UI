@@ -3818,8 +3818,8 @@ async def _handle_captcha_blocking(
             if item:
                 context = {
                     "item_id": item.id,
-                    "company": item.details.company if item.details else None,
-                    "title": item.details.title if item.details else None,
+                    "company": item.company,
+                    "title": item.title,
                 }
 
             # Note: prompt_callback is now SYNC (not async), blocks until user responds
