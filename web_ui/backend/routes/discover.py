@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from job_ai_auto_apply_ui.application_queue import ApplicationQueue
@@ -114,26 +114,21 @@ async def run_discover_task(request: DiscoverRequest) -> dict:
 
 
 @router.post("/discover", response_model=DiscoverResponse)
-async def discover(request: DiscoverRequest, background_tasks: BackgroundTasks):
+async def discover(request: DiscoverRequest):
     """
     Trigger discover command to find new job postings.
 
-    This endpoint returns immediately and runs discovery in background.
-    Poll the queue endpoint to see new items.
+    This endpoint runs discovery synchronously and returns results.
 
     Args:
         request: DiscoverRequest with profile_id, window, and cap
-        background_tasks: FastAPI background tasks
 
     Returns:
-        DiscoverResponse with status and WebSocket URL
+        DiscoverResponse with success status, counts, and message
     """
     try:
         # Validate profile exists
         profile = load_profile(request.profile_id)
-
-        # Add background task
-        background_tasks.add_task(run_discover_task, request)
 
         logger.info(
             "discover.task.created",
@@ -142,10 +137,14 @@ async def discover(request: DiscoverRequest, background_tasks: BackgroundTasks):
             cap=request.cap,
         )
 
+        # Run discover synchronously and get actual results
+        result = await run_discover_task(request)
+
         return DiscoverResponse(
-            success=True,
-            items_discovered=0,
-            message=f"Discover started for profile '{request.profile_id}' (window: {request.window}, cap: {request.cap}). Items will appear in the queue shortly.",
+            success=result["success"],
+            items_discovered=result["items_discovered"],
+            items_duplicate=result["items_duplicate"],
+            message=result["message"],
             profile_id=request.profile_id,
         )
 
