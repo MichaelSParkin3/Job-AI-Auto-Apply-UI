@@ -118,21 +118,31 @@ def cmd_discover(args: argparse.Namespace) -> int:
     )
     # Enqueue only real ApplicationItems; still pass through any contract-like items for JSON.
     to_enqueue = [item for item in items if hasattr(item, "hash")]
+    accepted = []
     if to_enqueue:
-        queue.enqueue(to_enqueue)
+        accepted = queue.enqueue(to_enqueue)
+    duplicates = len(to_enqueue) - len(accepted)
     payload = {"items": [item.to_contract_dict() for item in items]}
 
     if args.json:
         _print_json(payload)
     else:
         profile_name = _profile_name(profile_obj)
-        accepted = to_enqueue
         if accepted:
-            print(f"Discovered {len(accepted)} new postings for profile '{profile_name}'.")
+            msg = f"Discovered {len(accepted)} new postings for profile '{profile_name}'."
+            if duplicates > 0:
+                msg += f" ({duplicates} duplicates skipped)"
+            print(msg)
+        elif duplicates > 0:
+            print(
+                f"Found {duplicates} postings, but all were duplicates (already in queue)."
+            )
         else:
             print("No new postings discovered in the selected window.")
-    log_event("discover.complete", profile=profile_id, new=len(items))
-    return 0 if items else 2
+    log_event(
+        "discover.complete", profile=profile_id, new=len(accepted), duplicates=duplicates
+    )
+    return 0 if accepted else 2
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
