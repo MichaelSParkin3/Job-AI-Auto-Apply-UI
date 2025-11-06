@@ -5,6 +5,12 @@ import type {
   ProfileDetailResponse,
   ProfileListResponse,
   ResumeUploadResponse,
+  SettingsResponse,
+  SettingsUpdateResponse,
+  ValidationResult,
+  SettingsUpdateRequest,
+  CategoriesResponse,
+  ResetRequest,
 } from './types'
 
 // Re-export types for backward compatibility
@@ -14,6 +20,12 @@ export type {
   ProfileDetailResponse,
   ProfileListResponse,
   ResumeUploadResponse,
+  SettingsResponse,
+  SettingsUpdateResponse,
+  ValidationResult,
+  SettingsUpdateRequest,
+  CategoriesResponse,
+  ResetRequest,
 }
 
 const api = axios.create({
@@ -83,6 +95,22 @@ export const discoverApi = {
 export const applyApi = {
   start: (request: ApplyRequest) =>
     api.post<ApplyResponse>('/api/apply', request),
+}
+
+export const settingsApi = {
+  getSettings: () =>
+    api.get<SettingsResponse>('/api/settings'),
+  getCategories: () =>
+    api.get<CategoriesResponse>('/api/settings/categories'),
+  validateSettings: (updates: Record<string, any>) =>
+    api.post<ValidationResult>('/api/settings/validate', { settings: updates }),
+  updateSettings: (updates: Record<string, any>) =>
+    api.put<SettingsUpdateResponse>('/api/settings', { updates }),
+  resetSettings: (keys?: string[], resetAll?: boolean) =>
+    api.post<SettingsUpdateResponse>('/api/settings/reset', {
+      keys: keys || null,
+      reset_all: resetAll || false,
+    }),
 }
 
 export default api

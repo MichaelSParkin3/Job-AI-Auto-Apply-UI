@@ -5,13 +5,14 @@ import { DiscoverForm } from '@/components/DiscoverForm'
 import { ApplyForm } from '@/components/ApplyForm'
 import { ApplyProgress } from '@/components/ApplyProgress'
 import { ProfilesPage } from '@/pages/ProfilesPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { ToastProvider } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toast'
 import './App.css'
 
 function AppContent() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
-  const [activeTab, setActiveTab] = useState<'profiles' | 'discover' | 'apply'>('discover')
+  const [activeTab, setActiveTab] = useState<'profiles' | 'discover' | 'apply' | 'settings'>('discover')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeWebsocketUrl, setActiveWebsocketUrl] = useState<string | null>(null)
 
@@ -70,6 +71,17 @@ function AppContent() {
                 >
                   Apply
                 </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`border-b-2 px-1 py-4 text-sm font-medium ${
+                    activeTab === 'settings'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'
+                  }`}
+                  aria-current={activeTab === 'settings' ? 'page' : undefined}
+                >
+                  Settings
+                </button>
               </nav>
             </div>
 
@@ -104,6 +116,10 @@ function AppContent() {
                     />
                   )}
                 </>
+              )}
+
+              {activeTab === 'settings' && (
+                <SettingsPage />
               )}
             </div>
 
