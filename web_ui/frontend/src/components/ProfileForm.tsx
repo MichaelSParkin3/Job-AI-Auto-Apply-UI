@@ -170,6 +170,7 @@ export function ProfileForm({ profileId, onSave, onCancel }: ProfileFormProps) {
           <CurrentStep
             formData={formData}
             onChange={setFormData}
+            isEditMode={!!profileId}
             onEditStep={step === 7 ? handleEditStep : undefined}
           />
         </CardContent>

@@ -6,9 +6,10 @@ import type { ProfileDetailResponse } from '../../lib/types'
 interface StepProps {
   formData: Partial<ProfileDetailResponse>
   onChange: (data: Partial<ProfileDetailResponse>) => void
+  isEditMode?: boolean
 }
 
-export function BasicInfoStep({ formData, onChange }: StepProps) {
+export function BasicInfoStep({ formData, onChange, isEditMode }: StepProps) {
   return (
     <div className="space-y-4">
       <div>
@@ -18,7 +19,7 @@ export function BasicInfoStep({ formData, onChange }: StepProps) {
           value={formData.id || ''}
           onChange={(e) => onChange({ ...formData, id: e.target.value })}
           placeholder="my-profile (slug format)"
-          disabled={!!formData.id}
+          disabled={isEditMode}
         />
         <p className="text-sm text-gray-500 mt-1">
           Unique identifier (alphanumeric, underscore, hyphen only)

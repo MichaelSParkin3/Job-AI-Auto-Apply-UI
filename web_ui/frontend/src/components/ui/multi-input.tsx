@@ -20,11 +20,50 @@ export function MultiInput({
 }: MultiInputProps) {
   const [input, setInput] = useState('')
 
+  // Helper function to parse comma-separated input
+  const parseCommaSeparatedInput = (text: string): string[] => {
+    return text
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0)
+      .filter((v) => !values.includes(v)) // Remove duplicates
+  }
+
   const addValue = () => {
-    if (input.trim() && !values.includes(input.trim())) {
-      onChange([...values, input.trim()])
+    const inputValue = input.trim()
+    if (!inputValue) return
+
+    let newValues: string[]
+
+    // Check if input contains commas
+    if (inputValue.includes(',')) {
+      newValues = parseCommaSeparatedInput(inputValue)
+    } else {
+      // Single value
+      newValues = values.includes(inputValue) ? [] : [inputValue]
+    }
+
+    if (newValues.length > 0) {
+      onChange([...values, ...newValues])
       setInput('')
     }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedText = e.clipboardData.getData('text')
+
+    // Only intercept if pasted text contains commas
+    if (pastedText.includes(',')) {
+      e.preventDefault()
+
+      const newValues = parseCommaSeparatedInput(pastedText)
+
+      if (newValues.length > 0) {
+        onChange([...values, ...newValues])
+        setInput('')
+      }
+    }
+    // If no commas, allow default paste behavior
   }
 
   const removeValue = (index: number) => {
@@ -39,6 +78,7 @@ export function MultiInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addValue())}
+          onPaste={handlePaste}
           placeholder={placeholder}
           disabled={disabled}
         />
@@ -50,6 +90,9 @@ export function MultiInput({
           Add
         </Button>
       </div>
+      <p className="text-xs text-gray-500 mb-2">
+        Tip: Paste comma-separated values or type values separated by commas
+      </p>
       <div className="flex flex-wrap gap-2">
         {values.map((value, index) => (
           <Tag

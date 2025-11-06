@@ -8,6 +8,7 @@ import type { ExperienceItem, ProfileDetailResponse } from '../../lib/types'
 interface StepProps {
   formData: Partial<ProfileDetailResponse>
   onChange: (data: Partial<ProfileDetailResponse>) => void
+  isEditMode?: boolean
 }
 
 export function ExperienceStep({ formData, onChange }: StepProps) {

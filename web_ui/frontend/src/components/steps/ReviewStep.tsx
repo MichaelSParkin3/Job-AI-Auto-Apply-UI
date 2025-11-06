@@ -5,6 +5,7 @@ import type { ProfileDetailResponse } from '../../lib/types'
 interface StepProps {
   formData: Partial<ProfileDetailResponse>
   onChange: (data: Partial<ProfileDetailResponse>) => void
+  isEditMode?: boolean
   onEditStep?: (step: number) => void
 }
 
