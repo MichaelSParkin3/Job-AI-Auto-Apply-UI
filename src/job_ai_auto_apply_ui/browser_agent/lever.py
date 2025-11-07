@@ -3829,7 +3829,49 @@ async def _handle_captcha_blocking(
             # Map action to status
             if action == "submit":
                 # User claims to have solved captcha
-                return ("submitted", False)  # Validation will be skipped
+                # Validate by checking for confirmation page or form disappearance
+                try:
+                    await asyncio.sleep(1)  # Give page time to load confirmation
+
+                    # Check for confirmation indicators
+                    has_form = await page.evaluate(
+                        "() => !!document.querySelector('form#application-form')"
+                    )
+                    has_success_text = await page.evaluate(
+                        """() => {
+                          const body = document.body.innerText.toLowerCase();
+                          return body.includes('success') ||
+                                 body.includes('submitted') ||
+                                 body.includes('confirmation') ||
+                                 body.includes('thanks for applying') ||
+                                 body.includes('already submitted') ||
+                                 body.includes('application received');
+                        }"""
+                    )
+
+                    # If form is gone or success text appeared, consider it submitted and validated
+                    if not has_form or has_success_text:
+                        log_event(
+                            "captcha.websocket_submitted_validated",
+                            form_gone=not has_form,
+                            success_text=has_success_text,
+                            item_id=item.id if item else None,
+                        )
+                        return ("submitted", True)  # ✓ Validated!
+                    else:
+                        # Form still present, no success indicators
+                        log_event(
+                            "captcha.websocket_submitted_unvalidated",
+                            item_id=item.id if item else None,
+                        )
+                        return ("submitted", False)  # User claim unvalidated
+                except Exception as e:
+                    log_event(
+                        "captcha.websocket_validation_error",
+                        error=str(e),
+                        item_id=item.id if item else None,
+                    )
+                    return ("submitted", False)  # Assume unvalidated on error
             elif action in ("skip", "block"):
                 # User wants to skip/block
                 return ("blocked", False)
