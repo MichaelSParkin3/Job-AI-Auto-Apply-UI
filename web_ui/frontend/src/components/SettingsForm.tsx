@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { SettingField as SettingFieldType, SettingsResponse } from '@/lib/types'
+import type { SettingsResponse } from '@/lib/types'
 import { settingsApi } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'

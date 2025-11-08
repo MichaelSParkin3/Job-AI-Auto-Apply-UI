@@ -13,7 +13,7 @@ interface FileUploadProps {
 }
 
 export function FileUpload({
-  profileId,
+  profileId: _profileId,
   currentPath,
   onUploadComplete,
   disabled,

@@ -98,3 +98,70 @@ export interface ResetRequest {
 export interface CategoriesResponse {
   categories: SettingsCategory[]
 }
+
+// Queue and Job types
+export interface JobDetailsResponse {
+  location?: string
+  work_model: string
+  employment_type: string
+  department?: string
+  posting_date?: string
+  compensation?: Record<string, any>
+  posting_excerpt?: string
+  posting_text?: string
+  tech_tags: string[]
+  source_query?: string
+  source_rank?: number
+  apply_url?: string
+  closed: boolean
+  extracted_at?: string
+}
+
+export interface ArtifactsResponse {
+  dom_snapshot_path?: string
+  screenshot_path?: string
+  video_path?: string
+  har_path?: string
+  confirmation_text?: string
+  confirmation_id?: string
+  form_state_path?: string
+  screenshot_before_path?: string
+  screenshot_after_path?: string
+}
+
+export interface ReasonResponse {
+  code: string
+  message: string
+}
+
+export interface JobItemResponse {
+  id: string
+  url: string
+  company: string
+  title: string
+  status: string
+  discovered_at: string
+  last_updated_at: string
+  details?: JobDetailsResponse
+  artifacts?: ArtifactsResponse
+  reason?: ReasonResponse
+}
+
+export interface QueueGroupResponse {
+  label: string
+  status_values: string[]
+  count: number
+  items: JobItemResponse[]
+}
+
+export interface QueueResponse {
+  profile_id: string
+  total_count: number
+  groups: QueueGroupResponse[]
+}
+
+export interface JobDetailPageResponse {
+  job: JobItemResponse
+  profile_id: string
+  answer_cache?: Record<string, string>
+}

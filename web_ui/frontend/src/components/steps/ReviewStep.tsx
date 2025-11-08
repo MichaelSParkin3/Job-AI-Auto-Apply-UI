@@ -9,7 +9,7 @@ interface StepProps {
   onEditStep?: (step: number) => void
 }
 
-export function ReviewStep({ formData, onChange, onEditStep }: StepProps) {
+export function ReviewStep({ formData, onChange: _onChange, onEditStep }: StepProps) {
   return (
     <div className="space-y-6">
       <p className="text-gray-600">

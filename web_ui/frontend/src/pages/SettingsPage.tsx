@@ -3,7 +3,7 @@ import { settingsApi } from '@/lib/api'
 import type { SettingsResponse } from '@/lib/types'
 import { useToast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SettingsForm } from '@/components/SettingsForm'
 
 export function SettingsPage() {

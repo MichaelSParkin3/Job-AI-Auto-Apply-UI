@@ -32,7 +32,7 @@ interface PendingPrompt {
   context?: { item_id?: string; company?: string; title?: string; screenshot_path?: string }
 }
 
-export function ApplyProgress({ taskId, websocketUrl, onClose }: ApplyProgressProps) {
+export function ApplyProgress({ taskId, websocketUrl: _websocketUrl, onClose }: ApplyProgressProps) {
   const [events, setEvents] = useState<EventLog[]>([])
   const [connected, setConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)

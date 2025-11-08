@@ -11,6 +11,13 @@ import type {
   SettingsUpdateRequest,
   CategoriesResponse,
   ResetRequest,
+  QueueResponse,
+  QueueGroupResponse,
+  JobItemResponse,
+  JobDetailsResponse,
+  ArtifactsResponse,
+  ReasonResponse,
+  JobDetailPageResponse,
 } from './types'
 
 // Re-export types for backward compatibility
@@ -26,6 +33,13 @@ export type {
   SettingsUpdateRequest,
   CategoriesResponse,
   ResetRequest,
+  QueueResponse,
+  QueueGroupResponse,
+  JobItemResponse,
+  JobDetailsResponse,
+  ArtifactsResponse,
+  ReasonResponse,
+  JobDetailPageResponse,
 }
 
 const api = axios.create({

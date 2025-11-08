@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import web_settings
-from .routes import apply, discover, profiles, settings, websockets
+from .routes import apply, discover, profiles, queues, settings, websockets
 
 logger = structlog.get_logger()
 
@@ -60,6 +60,7 @@ app.add_middleware(
 app.include_router(profiles.router, prefix="/api", tags=["profiles"])
 app.include_router(discover.router, prefix="/api", tags=["discover"])
 app.include_router(apply.router, prefix="/api", tags=["apply"])
+app.include_router(queues.router, prefix="/api", tags=["queues"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(websockets.router, prefix="/ws", tags=["websockets"])
 

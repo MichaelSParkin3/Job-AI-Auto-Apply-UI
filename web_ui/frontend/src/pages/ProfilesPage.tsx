@@ -39,7 +39,7 @@ export function ProfilesPage() {
     }
   }
 
-  const handleSaveProfile = async (profile: ProfileDetailResponse) => {
+  const handleSaveProfile = async (_profile: ProfileDetailResponse) => {
     try {
       // ProfileForm handles API calls (POST/PUT) via profilesApi
       // Just reload and return to list
