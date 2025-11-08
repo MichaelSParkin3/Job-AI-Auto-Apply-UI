@@ -206,8 +206,8 @@ export function JobDetailsPage() {
 
       {/* Action Buttons */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Actions</h3>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex items-center flex-wrap gap-3">
+          <h3 className="text-sm font-semibold text-gray-700">Actions</h3>
           {/* Open Job Posting */}
           <Button
             onClick={() => window.open(job.url, '_blank')}
