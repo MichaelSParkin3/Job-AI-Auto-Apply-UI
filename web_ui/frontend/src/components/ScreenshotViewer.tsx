@@ -11,14 +11,24 @@ export function ScreenshotViewer({ screenshotPath, profileId }: ScreenshotViewer
   const [zoom, setZoom] = useState(1)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  const imageUrl = `/api/artifacts/${profileId}/screenshots/${screenshotPath.split('/').pop()}`
+  // Extract job_id and filename from path
+  // Path format: data/artifacts/{profile_id}/{job_id}/{filename}
+  const extractPathComponents = (path: string): { jobId: string; fileName: string } => {
+    const parts = path.split('/')
+    const fileName = parts[parts.length - 1] || path
+    const jobId = parts[parts.length - 2] || ''
+    return { jobId, fileName }
+  }
+
+  const { jobId, fileName } = extractPathComponents(screenshotPath)
+  const imageUrl = `/api/artifacts/${profileId}/${jobId}/${fileName}`
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.2, 3))
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.2, 0.5))
   const handleDownload = () => {
     const link = document.createElement('a')
     link.href = imageUrl
-    link.download = screenshotPath.split('/').pop() || 'screenshot.png'
+    link.download = fileName || 'screenshot.png'
     link.click()
   }
 

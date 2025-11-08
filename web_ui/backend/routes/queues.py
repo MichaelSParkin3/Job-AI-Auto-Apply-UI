@@ -433,54 +433,60 @@ async def reapply_job(profile_id: str, job_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/artifacts/{profile_id}/{artifact_type}/{file_name}")
-async def get_artifact(profile_id: str, artifact_type: str, file_name: str):
+@router.get("/artifacts/{profile_id}/{job_id}/{file_name}")
+async def get_artifact(profile_id: str, job_id: str, file_name: str):
     """
     Serve artifact files (screenshots, videos, HAR files, etc).
 
     Args:
         profile_id: The profile ID
-        artifact_type: Type of artifact (screenshots, videos, har, dom_snapshots)
+        job_id: The job/application item ID
         file_name: The artifact file name
 
     Returns:
         Static file content
     """
     try:
-        # Validate artifact type
-        valid_types = ["screenshots", "videos", "har", "dom_snapshots"]
-        if artifact_type not in valid_types:
-            raise HTTPException(status_code=400, detail=f"Invalid artifact type: {artifact_type}")
-
-        # Build safe path
-        artifact_dir = Path(web_settings.artifacts_dir) / profile_id / artifact_type
+        # Build safe path (artifacts are organized by job_id subdirectories)
+        artifact_dir = Path(web_settings.artifacts_dir) / profile_id / job_id
         artifact_path = artifact_dir / file_name
 
-        # Security check: ensure path is within artifacts directory
+        # Security check: ensure path is within job artifacts directory
         if not artifact_path.resolve().is_relative_to(artifact_dir.resolve()):
             raise HTTPException(status_code=400, detail="Invalid artifact path")
 
         if not artifact_path.exists():
+            logger.warning(
+                "artifact.not_found",
+                profile_id=profile_id,
+                job_id=job_id,
+                file_name=file_name,
+            )
             raise HTTPException(status_code=404, detail="Artifact not found")
 
         logger.info(
             "artifact.serve",
             profile_id=profile_id,
-            artifact_type=artifact_type,
+            job_id=job_id,
             file_name=file_name,
         )
 
-        # Return file based on type
+        # Return file based on extension
         from fastapi.responses import FileResponse
 
-        if artifact_type == "screenshots":
-            return FileResponse(artifact_path, media_type="image/png")
-        elif artifact_type == "videos":
-            return FileResponse(artifact_path, media_type="video/webm")
-        elif artifact_type == "har":
-            return FileResponse(artifact_path, media_type="application/json")
-        elif artifact_type == "dom_snapshots":
-            return FileResponse(artifact_path, media_type="text/html")
+        # Determine media type from file extension
+        if file_name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+            media_type = "image/png"
+        elif file_name.lower().endswith(('.mp4', '.webm')):
+            media_type = "video/webm"
+        elif file_name.lower().endswith('.har'):
+            media_type = "application/json"
+        elif file_name.lower().endswith('.html'):
+            media_type = "text/html"
+        else:
+            media_type = "application/octet-stream"
+
+        return FileResponse(artifact_path, media_type=media_type)
 
     except HTTPException:
         raise
@@ -488,7 +494,8 @@ async def get_artifact(profile_id: str, artifact_type: str, file_name: str):
         logger.error(
             "artifact.serve.error",
             profile_id=profile_id,
-            artifact_type=artifact_type,
+            job_id=job_id,
+            file_name=file_name,
             error=str(e),
             exc_info=True,
         )
