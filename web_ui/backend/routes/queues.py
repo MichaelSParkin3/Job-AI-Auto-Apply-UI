@@ -121,7 +121,7 @@ async def get_queue(profile_id: str):
 
         # Load queue
         queue = ApplicationQueue(profile_id)
-        items = list(queue)
+        items = list(queue.iter_items())
 
         # Group items by status
         groups = []
@@ -175,7 +175,7 @@ async def get_job_detail(profile_id: str, job_id: str):
         # Load queue and find item
         queue = ApplicationQueue(profile_id)
         item = None
-        for queued_item in queue:
+        for queued_item in queue.iter_items():
             if queued_item.id == job_id:
                 item = queued_item
                 break
