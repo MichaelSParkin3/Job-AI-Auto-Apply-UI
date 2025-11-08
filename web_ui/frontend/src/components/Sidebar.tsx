@@ -22,7 +22,7 @@ export function Sidebar({ profileId }: SidebarProps) {
   )
 
   return (
-    <aside className="w-80 border-r border-gray-200 bg-white overflow-y-auto">
+    <aside className="w-96 border-r border-gray-200 bg-white overflow-y-auto">
       {/* Sidebar Header */}
       <div className="sticky top-0 border-b border-gray-200 bg-white p-4 z-10">
         <div className="flex items-center justify-between mb-4">

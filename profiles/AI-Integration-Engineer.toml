@@ -1,0 +1,55 @@
+id = "AI-Integration-Engineer"
+name = "Michael Scott Parkin III"
+resume_path = "resumes/Michael_Parkin_AI_Integration_Engineer_Resume.pdf"
+preferred_browser = "chromium"
+user_data_dir = "data/browser_profiles/AI-Integration-Engineer"
+search_query = "site:jobs.lever.co remote (\"AI Implementation Engineer\" OR \"AI Engineer\" OR \"Machine Learning Engineer\" OR \"AI Integration Specialist\")"
+
+[defaults]
+email = "michaelsParkin3@gmail.com"
+phone = "+1-831-205-1786"
+location = "Hollister, CA"
+pronouns = "he/him"
+work_authorization = "Authorized to work in the United States"
+requires_visa_sponsorship = "No"
+current_company = "Freelance"
+salary_expectation = "Open to discussion"
+portfolio_url = "https://www.michaelsparkin.com/"
+github_url = "https://github.com/MichaelSParkin3"
+linkedin_url = "http://www.linkedin.com/in/michaelscottparkin3"
+eeo_gender = "Male"
+eeo_race = "Two or More Races"
+eeo_veteran_status = "I am not a protected veteran"
+eeo_disability_status = "No, I do not have a disability"
+
+[keywords]
+roles = [
+    "AI Implementation Engineer",
+    "AI Integration Engineer",
+    "AI Engineer",
+]
+seniority = []
+tech_stack = [
+    "Claude Code",
+    "Spec Driven Development",
+    "Context Engineering",
+    "RAG",
+    "python",
+    "AI",
+    "LLM",
+]
+domains = [
+    "Crypto",
+    "B2B",
+    "E-commerce",
+    "Real Estate Tech",
+    "Proptech",
+    "AI",
+]
+
+[prompts]
+cover_letter = "Select 2-3 most relevant experiences based on job requirements:\n- If role emphasizes validation/quality/testing → highlight Ocusell.AI error reduction (45%)\n- If role emphasizes leadership/mentorship → highlight GameStar component library collaboration (60% UI improvement)\n- If role emphasizes scale/traffic → highlight Shane Company 720k users, 80% page coverage\n- If role emphasizes crypto/web3 → highlight GameStar crypto trading app and Sangcate NFT minting\n- If role emphasizes cross-platform → highlight Flutter/Color ConneXion transformation\n\nStructure: 1) Connect job mission to passion, 2) 2-3 concrete achievements with metrics, 3) Enthusiasm + call to action\nTone: Confident, humble, specific metrics, avoid buzzwords. Length: 180-220 words."
+resume_summary = "Craft 1-2 sentences emphasizing: Senior frontend expertise (React/Next.js/Flutter), leadership (mentoring/cross-functional), impact-driven (specific metrics).\nDraw from all 4 companies - don't default to Ocusell unless validation/quality is key job requirement."
+key_accomplishments = "Select top 3 achievements matching job description:\n- Vary company sources (don't use Ocusell for all 3)\n- Include specific metrics: 45% (Ocusell), 60% (GameStar), 25% (GameStar), 720k users (Shane/Lampros)\n- Match technical stack when possible (Flutter for mobile, React for web, Web3 for crypto)\nFormat: Action verb + specific achievement + measurable impact"
+experience_selection = "When answering behavioral/experience questions, scan all 4 companies for best match:\n- \"Quality/testing/validation\" → Ocusell 45% error reduction\n- \"Leadership/mentorship\" → GameStar component library (60% UI improvement)\n- \"Working at scale\" → Shane Company 720k users OR Color ConneXion 720k users\n- \"Client-facing\" → WordPress celebrity client (100% approval)\n- \"Cross-platform development\" → Flutter Color ConneXion transformation\n- \"Web3/crypto\" → GameStar crypto trading OR Sangcate NFT minting\nAvoid over-rotating to Ocusell - distribute across portfolio."
+ai_tools_response = "When asked about AI tool usage:\n- Primary: AI-powered validation tooling at Ocusell (45% error reduction, dynamic error resolution)\n- Secondary: Automated testing generation, code quality analysis\n- Acknowledge: Complex business logic, edge cases, contextual decisions require human judgment\n- Stick to concrete validation tooling example - don't invent new AI experience"

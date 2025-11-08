@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { formatRelative } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import type { QueueGroupResponse, JobItemResponse } from '@/lib/api'
 
@@ -138,9 +139,14 @@ function JobQueueItem({
         </Badge>
       </div>
 
-      {/* Meta information */}
-      <div className="text-xs text-gray-500">
-        {item.details?.location && <span>{item.details.location}</span>}
+      {/* Meta information and date */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-500">
+          {item.details?.location && <span>{item.details.location}</span>}
+        </div>
+        <div className="text-xs text-gray-400">
+          {formatRelative(new Date(item.discovered_at), new Date())}
+        </div>
       </div>
     </button>
   )

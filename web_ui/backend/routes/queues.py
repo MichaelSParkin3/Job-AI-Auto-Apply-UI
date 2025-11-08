@@ -15,6 +15,9 @@ from ..models.queue_models import (
     ArtifactsResponse,
     ReasonResponse,
     JobDetailPageResponse,
+    StatusUpdateRequest,
+    ResumeResponse,
+    ReapplyResponse,
 )
 from ..config import web_settings
 
@@ -119,9 +122,9 @@ async def get_queue(profile_id: str):
 
         logger.info("queue.fetch", profile_id=profile_id)
 
-        # Load queue
+        # Load queue (reverse to show latest jobs first)
         queue = ApplicationQueue(profile_id)
-        items = list(queue.iter_items())
+        items = list(reversed(list(queue.iter_items())))
 
         # Group items by status
         groups = []
@@ -205,6 +208,228 @@ async def get_job_detail(profile_id: str, job_id: str):
         logger.error(
             "job.detail.fetch.error", profile_id=profile_id, job_id=job_id, error=str(e), exc_info=True
         )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/queues/{profile_id}/jobs/{job_id}/resume", response_model=ResumeResponse)
+async def resume_job(profile_id: str, job_id: str):
+    """
+    Resume a CAPTCHA-blocked job application.
+
+    Changes status from CAPTCHA_BLOCKED to IN_PROGRESS.
+
+    Args:
+        profile_id: The profile ID
+        job_id: The job application item ID (ULID)
+
+    Returns:
+        ResumeResponse with success status and new job status
+    """
+    try:
+        # Validate profile exists
+        profile = load_profile(profile_id)
+
+        logger.info("job.resume", profile_id=profile_id, job_id=job_id)
+
+        # Load queue and find item
+        queue = ApplicationQueue(profile_id)
+        item = None
+        for queued_item in queue.iter_items():
+            if queued_item.id == job_id:
+                item = queued_item
+                break
+
+        if not item:
+            logger.warning("Job not found for resume", profile_id=profile_id, job_id=job_id)
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+        # Check if job is CAPTCHA_BLOCKED
+        if item.status != ApplicationStatus.CAPTCHA_BLOCKED:
+            logger.warning(
+                "Cannot resume non-CAPTCHA-blocked job",
+                profile_id=profile_id,
+                job_id=job_id,
+                current_status=item.status.value,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job is not CAPTCHA-blocked (current status: {item.status.value})",
+            )
+
+        # Update status to IN_PROGRESS
+        item.update_status(ApplicationStatus.IN_PROGRESS)
+        queue.mark_submitted(job_id, artifacts=item.artifacts)
+        queue.mark_in_progress(job_id)
+
+        logger.info("job.resumed", profile_id=profile_id, job_id=job_id)
+
+        return ResumeResponse(
+            success=True,
+            message=f"Job '{job_id}' resumed successfully",
+            job_id=job_id,
+            new_status=ApplicationStatus.IN_PROGRESS.value,
+        )
+
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        logger.warning("Profile not found", profile_id=profile_id)
+        raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+    except Exception as e:
+        logger.error("job.resume.error", profile_id=profile_id, job_id=job_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/queues/{profile_id}/jobs/{job_id}/status", response_model=JobItemResponse)
+async def update_job_status(profile_id: str, job_id: str, request: StatusUpdateRequest):
+    """
+    Manually update a job's status.
+
+    Args:
+        profile_id: The profile ID
+        job_id: The job application item ID (ULID)
+        request: StatusUpdateRequest with new status and optional reason
+
+    Returns:
+        JobItemResponse with updated job data
+    """
+    try:
+        # Validate profile exists
+        profile = load_profile(profile_id)
+
+        logger.info(
+            "job.status.update",
+            profile_id=profile_id,
+            job_id=job_id,
+            new_status=request.status,
+        )
+
+        # Load queue and find item
+        queue = ApplicationQueue(profile_id)
+        item = None
+        for queued_item in queue.iter_items():
+            if queued_item.id == job_id:
+                item = queued_item
+                break
+
+        if not item:
+            logger.warning("Job not found for status update", profile_id=profile_id, job_id=job_id)
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+        # Parse and validate new status
+        try:
+            new_status = ApplicationStatus(request.status)
+        except ValueError:
+            valid_statuses = [s.value for s in ApplicationStatus]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status '{request.status}'. Valid values: {', '.join(valid_statuses)}",
+            )
+
+        # Create reason if provided
+        from job_ai_auto_apply_ui.application_queue import Reason
+
+        reason = None
+        if request.reason_code or request.reason_message:
+            reason = Reason(
+                code=request.reason_code or "manual_update",
+                message=request.reason_message or "Manually updated by user",
+            )
+
+        # Update status
+        item.update_status(new_status, reason=reason)
+
+        # Persist the change - update the queue
+        if new_status == ApplicationStatus.SUBMITTED:
+            queue.mark_submitted(job_id, artifacts=item.artifacts)
+        elif new_status == ApplicationStatus.FAILED:
+            queue.mark_failed(job_id, reason=reason or Reason("manual_update", "Manually marked as failed"))
+        elif new_status == ApplicationStatus.CAPTCHA_BLOCKED:
+            queue.mark_in_progress(job_id)
+            item.status = ApplicationStatus.CAPTCHA_BLOCKED
+            item.last_updated_at = item.last_updated_at
+        else:
+            # For other statuses, we just update the item directly
+            queue._items[job_id] = item
+            queue._write()
+
+        logger.info("job.status.updated", profile_id=profile_id, job_id=job_id, new_status=new_status.value)
+
+        return _item_to_response(item)
+
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        logger.warning("Profile not found", profile_id=profile_id)
+        raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+    except Exception as e:
+        logger.error(
+            "job.status.update.error", profile_id=profile_id, job_id=job_id, error=str(e), exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/queues/{profile_id}/jobs/{job_id}/reapply", response_model=ReapplyResponse)
+async def reapply_job(profile_id: str, job_id: str):
+    """
+    Trigger reapplication for a specific job.
+
+    Calls the apply endpoint with the job_id parameter.
+
+    Args:
+        profile_id: The profile ID
+        job_id: The job application item ID (ULID)
+
+    Returns:
+        ReapplyResponse with task_id and websocket_url
+    """
+    try:
+        # Validate profile exists
+        profile = load_profile(profile_id)
+
+        # Validate job exists
+        queue = ApplicationQueue(profile_id)
+        item = None
+        for queued_item in queue.iter_items():
+            if queued_item.id == job_id:
+                item = queued_item
+                break
+
+        if not item:
+            logger.warning("Job not found for reapply", profile_id=profile_id, job_id=job_id)
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+        logger.info("job.reapply.initiated", profile_id=profile_id, job_id=job_id)
+
+        # Import apply logic
+        from .apply import apply
+
+        # Create apply request for this specific job
+        from ..models.command import ApplyRequest
+
+        apply_request = ApplyRequest(
+            profile_id=profile_id,
+            job_id=job_id,
+            supervised=True,  # Default to supervised mode for reapply
+        )
+
+        # Call apply endpoint
+        response = await apply(apply_request)
+
+        return ReapplyResponse(
+            success=True,
+            message=f"Reapply initiated for job '{job_id}'",
+            task_id=response.task_id,
+            websocket_url=response.websocket_url,
+        )
+
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        logger.warning("Profile not found", profile_id=profile_id)
+        raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+    except Exception as e:
+        logger.error("job.reapply.error", profile_id=profile_id, job_id=job_id, error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

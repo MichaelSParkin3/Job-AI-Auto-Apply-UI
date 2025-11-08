@@ -97,3 +97,35 @@ class JobDetailPageResponse(BaseModel):
     answer_cache: Optional[dict[str, str]] = Field(
         None, description="Cached answers from previous application attempts"
     )
+
+
+# Status Update Request
+class StatusUpdateRequest(BaseModel):
+    """Request to manually update a job's status."""
+
+    status: str = Field(
+        ...,
+        description="New status (new, in_progress, submitted, failed, skipped, captcha_blocked, pending_review)",
+    )
+    reason_code: Optional[str] = Field(None, description="Optional reason code for status change")
+    reason_message: Optional[str] = Field(None, description="Optional reason message for status change")
+
+
+# Resume Response
+class ResumeResponse(BaseModel):
+    """Response from resuming a CAPTCHA-blocked job."""
+
+    success: bool = Field(..., description="Whether resume was successful")
+    message: str = Field(..., description="Status message")
+    job_id: str = Field(..., description="Job ID that was resumed")
+    new_status: str = Field(..., description="New status after resume")
+
+
+# Reapply Response
+class ReapplyResponse(BaseModel):
+    """Response from reapplying to a job."""
+
+    success: bool = Field(..., description="Whether reapply was successful")
+    message: str = Field(..., description="Status message")
+    task_id: str = Field(..., description="Apply task ID")
+    websocket_url: str = Field(..., description="WebSocket URL for real-time updates")

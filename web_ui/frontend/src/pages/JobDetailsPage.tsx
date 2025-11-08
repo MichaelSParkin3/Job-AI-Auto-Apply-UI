@@ -1,19 +1,26 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import useSWR from 'swr'
-import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertCircle, ExternalLink, RotateCcw, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScreenshotViewer } from '@/components/ScreenshotViewer'
 import { ArtifactsGallery } from '@/components/ArtifactsGallery'
 import { AnswerCachePreview } from '@/components/AnswerCachePreview'
 import { LogViewer } from '@/components/LogViewer'
 import { Badge } from '@/components/ui/badge'
+import { useToast } from '@/lib/toast'
+import { queuesApi } from '@/lib/api'
 import type { JobDetailPageResponse } from '@/lib/api'
 
 export function JobDetailsPage() {
   const { profileId, jobId } = useParams<{ profileId: string; jobId: string }>()
   const navigate = useNavigate()
+  const { addToast } = useToast()
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState<string>('')
 
-  const { data, isLoading, error } = useSWR<JobDetailPageResponse>(
+  const { data, isLoading, error, mutate } = useSWR<JobDetailPageResponse>(
     profileId && jobId ? `/api/queues/${profileId}/jobs/${jobId}` : null,
     async (url: string) => {
       const res = await fetch(url)
@@ -21,6 +28,76 @@ export function JobDetailsPage() {
       return res.json()
     }
   )
+
+  const handleResume = async () => {
+    if (!profileId || !jobId) return
+
+    setActionLoading(true)
+    try {
+      await queuesApi.resumeJob(profileId, jobId)
+      addToast({
+        title: 'Job Resumed',
+        description: 'The job has been resumed and is ready to reapply',
+      })
+      mutate()
+    } catch (err: any) {
+      const message = err.response?.data?.detail || 'Failed to resume job'
+      addToast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleReapply = async () => {
+    if (!profileId || !jobId) return
+
+    setActionLoading(true)
+    try {
+      await queuesApi.reapplyJob(profileId, jobId)
+      addToast({
+        title: 'Reapply Started',
+        description: 'Starting to reapply for this job',
+      })
+      // Could navigate to apply progress page if desired
+      mutate()
+    } catch (err: any) {
+      const message = err.response?.data?.detail || 'Failed to start reapply'
+      addToast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!profileId || !jobId || !newStatus) return
+
+    setStatusLoading(true)
+    try {
+      await queuesApi.updateJobStatus(profileId, jobId, newStatus, 'manual_update', 'Manually updated status')
+      addToast({
+        title: 'Status Updated',
+        description: `Job status changed to ${newStatus}`,
+      })
+      mutate()
+    } catch (err: any) {
+      const message = err.response?.data?.detail || 'Failed to update status'
+      addToast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setStatusLoading(false)
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -123,6 +200,75 @@ export function JobDetailsPage() {
             <Badge className={`text-base px-3 py-1 ${getStatusColor(job.status)}`}>
               {getStatusLabel(job.status)}
             </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Actions</h3>
+        <div className="flex flex-wrap gap-3">
+          {/* Open Job Posting */}
+          <Button
+            onClick={() => window.open(job.url, '_blank')}
+            variant="outline"
+            size="sm"
+          >
+            <ExternalLink size={16} className="mr-2" />
+            Open Job Posting
+          </Button>
+
+          {/* Resume Button (for CAPTCHA_BLOCKED) */}
+          {job.status === 'captcha_blocked' && (
+            <Button
+              onClick={handleResume}
+              disabled={actionLoading}
+              variant="outline"
+              size="sm"
+              className="bg-amber-50 border-amber-300 text-amber-900"
+            >
+              <Play size={16} className="mr-2" />
+              {actionLoading ? 'Resuming...' : 'Resume'}
+            </Button>
+          )}
+
+          {/* Reapply Button (for FAILED/SKIPPED) */}
+          {(job.status === 'failed' || job.status === 'skipped') && (
+            <Button
+              onClick={handleReapply}
+              disabled={actionLoading}
+              variant="outline"
+              size="sm"
+              className="bg-blue-50 border-blue-300 text-blue-900"
+            >
+              <RotateCcw size={16} className="mr-2" />
+              {actionLoading ? 'Starting...' : 'Reapply'}
+            </Button>
+          )}
+
+          {/* Change Status Dropdown */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedStatus}
+              onChange={(e) => {
+                setSelectedStatus(e.target.value)
+                if (e.target.value) {
+                  handleStatusChange(e.target.value)
+                  setSelectedStatus('')
+                }
+              }}
+              disabled={statusLoading}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <option value="">Change Status...</option>
+              <option value="new">New</option>
+              <option value="in_progress">In Progress</option>
+              <option value="submitted">Submitted</option>
+              <option value="failed">Failed</option>
+              <option value="skipped">Skipped</option>
+              <option value="captcha_blocked">CAPTCHA Blocked</option>
+              <option value="pending_review">Pending Review</option>
+            </select>
           </div>
         </div>
       </div>

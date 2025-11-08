@@ -127,4 +127,21 @@ export const settingsApi = {
     }),
 }
 
+export const queuesApi = {
+  getQueue: (profileId: string) =>
+    api.get<QueueResponse>(`/api/queues/${profileId}`),
+  getJobDetail: (profileId: string, jobId: string) =>
+    api.get<JobDetailPageResponse>(`/api/queues/${profileId}/jobs/${jobId}`),
+  resumeJob: (profileId: string, jobId: string) =>
+    api.post(`/api/queues/${profileId}/jobs/${jobId}/resume`),
+  reapplyJob: (profileId: string, jobId: string) =>
+    api.post(`/api/queues/${profileId}/jobs/${jobId}/reapply`),
+  updateJobStatus: (profileId: string, jobId: string, status: string, reasonCode?: string, reasonMessage?: string) =>
+    api.patch<JobItemResponse>(`/api/queues/${profileId}/jobs/${jobId}/status`, {
+      status,
+      reason_code: reasonCode,
+      reason_message: reasonMessage,
+    }),
+}
+
 export default api
