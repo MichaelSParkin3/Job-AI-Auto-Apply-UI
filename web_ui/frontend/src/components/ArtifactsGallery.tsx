@@ -132,18 +132,17 @@ export function ArtifactsGallery({ artifacts, profileId }: ArtifactsGalleryProps
                   />
                 </button>
                 <div className="mt-2">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h4 className="text-sm font-medium text-gray-900">{screenshot.name}</h4>
-                    <Button
-                      onClick={() => handleDownload(screenshot.path, screenshot.name)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Download size={16} className="mr-2" />
-                      Download
-                    </Button>
-                  </div>
+                  <h4 className="text-sm font-medium text-gray-900">{screenshot.name}</h4>
                   <p className="text-xs text-gray-600">{screenshot.description}</p>
+                  <Button
+                    onClick={() => handleDownload(screenshot.path, screenshot.name)}
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2"
+                  >
+                    <Download size={16} className="mr-2" />
+                    Download
+                  </Button>
                 </div>
               </div>
             ))}
