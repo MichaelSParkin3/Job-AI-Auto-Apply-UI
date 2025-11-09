@@ -6,10 +6,11 @@ import uuid
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Callable
 
 from job_ai_auto_apply_ui.orchestrator import iter_apply_events
 from job_ai_auto_apply_ui.profile_manager import load_profile
+from job_ai_auto_apply_ui.application_queue import ApplicationQueue, ApplicationStatus
 
 from .apply import active_tasks
 from ..models.events import ActionPromptOption, PromptContext
@@ -186,6 +187,56 @@ def _transform_apply_event(event: dict) -> dict:
             "level": event.get("level", "info"),
             "data": data,
         }
+
+
+async def _apply_browser_async(
+    profile,
+    mode: str = "supervised",
+    review_mode: bool = False,
+    job_id: Optional[str] = None,
+    prompt_callback: Optional[Callable] = None,
+):
+    """
+    Async browser automation for WebSocket apply.
+
+    Runs the sync iter_apply_events in a thread but with proper async event handling.
+    Streams events as they occur in the browser automation process.
+    """
+    # Sentinel value to signal end of iteration
+    _DONE = object()
+
+    # Create an iterator in a thread-safe way
+    iterator = None
+
+    def _get_iterator():
+        nonlocal iterator
+        if iterator is None:
+            iterator = iter_apply_events(
+                profile_id=profile.id,
+                mode=mode,
+                review_mode=review_mode,
+                job_id=job_id,
+                prompt_callback=prompt_callback,
+            )
+        return iterator
+
+    def _next_or_done(it):
+        """Get next item or return sentinel if done (catches StopIteration in thread)."""
+        try:
+            return next(it)
+        except StopIteration:
+            return _DONE
+
+    while True:
+        # Run next() in a thread pool, catching StopIteration inside the thread
+        event = await asyncio.to_thread(_next_or_done, _get_iterator())
+
+        if event is _DONE:
+            break
+
+        # Transform event to match frontend format
+        transformed = _transform_apply_event(event)
+        yield transformed
 
 
 async def _iter_apply_events_async(*args, **kwargs):
@@ -441,8 +492,9 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
             # Apply request settings as environment variables (picked up by config loader)
             _apply_request_settings(request)
 
-            # Stream apply events using async wrapper to handle sync generator with asyncio.run() inside
-            async for event in _iter_apply_events_async(
+            # Stream apply events using async browser automation
+            # This runs the browser directly in the FastAPI event loop (not nested)
+            async for event in _apply_browser_async(
                 profile=profile,
                 mode="supervised" if request.supervised else "auto",
                 review_mode=request.review_mode,
