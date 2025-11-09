@@ -1,13 +1,23 @@
-import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useOutletContext } from 'react-router-dom'
 import { ApplyForm } from '@/components/ApplyForm'
 import { ApplyProgress } from '@/components/ApplyProgress'
 import type { Profile } from '@/lib/api'
 
 export function ApplyPage() {
   const { selectedProfile } = useOutletContext<{ selectedProfile: Profile }>()
+  const location = useLocation()
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeWebsocketUrl, setActiveWebsocketUrl] = useState<string | null>(null)
+
+  // Read navigation state passed from JobDetailsPage when Resume/Reapply is clicked
+  useEffect(() => {
+    const state = location.state as { taskId?: string; websocketUrl?: string } | null
+    if (state?.taskId && state?.websocketUrl) {
+      setActiveTaskId(state.taskId)
+      setActiveWebsocketUrl(state.websocketUrl)
+    }
+  }, [location.state])
 
   if (!selectedProfile) {
     return (
