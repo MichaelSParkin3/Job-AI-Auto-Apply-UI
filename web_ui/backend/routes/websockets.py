@@ -212,7 +212,7 @@ async def _apply_browser_async(
         nonlocal iterator
         if iterator is None:
             iterator = iter_apply_events(
-                profile_id=profile.id,
+                profile=profile,
                 mode=mode,
                 review_mode=review_mode,
                 job_id=job_id,
