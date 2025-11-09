@@ -257,8 +257,7 @@ async def resume_job(profile_id: str, job_id: str):
             )
 
         # Update status to IN_PROGRESS
-        item.update_status(ApplicationStatus.IN_PROGRESS)
-        queue.mark_in_progress(job_id)
+        queue.resume(job_id)
 
         logger.info("job.resumed", profile_id=profile_id, job_id=job_id)
 
