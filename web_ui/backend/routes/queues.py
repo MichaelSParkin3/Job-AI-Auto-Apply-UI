@@ -261,11 +261,28 @@ async def resume_job(profile_id: str, job_id: str):
 
         logger.info("job.resumed", profile_id=profile_id, job_id=job_id)
 
+        # Import apply logic
+        from .apply import apply
+
+        # Create apply request for this specific job
+        from ..models.command import ApplyRequest
+
+        apply_request = ApplyRequest(
+            profile_id=profile_id,
+            job_id=job_id,
+            supervised=True,  # Pause for review before submitting
+        )
+
+        # Call apply endpoint to launch browser
+        response = await apply(apply_request)
+
         return ResumeResponse(
             success=True,
-            message=f"Job '{job_id}' resumed successfully",
+            message=f"Resume initiated for job '{job_id}'",
             job_id=job_id,
             new_status=ApplicationStatus.IN_PROGRESS.value,
+            task_id=response.task_id,
+            websocket_url=response.websocket_url,
         )
 
     except HTTPException:

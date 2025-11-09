@@ -165,3 +165,20 @@ export interface JobDetailPageResponse {
   profile_id: string
   answer_cache?: Record<string, string>
 }
+
+// Apply and Resume response types
+export interface ResumeResponse {
+  success: boolean
+  message: string
+  job_id: string
+  new_status: string
+  task_id?: string
+  websocket_url?: string
+}
+
+export interface ReapplyResponse {
+  success: boolean
+  message: string
+  task_id: string
+  websocket_url: string
+}

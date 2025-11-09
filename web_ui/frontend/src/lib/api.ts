@@ -18,6 +18,8 @@ import type {
   ArtifactsResponse,
   ReasonResponse,
   JobDetailPageResponse,
+  ResumeResponse,
+  ReapplyResponse,
 } from './types'
 
 // Re-export types for backward compatibility
@@ -40,6 +42,8 @@ export type {
   ArtifactsResponse,
   ReasonResponse,
   JobDetailPageResponse,
+  ResumeResponse,
+  ReapplyResponse,
 }
 
 const api = axios.create({
@@ -133,9 +137,9 @@ export const queuesApi = {
   getJobDetail: (profileId: string, jobId: string) =>
     api.get<JobDetailPageResponse>(`/api/queues/${profileId}/jobs/${jobId}`),
   resumeJob: (profileId: string, jobId: string) =>
-    api.post(`/api/queues/${profileId}/jobs/${jobId}/resume`),
+    api.post<ResumeResponse>(`/api/queues/${profileId}/jobs/${jobId}/resume`),
   reapplyJob: (profileId: string, jobId: string) =>
-    api.post(`/api/queues/${profileId}/jobs/${jobId}/reapply`),
+    api.post<ReapplyResponse>(`/api/queues/${profileId}/jobs/${jobId}/reapply`),
   updateJobStatus: (profileId: string, jobId: string, status: string, reasonCode?: string, reasonMessage?: string) =>
     api.patch<JobItemResponse>(`/api/queues/${profileId}/jobs/${jobId}/status`, {
       status,

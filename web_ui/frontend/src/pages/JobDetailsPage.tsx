@@ -1,167 +1,199 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import useSWR from 'swr'
-import { ArrowLeft, Loader2, AlertCircle, ExternalLink, RotateCcw, Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ScreenshotViewer } from '@/components/ScreenshotViewer'
-import { ArtifactsGallery } from '@/components/ArtifactsGallery'
-import { AnswerCachePreview } from '@/components/AnswerCachePreview'
-import { LogViewer } from '@/components/LogViewer'
-import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/lib/toast'
-import { queuesApi } from '@/lib/api'
-import type { JobDetailPageResponse } from '@/lib/api'
+import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import useSWR from "swr";
+import {
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  ExternalLink,
+  RotateCcw,
+  Play,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ScreenshotViewer } from "@/components/ScreenshotViewer";
+import { ArtifactsGallery } from "@/components/ArtifactsGallery";
+import { AnswerCachePreview } from "@/components/AnswerCachePreview";
+import { LogViewer } from "@/components/LogViewer";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/lib/toast";
+import { queuesApi } from "@/lib/api";
+import type { JobDetailPageResponse } from "@/lib/api";
 
 export function JobDetailsPage() {
-  const { profileId, jobId } = useParams<{ profileId: string; jobId: string }>()
-  const navigate = useNavigate()
-  const { addToast } = useToast()
-  const [statusLoading, setStatusLoading] = useState(false)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [selectedStatus, setSelectedStatus] = useState<string>('')
+  const { profileId, jobId } = useParams<{
+    profileId: string;
+    jobId: string;
+  }>();
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<string>("");
 
   const { data, isLoading, error, mutate } = useSWR<JobDetailPageResponse>(
     profileId && jobId ? `/api/queues/${profileId}/jobs/${jobId}` : null,
     async (url: string) => {
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch job details')
-      return res.json()
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch job details");
+      return res.json();
     }
-  )
+  );
 
   const handleResume = async () => {
-    if (!profileId || !jobId) return
+    if (!profileId || !jobId) return;
 
-    setActionLoading(true)
+    setActionLoading(true);
     try {
-      await queuesApi.resumeJob(profileId, jobId)
-      addToast({
-        title: 'Job Resumed',
-        description: 'The job has been resumed and is ready to reapply',
-      })
-      mutate()
+      const response = await queuesApi.resumeJob(profileId, jobId);
+      const data = response.data;
+
+      if (data.task_id && data.websocket_url) {
+        // Navigate to apply progress page
+        navigate('/apply', {
+          state: {
+            taskId: data.task_id,
+            websocketUrl: data.websocket_url
+          }
+        });
+      } else {
+        addToast({
+          title: "Job Resumed",
+          description: "The job has been resumed and is ready to reapply",
+        });
+        mutate();
+      }
     } catch (err: any) {
-      const message = err.response?.data?.detail || 'Failed to resume job'
+      const message = err.response?.data?.detail || "Failed to resume job";
       addToast({
-        title: 'Error',
+        title: "Error",
         description: message,
-        variant: 'destructive',
-      })
+        variant: "destructive",
+      });
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const handleReapply = async () => {
-    if (!profileId || !jobId) return
+    if (!profileId || !jobId) return;
 
-    setActionLoading(true)
+    setActionLoading(true);
     try {
-      await queuesApi.reapplyJob(profileId, jobId)
-      addToast({
-        title: 'Reapply Started',
-        description: 'Starting to reapply for this job',
-      })
-      // Could navigate to apply progress page if desired
-      mutate()
+      const response = await queuesApi.reapplyJob(profileId, jobId);
+      const data = response.data;
+
+      // Navigate to apply progress page with task details
+      navigate('/apply', {
+        state: {
+          taskId: data.task_id,
+          websocketUrl: data.websocket_url
+        }
+      });
     } catch (err: any) {
-      const message = err.response?.data?.detail || 'Failed to start reapply'
+      const message = err.response?.data?.detail || "Failed to start reapply";
       addToast({
-        title: 'Error',
+        title: "Error",
         description: message,
-        variant: 'destructive',
-      })
+        variant: "destructive",
+      });
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!profileId || !jobId || !newStatus) return
+    if (!profileId || !jobId || !newStatus) return;
 
-    setStatusLoading(true)
+    setStatusLoading(true);
     try {
-      await queuesApi.updateJobStatus(profileId, jobId, newStatus, 'manual_update', 'Manually updated status')
+      await queuesApi.updateJobStatus(
+        profileId,
+        jobId,
+        newStatus,
+        "manual_update",
+        "Manually updated status"
+      );
       addToast({
-        title: 'Status Updated',
+        title: "Status Updated",
         description: `Job status changed to ${newStatus}`,
-      })
-      mutate()
+      });
+      mutate();
     } catch (err: any) {
-      const message = err.response?.data?.detail || 'Failed to update status'
+      const message = err.response?.data?.detail || "Failed to update status";
       addToast({
-        title: 'Error',
+        title: "Error",
         description: message,
-        variant: 'destructive',
-      })
+        variant: "destructive",
+      });
     } finally {
-      setStatusLoading(false)
+      setStatusLoading(false);
     }
-  }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'bg-blue-100 text-blue-800'
-      case 'in_progress':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'submitted':
-        return 'bg-green-100 text-green-800'
-      case 'failed':
-      case 'skipped':
-        return 'bg-red-100 text-red-800'
-      case 'captcha_blocked':
-        return 'bg-orange-100 text-orange-800'
-      case 'pending_review':
-        return 'bg-purple-100 text-purple-800'
+      case "new":
+        return "bg-blue-100 text-blue-800";
+      case "in_progress":
+        return "bg-yellow-100 text-yellow-800";
+      case "submitted":
+        return "bg-green-100 text-green-800";
+      case "failed":
+      case "skipped":
+        return "bg-red-100 text-red-800";
+      case "captcha_blocked":
+        return "bg-orange-100 text-orange-800";
+      case "pending_review":
+        return "bg-purple-100 text-purple-800";
       default:
-        return 'bg-gray-100 text-gray-800'
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'New'
-      case 'in_progress':
-        return 'In Progress'
-      case 'submitted':
-        return 'Submitted'
-      case 'failed':
-        return 'Failed'
-      case 'skipped':
-        return 'Skipped'
-      case 'captcha_blocked':
-        return 'CAPTCHA Blocked'
-      case 'pending_review':
-        return 'Pending Review'
+      case "new":
+        return "New";
+      case "in_progress":
+        return "In Progress";
+      case "submitted":
+        return "Submitted";
+      case "failed":
+        return "Failed";
+      case "skipped":
+        return "Skipped";
+      case "captcha_blocked":
+        return "CAPTCHA Blocked";
+      case "pending_review":
+        return "Pending Review";
       default:
-        return status
+        return status;
     }
-  }
+  };
 
   if (error) {
     return (
       <div className="p-8">
         <div className="flex items-center gap-2 mb-6">
-          <Button
-            onClick={() => navigate(-1)}
-            variant="ghost"
-            size="sm"
-          >
+          <Button onClick={() => navigate(-1)} variant="ghost" size="sm">
             <ArrowLeft size={16} className="mr-2" />
             Back
           </Button>
         </div>
         <div className="rounded-lg bg-red-50 p-6 flex items-start gap-3">
-          <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+          <AlertCircle
+            size={20}
+            className="text-red-600 flex-shrink-0 mt-0.5"
+          />
           <div>
-            <h2 className="text-lg font-semibold text-red-900">Error loading job</h2>
+            <h2 className="text-lg font-semibold text-red-900">
+              Error loading job
+            </h2>
             <p className="text-red-700 text-sm mt-1">{error.message}</p>
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   if (isLoading || !data) {
@@ -172,10 +204,10 @@ export function JobDetailsPage() {
           <p className="text-gray-600">Loading job details...</p>
         </div>
       </div>
-    )
+    );
   }
 
-  const { job, answer_cache } = data
+  const { job, answer_cache } = data;
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -186,7 +218,7 @@ export function JobDetailsPage() {
             onClick={() => navigate(-1)}
             variant="ghost"
             size="sm"
-            className="mb-4"
+            className="mb-4 flex items-center align-center"
           >
             <ArrowLeft size={16} className="mr-2" />
             Back to Queue
@@ -197,7 +229,9 @@ export function JobDetailsPage() {
               <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
               <p className="text-lg text-gray-600 mt-1">{job.company}</p>
             </div>
-            <Badge className={`text-base px-3 py-1 ${getStatusColor(job.status)}`}>
+            <Badge
+              className={`text-base px-3 py-1 ${getStatusColor(job.status)}`}
+            >
               {getStatusLabel(job.status)}
             </Badge>
           </div>
@@ -210,7 +244,7 @@ export function JobDetailsPage() {
         <div className="flex flex-wrap gap-3">
           {/* Open Job Posting */}
           <Button
-            onClick={() => window.open(job.url, '_blank')}
+            onClick={() => window.open(job.url, "_blank")}
             variant="outline"
             size="sm"
           >
@@ -219,7 +253,7 @@ export function JobDetailsPage() {
           </Button>
 
           {/* Resume Button (for CAPTCHA_BLOCKED) */}
-          {job.status === 'captcha_blocked' && (
+          {job.status === "captcha_blocked" && (
             <Button
               onClick={handleResume}
               disabled={actionLoading}
@@ -228,12 +262,12 @@ export function JobDetailsPage() {
               className="bg-amber-50 border-amber-300 text-amber-900"
             >
               <Play size={16} className="mr-2" />
-              {actionLoading ? 'Resuming...' : 'Resume'}
+              {actionLoading ? "Resuming..." : "Resume"}
             </Button>
           )}
 
           {/* Reapply Button (for FAILED/SKIPPED) */}
-          {(job.status === 'failed' || job.status === 'skipped') && (
+          {(job.status === "failed" || job.status === "skipped") && (
             <Button
               onClick={handleReapply}
               disabled={actionLoading}
@@ -242,7 +276,7 @@ export function JobDetailsPage() {
               className="bg-blue-50 border-blue-300 text-blue-900"
             >
               <RotateCcw size={16} className="mr-2" />
-              {actionLoading ? 'Starting...' : 'Reapply'}
+              {actionLoading ? "Starting..." : "Reapply"}
             </Button>
           )}
 
@@ -251,10 +285,10 @@ export function JobDetailsPage() {
             <select
               value={selectedStatus}
               onChange={(e) => {
-                setSelectedStatus(e.target.value)
+                setSelectedStatus(e.target.value);
                 if (e.target.value) {
-                  handleStatusChange(e.target.value)
-                  setSelectedStatus('')
+                  handleStatusChange(e.target.value);
+                  setSelectedStatus("");
                 }
               }}
               disabled={statusLoading}
@@ -277,7 +311,9 @@ export function JobDetailsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* Basic Info */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Information</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Job Information
+          </h2>
           <div className="space-y-4">
             {job.details?.location && (
               <div>
@@ -285,18 +321,20 @@ export function JobDetailsPage() {
                 <p className="text-gray-900">{job.details.location}</p>
               </div>
             )}
-            {job.details?.employment_type && job.details.employment_type !== 'unknown' && (
-              <div>
-                <p className="text-sm text-gray-600">Employment Type</p>
-                <p className="text-gray-900">{job.details.employment_type}</p>
-              </div>
-            )}
-            {job.details?.work_model && job.details.work_model !== 'unknown' && (
-              <div>
-                <p className="text-sm text-gray-600">Work Model</p>
-                <p className="text-gray-900">{job.details.work_model}</p>
-              </div>
-            )}
+            {job.details?.employment_type &&
+              job.details.employment_type !== "unknown" && (
+                <div>
+                  <p className="text-sm text-gray-600">Employment Type</p>
+                  <p className="text-gray-900">{job.details.employment_type}</p>
+                </div>
+              )}
+            {job.details?.work_model &&
+              job.details.work_model !== "unknown" && (
+                <div>
+                  <p className="text-sm text-gray-600">Work Model</p>
+                  <p className="text-gray-900">{job.details.work_model}</p>
+                </div>
+              )}
             {job.details?.department && (
               <div>
                 <p className="text-sm text-gray-600">Department</p>
@@ -315,7 +353,9 @@ export function JobDetailsPage() {
         {/* Tech Tags */}
         {job.details?.tech_tags && job.details.tech_tags.length > 0 && (
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Technologies</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Technologies
+            </h2>
             <div className="flex flex-wrap gap-2">
               {job.details.tech_tags.map((tag) => (
                 <Badge key={tag} className="bg-blue-100 text-blue-800">
@@ -330,7 +370,9 @@ export function JobDetailsPage() {
       {/* Job Description */}
       {job.details?.posting_excerpt && (
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Description</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Job Description
+          </h2>
           <div className="prose prose-sm max-w-none">
             <p className="text-gray-700 whitespace-pre-wrap">
               {job.details.posting_excerpt}
@@ -342,7 +384,9 @@ export function JobDetailsPage() {
       {/* Error Reason */}
       {job.reason && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-semibold text-red-900 mb-2">Why This Failed</h2>
+          <h2 className="text-lg font-semibold text-red-900 mb-2">
+            Why This Failed
+          </h2>
           <div className="text-red-700">
             <p className="font-semibold">{job.reason.code}</p>
             <p className="mt-1">{job.reason.message}</p>
@@ -355,7 +399,7 @@ export function JobDetailsPage() {
         <div className="mb-8">
           <ScreenshotViewer
             screenshotPath={job.artifacts.screenshot_path}
-            profileId={profileId || ''}
+            profileId={profileId || ""}
           />
         </div>
       )}
@@ -364,7 +408,7 @@ export function JobDetailsPage() {
       <div className="mb-8">
         <ArtifactsGallery
           artifacts={job.artifacts}
-          profileId={profileId || ''}
+          profileId={profileId || ""}
         />
       </div>
 
@@ -378,9 +422,9 @@ export function JobDetailsPage() {
       {/* Logs (if available) */}
       {job.artifacts?.screenshot_path && (
         <div className="mb-8">
-          <LogViewer jobId={job.id} profileId={profileId || ''} />
+          <LogViewer jobId={job.id} profileId={profileId || ""} />
         </div>
       )}
     </div>
-  )
+  );
 }

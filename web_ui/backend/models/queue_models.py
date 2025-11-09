@@ -119,6 +119,8 @@ class ResumeResponse(BaseModel):
     message: str = Field(..., description="Status message")
     job_id: str = Field(..., description="Job ID that was resumed")
     new_status: str = Field(..., description="New status after resume")
+    task_id: Optional[str] = Field(None, description="Apply task ID if browser launched")
+    websocket_url: Optional[str] = Field(None, description="WebSocket URL for real-time updates")
 
 
 # Reapply Response
