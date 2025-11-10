@@ -195,6 +195,7 @@ async def _apply_browser_async(
     review_mode: bool = False,
     job_id: Optional[str] = None,
     prompt_callback: Optional[Callable] = None,
+    answer_cache: Optional[dict] = None,
 ):
     """
     Async browser automation for WebSocket apply.
@@ -217,6 +218,7 @@ async def _apply_browser_async(
                 review_mode=review_mode,
                 job_id=job_id,
                 prompt_callback=prompt_callback,
+                answer_cache=answer_cache,
             )
         return iterator
 
@@ -500,6 +502,7 @@ async def websocket_apply(websocket: WebSocket, task_id: str):
                 review_mode=request.review_mode,
                 job_id=request.job_id,
                 prompt_callback=prompt_callback,
+                answer_cache=request.answer_cache,
             ):
                 # Forward event to WebSocket client
                 await websocket.send_json(event)

@@ -91,7 +91,7 @@ def test_apply_json_stream_success(
     def fake_load_profile(profile_id: str) -> dict[str, Any]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: dict[str, Any], mode: str) -> Iterator[dict[str, Any]]:
+    def fake_iter_apply_events(profile: dict[str, Any], mode: str, **kwargs) -> Iterator[dict[str, Any]]:
         assert mode == "supervised"
         yield from events
 
@@ -124,7 +124,7 @@ def test_apply_cli_accepts_extended_flags(
     def fake_load_profile(profile_id: str) -> dict[str, Any]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str) -> Iterator[dict[str, Any]]:
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs) -> Iterator[dict[str, Any]]:
         captured["profile"] = profile
         captured["mode"] = mode
         profile_id = profile.id if hasattr(profile, "id") else profile["id"]
@@ -189,7 +189,7 @@ def test_apply_stream_handles_failure(
     monkeypatch.setattr(
         orchestrator_module,
         "iter_apply_events",
-        lambda profile, mode: iter(events),
+        lambda profile, mode, **kwargs: iter(events),
     )
 
     code, out, err = _run_cli(
@@ -269,10 +269,13 @@ def test_iter_apply_events_attaches_confirmation_id(
 
         async def execute_in_browser(
             self,
-            session: object,
-            profile: Profile,
-            item: ApplicationItem,
-            mode: str,
+            session: object = None,
+            profile: Profile = None,
+            item: ApplicationItem = None,
+            mode: str = None,
+            review_mode: bool = False,
+            prompt_callback: object = None,
+            answer_cache: object = None,
         ) -> Artifacts | Reason:
             if item.id == "with-confirm":
                 return Artifacts(confirmation_text="OK", confirmation_id="CONF-789")
@@ -377,7 +380,7 @@ def test_apply_json_partial_failure(
     monkeypatch.setattr(
         orchestrator_module,
         "iter_apply_events",
-        lambda profile, mode: iter(events),
+        lambda profile, mode, **kwargs: iter(events),
     )
 
     code, out, err = _run_cli(

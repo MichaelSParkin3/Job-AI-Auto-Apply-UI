@@ -1,6 +1,6 @@
 """Pydantic models for command-related API requests and responses."""
 
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,10 @@ class ApplyRequest(BaseModel):
     review_mode: bool = Field(
         default=False,
         description="Capture artifacts only, do not submit applications",
+    )
+    answer_cache: Optional[Dict[str, str]] = Field(
+        None,
+        description="Cached answers from previous CAPTCHA-blocked attempt (key: normalized question text, value: answer)",
     )
 
 

@@ -59,7 +59,7 @@ def test_apply_review_mode_flag_parses(
     def fake_load_profile(profile_id: str) -> dict[str, str]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str):
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs):
         yield from events
 
     monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
@@ -99,7 +99,7 @@ def test_apply_audit_after_submit_flags_parse(
     def fake_load_profile(profile_id: str) -> dict[str, str]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str):
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs):
         yield from events
 
     monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
@@ -245,7 +245,7 @@ def test_captcha_blocked_event_includes_artifacts(
     def fake_load_profile(profile_id: str) -> dict[str, str]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str):
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs):
         yield from events
 
     monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)

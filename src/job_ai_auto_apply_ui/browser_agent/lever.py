@@ -1001,6 +1001,7 @@ class LeverApplyAgent:
         mode: str,
         review_mode: bool = False,
         prompt_callback: Callable[[str, list[str], dict | None], str] | None = None,
+        answer_cache: Mapping[str, str] | None = None,
     ) -> Artifacts | Reason:
         """Open the apply URL in the given session, fill, and optionally submit.
 
@@ -1169,7 +1170,7 @@ class LeverApplyAgent:
                 client = OpenRouterClient.from_settings()
             except OpenRouterError:
                 client = None
-            prompt_builder = PromptBuilder(profile=profile)
+            prompt_builder = PromptBuilder(profile=profile, cache=answer_cache or {})
             for q in plan.dynamic_questions:
                 field_type = (q.field_type or "textarea").lower()
                 if field_type == "multiple_choice":

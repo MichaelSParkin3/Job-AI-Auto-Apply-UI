@@ -323,3 +323,95 @@ class TestArtifactFieldSerialization:
         assert item.artifacts.form_state_path == "/path/to/pre.json"
         assert item.artifacts.screenshot_before_path == "/path/to/pre-full.jpg"
         assert item.artifacts.screenshot_after_path == "/path/to/post-full.jpg"
+
+
+class TestManualStatusOverrides:
+    """Test skip_validation parameter for manual UI status changes."""
+
+    def test_skip_validation_false_enforces_strict_validation(self, sample_item: ApplicationItem) -> None:
+        """With skip_validation=False (default), invalid transitions should raise."""
+        sample_item.status = ApplicationStatus.SKIPPED
+
+        # SKIPPED → CAPTCHA_BLOCKED is normally invalid
+        with pytest.raises(ValueError, match="Invalid status transition"):
+            sample_item.update_status(ApplicationStatus.CAPTCHA_BLOCKED, skip_validation=False)
+
+    def test_skip_validation_true_allows_any_transition(self, sample_item: ApplicationItem) -> None:
+        """With skip_validation=True, any transition should succeed."""
+        sample_item.status = ApplicationStatus.SKIPPED
+
+        # SKIPPED → CAPTCHA_BLOCKED should now succeed
+        sample_item.update_status(ApplicationStatus.CAPTCHA_BLOCKED, skip_validation=True)
+        assert sample_item.status == ApplicationStatus.CAPTCHA_BLOCKED
+
+    def test_skip_validation_default_is_false(self, sample_item: ApplicationItem) -> None:
+        """Default behavior (no skip_validation param) should enforce validation."""
+        sample_item.status = ApplicationStatus.SKIPPED
+
+        # Should fail because default is skip_validation=False
+        with pytest.raises(ValueError, match="Invalid status transition"):
+            sample_item.update_status(ApplicationStatus.CAPTCHA_BLOCKED)
+
+    def test_skip_validation_with_reason(self, sample_item: ApplicationItem) -> None:
+        """skip_validation=True should work with reason parameter."""
+        sample_item.status = ApplicationStatus.SUBMITTED
+        reason = Reason(code="manual_update", message="User corrected status")
+
+        # SUBMITTED → NEW is invalid but skip_validation allows it
+        sample_item.update_status(ApplicationStatus.NEW, reason=reason, skip_validation=True)
+        assert sample_item.status == ApplicationStatus.NEW
+        assert sample_item.reason == reason
+
+    def test_all_invalid_transitions_work_with_skip_validation(self, sample_item: ApplicationItem) -> None:
+        """Various invalid transitions should work with skip_validation=True."""
+        invalid_transitions = [
+            (ApplicationStatus.SUBMITTED, ApplicationStatus.NEW),
+            (ApplicationStatus.FAILED, ApplicationStatus.PENDING_REVIEW),
+            (ApplicationStatus.CAPTCHA_BLOCKED, ApplicationStatus.SUBMITTED),
+            (ApplicationStatus.SKIPPED, ApplicationStatus.IN_PROGRESS),
+        ]
+
+        for from_status, to_status in invalid_transitions:
+            sample_item.status = from_status
+            # Should not raise
+            sample_item.update_status(to_status, skip_validation=True)
+            assert sample_item.status == to_status
+
+    def test_queue_methods_still_use_strict_validation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sample_item: ApplicationItem
+    ) -> None:
+        """Queue methods like mark_submitted should still enforce validation."""
+        monkeypatch.setattr(
+            "job_ai_auto_apply_ui.application_queue.log_event", lambda *args, **kwargs: None
+        )
+        queue = ApplicationQueue("profile-test", base_dir=tmp_path)
+        queue.enqueue([sample_item])
+
+        # Set item to IN_PROGRESS first
+        queue.resume(sample_item.id)
+
+        # Now mark as submitted - this should succeed because IN_PROGRESS → SUBMITTED is valid
+        artifacts = Artifacts(confirmation_text="OK", confirmation_id="CONF-123")
+        queue.mark_submitted(sample_item.id, artifacts)
+
+        item = queue.get(sample_item.id)
+        assert item is not None
+        assert item.status == ApplicationStatus.SUBMITTED
+
+        # Verify that direct update_status still enforces validation
+        # SUBMITTED → IN_PROGRESS is invalid (SUBMITTED is a terminal state)
+        submitted_item = ApplicationItem(
+            id="item-002",
+            url="https://jobs.example.com/role2",
+            company="Example Co",
+            title="Engineer",
+            status=ApplicationStatus.SUBMITTED,
+            discovered_at=sample_item.discovered_at,
+            last_updated_at=sample_item.last_updated_at,
+            hash="hash-002",
+            artifacts=Artifacts(),
+            details=None,
+            reason=None,
+        )
+        with pytest.raises(ValueError, match="Invalid status transition"):
+            submitted_item.update_status(ApplicationStatus.IN_PROGRESS)

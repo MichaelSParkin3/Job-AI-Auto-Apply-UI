@@ -1,5 +1,7 @@
 """Routes for job queue management and viewing."""
 
+import json
+import re
 import structlog
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
@@ -261,6 +263,60 @@ async def resume_job(profile_id: str, job_id: str):
 
         logger.info("job.resumed", profile_id=profile_id, job_id=job_id)
 
+        # Load saved answer cache if available for resume
+        answer_cache = None
+        if item.artifacts and item.artifacts.form_state_path:
+            try:
+                pre_json_path = Path(item.artifacts.form_state_path)
+                if pre_json_path.exists():
+                    with open(pre_json_path, "r", encoding="utf-8-sig") as f:
+                        saved_state = json.load(f)
+
+                        # Extract plan and values
+                        plan = saved_state.get("plan", {})
+                        values = saved_state.get("values", {})
+
+                        # Build normalized cache mapping from dynamic questions
+                        answer_cache = {}
+                        for q in plan.get("dynamic_questions", []):
+                            prompt_text = q.get("prompt", "")
+                            answer_selector = q.get("answer_selector")
+                            field_name = q.get("field_name")
+
+                            if not prompt_text:
+                                continue
+
+                            # Normalize question text (same as PromptBuilder._normalize_question_key)
+                            normalized_key = re.sub(
+                                r"[^\w\s]", "", prompt_text.lower()
+                            )
+                            normalized_key = " ".join(normalized_key.split())
+
+                            # Find matching value from values dict using selector or field_name
+                            selector_to_match = answer_selector or field_name
+                            if selector_to_match:
+                                for value_key, value in values.items():
+                                    if selector_to_match in value_key:
+                                        answer_cache[normalized_key] = value
+                                        break
+
+                        logger.info(
+                            "answer_cache.loaded_for_resume",
+                            profile_id=profile_id,
+                            job_id=job_id,
+                            cached_answers_count=len(answer_cache or {}),
+                        )
+            except Exception as e:
+                logger.warning(
+                    "answer_cache.load_failed",
+                    profile_id=profile_id,
+                    job_id=job_id,
+                    error=str(e),
+                    exc_info=True,
+                )
+                # Graceful fallback: proceed without cache
+                answer_cache = None
+
         # Import apply logic
         from .apply import apply
 
@@ -271,6 +327,7 @@ async def resume_job(profile_id: str, job_id: str):
             profile_id=profile_id,
             job_id=job_id,
             supervised=True,  # Pause for review before submitting
+            answer_cache=answer_cache,
         )
 
         # Call apply endpoint to launch browser
@@ -351,22 +408,11 @@ async def update_job_status(profile_id: str, job_id: str, request: StatusUpdateR
                 message=request.reason_message or "Manually updated by user",
             )
 
-        # Update status
-        item.update_status(new_status, reason=reason)
+        # Update status with validation bypass for manual UI overrides
+        item.update_status(new_status, reason=reason, skip_validation=True)
 
-        # Persist the change - update the queue
-        if new_status == ApplicationStatus.SUBMITTED:
-            queue.mark_submitted(job_id, artifacts=item.artifacts)
-        elif new_status == ApplicationStatus.FAILED:
-            queue.mark_failed(job_id, reason=reason or Reason("manual_update", "Manually marked as failed"))
-        elif new_status == ApplicationStatus.CAPTCHA_BLOCKED:
-            queue.mark_in_progress(job_id)
-            item.status = ApplicationStatus.CAPTCHA_BLOCKED
-            item.last_updated_at = item.last_updated_at
-        else:
-            # For other statuses, we just update the item directly
-            queue._items[job_id] = item
-            queue._write()
+        # Persist the change via queue update
+        queue.update(item)
 
         logger.info("job.status.updated", profile_id=profile_id, job_id=job_id, new_status=new_status.value)
 

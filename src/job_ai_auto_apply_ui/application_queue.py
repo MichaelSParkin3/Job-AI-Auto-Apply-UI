@@ -237,9 +237,21 @@ class ApplicationItem:
             "discovered_at": _dt_to_iso(self.discovered_at),
         }
 
-    def update_status(self, new_status: ApplicationStatus, reason: Reason | None = None) -> None:
-        """Update status and timestamps with validation."""
-        if not _is_valid_transition(self.status, new_status):
+    def update_status(
+        self,
+        new_status: ApplicationStatus,
+        reason: Reason | None = None,
+        skip_validation: bool = False,
+    ) -> None:
+        """Update status and timestamps with optional validation bypass.
+
+        Args:
+            new_status: Target status to transition to.
+            reason: Optional reason for the status change.
+            skip_validation: If True, bypass state machine validation (for manual overrides).
+                Default False maintains strict validation for automated transitions.
+        """
+        if not skip_validation and not _is_valid_transition(self.status, new_status):
             raise ValueError(f"Invalid status transition {self.status.value} -> {new_status.value}")
         self.status = new_status
         self.last_updated_at = _now()

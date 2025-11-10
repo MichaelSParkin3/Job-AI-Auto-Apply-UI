@@ -85,7 +85,7 @@ def test_apply_human_mode_success(
     def fake_load_profile(profile_id: str) -> dict[str, str]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str):
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs):
         yield from events
 
     monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)
@@ -138,7 +138,7 @@ def test_apply_json_event_schema(monkeypatch: pytest.MonkeyPatch, orchestrator_m
     def fake_load_profile(profile_id: str) -> dict[str, str]:
         return {"id": profile_id}
 
-    def fake_iter_apply_events(profile: Any, mode: str):
+    def fake_iter_apply_events(profile: Any, mode: str, **kwargs):
         yield from events
 
     monkeypatch.setattr("job_ai_auto_apply_ui.profile_manager.load_profile", fake_load_profile)

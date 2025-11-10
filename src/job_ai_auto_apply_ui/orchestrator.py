@@ -431,6 +431,7 @@ def iter_apply_events(
     audit_after_submit: bool = True,
     job_id: str | None = None,
     prompt_callback: Callable[[str, list[str], dict | None], str] | None = None,
+    answer_cache: Mapping[str, str] | None = None,
 ) -> Iterator[dict[str, object]]:
     """Yield apply events for streaming to the CLI.
 
@@ -515,6 +516,7 @@ def iter_apply_events(
                         mode=mode,
                         review_mode=review_mode,
                         prompt_callback=prompt_callback,
+                        answer_cache=answer_cache,
                     )
                     if isinstance(result, Artifacts):
                         return result, None
