@@ -47,9 +47,29 @@ export function SettingsForm({ settings, onSaved }: SettingsFormProps) {
       const response = await settingsApi.validateSettings(formValues)
       if (!response.data.valid) {
         setErrors(response.data.errors)
+
+        // Calculate which categories have errors
+        const errorsPerCategory: Record<string, number> = {}
+        Object.entries(response.data.errors).forEach(([fieldKey]) => {
+          // Find which category this field belongs to
+          for (const [categoryId, fields] of Object.entries(settings.fields)) {
+            if (fields.some((f) => f.key === fieldKey)) {
+              errorsPerCategory[categoryId] = (errorsPerCategory[categoryId] || 0) + 1
+              break
+            }
+          }
+        })
+
+        const errorCategories = Object.entries(errorsPerCategory)
+          .map(([catId, count]) => {
+            const category = settings.categories.find((c) => c.id === catId)
+            return `${category?.name || catId} (${count})`
+          })
+          .join(', ')
+
         addToast({
           title: 'Validation Failed',
-          description: `${Object.keys(response.data.errors).length} error(s) found`,
+          description: `${Object.keys(response.data.errors).length} error(s) in: ${errorCategories}`,
           variant: 'destructive',
         })
         return false
@@ -146,12 +166,24 @@ export function SettingsForm({ settings, onSaved }: SettingsFormProps) {
 
   const currentCategoryFields = settings.fields[activeCategory] || []
 
+  // Calculate error counts per category
+  const errorCounts: Record<string, number> = {}
+  Object.entries(errors).forEach(([fieldKey]) => {
+    for (const [categoryId, fields] of Object.entries(settings.fields)) {
+      if (fields.some((f) => f.key === fieldKey)) {
+        errorCounts[categoryId] = (errorCounts[categoryId] || 0) + 1
+        break
+      }
+    }
+  })
+
   return (
     <div className="space-y-6">
       <CategoryTabs
         categories={settings.categories}
         activeCategory={activeCategory}
         onCategoryChange={setActiveCategory}
+        errorCounts={errorCounts}
       />
 
       <form onSubmit={handleSubmit} className="space-y-8">

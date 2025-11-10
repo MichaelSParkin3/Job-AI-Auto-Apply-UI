@@ -75,8 +75,8 @@ SETTINGS_DEFINITIONS = {
             label="LLM Provider",
             description="Choose between OpenRouter and Google (Gemini)",
             type="string",
-            default="",
-            current="",
+            default="openrouter",
+            current="openrouter",
             sensitive=False,
             validation=SettingValidation(options=["openrouter", "google"]),
         ),
@@ -85,8 +85,8 @@ SETTINGS_DEFINITIONS = {
             label="LLM Model",
             description="Model identifier for selected provider",
             type="string",
-            default="",
-            current="",
+            default="openrouter/auto",
+            current="openrouter/auto",
             sensitive=False,
         ),
         SettingField(
@@ -453,12 +453,49 @@ def mask_sensitive(key: str, value: str) -> str:
 
 
 def read_current_settings() -> Dict[str, Any]:
-    """Read current settings from environment."""
+    """Read current settings from environment with proper type casting."""
     settings = {}
     for category_fields in SETTINGS_DEFINITIONS.values():
         for field in category_fields:
-            env_value = os.getenv(field.key, field.default)
-            settings[field.key] = env_value
+            env_value = os.getenv(field.key)
+
+            # If env var is not set, use default
+            if env_value is None:
+                settings[field.key] = field.default
+                continue
+
+            # Type-cast based on field type
+            if field.type == "int":
+                try:
+                    settings[field.key] = int(env_value)
+                except (ValueError, TypeError):
+                    settings[field.key] = field.default
+            elif field.type == "float":
+                try:
+                    settings[field.key] = float(env_value)
+                except (ValueError, TypeError):
+                    settings[field.key] = field.default
+            elif field.type == "bool":
+                # Convert string representations to boolean
+                settings[field.key] = env_value.strip().lower() in {
+                    "1",
+                    "true",
+                    "on",
+                    "yes",
+                }
+            elif field.type == "list":
+                # Handle semicolon or comma-separated lists
+                if field.key == "AUTO_APPLY_CHROME_ARGS":
+                    settings[field.key] = [
+                        s.strip() for s in env_value.split(";") if s.strip()
+                    ]
+                else:
+                    settings[field.key] = [
+                        s.strip() for s in env_value.split(",") if s.strip()
+                    ]
+            else:
+                # string, password, etc.
+                settings[field.key] = env_value
 
     return settings
 
@@ -482,6 +519,18 @@ def validate_settings(updates: Dict[str, Any]) -> Dict[str, str]:
             continue
 
         field = all_fields[key]
+
+        # Handle empty strings - treat as "use default"
+        if value == "" or value is None:
+            value = field.default
+
+        # Coerce quoted string values (e.g., '1' -> 1, 'true' -> true)
+        if isinstance(value, str):
+            # Strip surrounding quotes if present
+            if (value.startswith("'") and value.endswith("'")) or (
+                value.startswith('"') and value.endswith('"')
+            ):
+                value = value[1:-1]
 
         # Type validation
         if field.type == "int":
@@ -683,45 +732,65 @@ async def update_settings(request: SettingsUpdateRequest):
     Update settings and persist to .env file.
     """
     try:
-        # Validate first
-        errors = validate_settings(request.updates)
+        # Normalize empty strings to defaults
+        all_fields = {}
+        for category_fields in SETTINGS_DEFINITIONS.values():
+            for field in category_fields:
+                all_fields[field.key] = field
+
+        normalized_updates = {}
+        for key, value in request.updates.items():
+            if key in all_fields:
+                field = all_fields[key]
+                # Replace empty string or None with default
+                if value == "" or value is None:
+                    normalized_updates[key] = field.default
+                else:
+                    normalized_updates[key] = value
+            else:
+                normalized_updates[key] = value
+
+        # Validate normalized values
+        errors = validate_settings(normalized_updates)
         if errors:
+            error_details = "; ".join(
+                f"{k}: {v}" for k, v in errors.items()
+            )
             raise HTTPException(
                 status_code=400,
-                detail={"success": False, "message": "Validation failed", "errors": errors},
+                detail=f"Validation failed: {error_details}",
             )
 
-        # Test API keys if provided
+        # Test API keys if provided (skip if empty) - non-blocking warnings
         warnings = []
-        if "OPENROUTER_API_KEY" in request.updates:
+        if (
+            "OPENROUTER_API_KEY" in normalized_updates
+            and normalized_updates["OPENROUTER_API_KEY"]
+        ):
             key_valid, key_error = await test_api_key(
-                "openrouter", request.updates["OPENROUTER_API_KEY"]
+                "openrouter", normalized_updates["OPENROUTER_API_KEY"]
             )
             if not key_valid:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "success": False,
-                        "message": f"OpenRouter API key invalid: {key_error}",
-                    },
-                )
+                warnings.append(f"OPENROUTER_API_KEY: {key_error}")
 
-        if "GOOGLE_API_KEY" in request.updates:
+        if (
+            "GOOGLE_API_KEY" in normalized_updates
+            and normalized_updates["GOOGLE_API_KEY"]
+        ):
             key_valid, key_error = await test_api_key(
-                "google", request.updates["GOOGLE_API_KEY"]
+                "google", normalized_updates["GOOGLE_API_KEY"]
             )
             if not key_valid:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "success": False,
-                        "message": f"Google API key invalid: {key_error}",
-                    },
-                )
+                warnings.append(f"GOOGLE_API_KEY: {key_error}")
 
         # Write to .env file
         env_path = get_env_path()
-        for key, value in request.updates.items():
+        for key, value in normalized_updates.items():
+            # Skip masked values (e.g., "••••f5c8") - keep original from environment
+            if isinstance(value, str) and value.startswith("••••"):
+                # Don't overwrite masked values; keep the original from environment
+                continue
+
             env_value = to_env_value(key, value)
             set_key(str(env_path), key, env_value)
             # Update in-memory environment
@@ -730,7 +799,7 @@ async def update_settings(request: SettingsUpdateRequest):
         # Get updated settings
         current_settings = read_current_settings()
         updated_fields = {}
-        for key in request.updates.keys():
+        for key in normalized_updates.keys():
             # Find field definition
             field_def = None
             for category_fields in SETTINGS_DEFINITIONS.values():
@@ -759,14 +828,14 @@ async def update_settings(request: SettingsUpdateRequest):
 
         logger.info(
             "settings.update",
-            updated_keys=list(request.updates.keys()),
-            count=len(request.updates),
+            updated_keys=list(normalized_updates.keys()),
+            count=len(normalized_updates),
         )
 
         return SettingsUpdateResponse(
             success=True,
             message="Settings saved successfully",
-            updated_keys=list(request.updates.keys()),
+            updated_keys=list(normalized_updates.keys()),
             requires_restart=False,
             updated_settings=updated_fields,
         )

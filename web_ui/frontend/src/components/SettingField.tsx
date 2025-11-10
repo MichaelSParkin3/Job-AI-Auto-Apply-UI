@@ -75,7 +75,9 @@ export function SettingField({
             type="number"
             step="1"
             value={value || ''}
-            onChange={(e) => handleChange(e.target.value ? parseInt(e.target.value) : '')}
+            onChange={(e) =>
+              handleChange(e.target.value ? parseInt(e.target.value) : field.default)
+            }
             disabled={disabled}
             className={error ? 'border-red-500' : ''}
             min={field.validation?.min}
@@ -89,7 +91,9 @@ export function SettingField({
             type="number"
             step="0.1"
             value={value || ''}
-            onChange={(e) => handleChange(e.target.value ? parseFloat(e.target.value) : '')}
+            onChange={(e) =>
+              handleChange(e.target.value ? parseFloat(e.target.value) : field.default)
+            }
             disabled={disabled}
             className={error ? 'border-red-500' : ''}
             min={field.validation?.min}
